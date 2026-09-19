@@ -1,0 +1,15 @@
+export default {
+  pageEyebrow: 'A MORE INTENTIONAL BROWSER', popupEyebrow: 'YOUR HISTORY, YOUR CALL',
+  tagline: 'Find and delete browser history, fast.', workspace: 'Your workspace', history: 'History', local: 'On-device processing', privacy: 'Your history stays yours.', privacyBody: 'No accounts. No analytics. No history uploaded.',
+  heading: 'Make room for what’s next.', intro: 'Find the pages you want to leave behind. Keep everything else.', compactHeading: 'A fresh start, in a few clicks.',
+  language: 'Language', full: 'Open full page', searchLabel: 'Find in your history', placeholder: 'Try X, x.com, or a keyword', clearQuery: 'Clear search', modeLabel: 'Match by',
+  smart: 'Smart match', domains: 'Domain + subdomains', exact: 'Exact domain', contains: 'Title or URL', scan: 'Search history',
+  searchHint: 'Try “X” to match the x domain label. Separate sites with commas.', results: 'Search results', matches: 'matched', resultCount: '{n} results', selected: 'selected', selectAll: 'Select all {n}', selectAllCompact: 'Select all', clear: 'Clear selection', page: 'Page', lastVisit: 'Last visited', visits: 'Visits',
+  emptyTitle: 'A clean slate starts here.', emptyBody: 'Search for a website or keyword. Nothing is deleted until you choose.', noneTitle: 'No matching pages.', noneBody: 'Try another keyword or change the match mode.',
+  delete: 'Delete selected', deleteCount: 'Delete {n} selected', deleteCountCompact: 'Delete {n}', preview: 'Showing {shown} of {total}. Select all includes every match.', loadMore: 'Show more',
+  ready: 'Select the pages you want to remove.', scanned: '{n} URLs scanned · {m} matches', scanning: 'Searching your history…', limit: 'Scan limit reached (100,000 URLs). Older records may be missing.',
+  chooseQuery: 'Enter a website or keyword first.', invalidDomain: 'Enter a valid domain.', apiUnavailable: 'Open this page from the installed Chrome extension to search your history.', scanFailed: 'Could not read history. Please try again.',
+  confirmTitle: 'Leave these pages behind?', confirmBody: 'Permanently remove all visits to {n} selected URLs. This cannot be undone. Chrome may sync deletions across signed-in devices.', cancel: 'Keep them', confirm: 'Delete permanently',
+  deleting: 'Deleting {done} of {total}…', keepOpen: 'Keep this window open until deletion finishes.', verifying: 'Checking the remaining history…', done: 'Removed {n} URLs. Verified: none of the selected URLs remain.', partial: '{n} URLs could not be verified as removed. Remaining items are selected.', verifyFailed: 'Deletion requests finished, but verification failed. Search again to check the results.',
+  modalLabel: 'Confirm history deletion', fullNote: 'A little more room to review.', deleteNote: 'Deleting a URL removes all visits to it.', selectRow: 'Select {url}', progress: 'Deletion progress', error: 'Something went wrong. Please try again.',
+};

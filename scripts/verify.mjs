@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dependency } from './runtime.mjs';
+import { createServer } from './serve.mjs';
+import { installMock, demoHistory } from './fixtures.mjs';
+const {chromium}=dependency('playwright');
+const root=fileURLToPath(new URL('../',import.meta.url));
+await mkdir(root+'test-results',{recursive:true});
+const server=createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const origin='http://127.0.0.1:'+server.address().port;
+const browser=await chromium.launch({headless:true, ...(process.env.HISTORY_SWEEP_CHROME ? {executablePath:process.env.HISTORY_SWEEP_CHROME} : {})});
+const errors=[]; let checks=0;
+function check(value,message){assert.ok(value,message);checks++;}
+try{
+ for(const layout of ['manager','popup']){
+   const context=await browser.newContext({viewport:layout==='popup'?{width:440,height:590}:{width:1280,height:800},locale:'zh-CN'});
+   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await installMock(page);
+   await page.goto(origin+'/extension/'+layout+'.html');
+   check(await page.locator('html').getAttribute('lang')==='en','default English even on Chinese browser');
+   await page.locator('#query').fill('X');await page.locator('#search').click();
+   await page.waitForFunction(()=>document.querySelector('#count').textContent.startsWith('124'));
+   check(!(await page.locator('#empty').isVisible()),'empty state hidden with results');
+   await page.locator('#selectAll').click();
+   check(await page.evaluate(()=>document.querySelector('#delete').getBoundingClientRect().bottom<=innerHeight),'selected action visible without scrolling');
+   check((await page.locator('#selected').textContent()).startsWith('124'),'select all includes non-rendered rows');
+   await page.locator('input[type=checkbox]').first().uncheck();
+   check((await page.locator('#selected').textContent()).startsWith('123'),'exclude one row');
+   await page.locator('#resultScroll').evaluate(node=>{node.scrollTop=100;});
+   await page.getByRole('button',{name:'简体中文',exact:true}).click();
+   check(await page.getByRole('button',{name:'简体中文',exact:true}).getAttribute('aria-pressed')==='true','Chinese language button selected');
+   check(await page.locator('#query').inputValue()==='X' && await page.locator('#mode').inputValue()==='smart','language switch preserves query and mode');
+   check(await page.locator('#resultScroll').evaluate(node=>node.scrollTop)===100,'language switch preserves result scroll');
+   check(await page.locator('#query').getAttribute('placeholder')==='试试 X、x.com 或关键词','Chinese search placeholder');
+   check((await page.locator('#selected').textContent()).includes('123 条已选'),'language switch preserves selection');
+   await page.getByRole('button',{name:'English',exact:true}).focus();await page.keyboard.press('Enter');
+   check(await page.locator('html').getAttribute('lang')==='en' && await page.getByRole('button',{name:'English',exact:true}).evaluate(node=>node===document.activeElement),'keyboard language switch keeps focus');
+   check((await page.locator('#selected').textContent()).includes('123 selected'),'English selection count');
+   await page.locator('#delete').click();
+   check(await page.locator('#confirmBody').textContent().then(text=>text.includes('123')),'English confirmation keeps selected count');
+   await page.locator('[value=cancel]').click();
+   await page.getByRole('button',{name:'简体中文',exact:true}).click();
+   await page.locator('#delete').click();
+   check(await page.locator('#confirmTitle').textContent()==='确定告别这些页面？' && await page.locator('[value=confirm]').textContent()==='永久删除','Chinese deletion confirmation');
+   await page.locator('[value=cancel]').click();
+   check(await page.evaluate(()=>window.__deleted.length)===0,'cancel never deletes');
+   await page.locator('#delete').click();await page.locator('[value=confirm]').click();
+   await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('已删除 123'));
+   check(await page.locator('#count').textContent()==='1 条结果','kept excluded page');
+   check(await page.evaluate(()=>window.__deleted.every(url=>url.startsWith('https://x.com/'))),'never deletes unrelated URL');
+   await page.locator('#query').fill('not-found.example');await page.locator('#search').click();
+   await page.waitForFunction(()=>document.querySelector('#count').textContent.startsWith('0'));
+   check(await page.locator('#empty').isVisible(),'zero-result state visible');
+   check(!(await page.locator('#table').isVisible()),'table hidden for zero results');
+   check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal overflow');
+   if(layout==='popup'){
+     check(await page.evaluate(()=>document.querySelector('#delete').getBoundingClientRect().bottom<=innerHeight),'popup action visible');
+     await page.locator('#openFull').click();
+     check(await page.evaluate(()=>window.__opened[0].includes('q=not-found.example')),'full-page handoff preserves query');
+   }
+   await page.reload();check(await page.locator('html').getAttribute('lang')==='zh-CN','language persisted');
+   await context.close();
+ }
+ const busy=await browser.newPage({viewport:{width:440,height:590}});await installMock(busy);
+ await busy.goto(origin+'/extension/popup.html');
+ await busy.evaluate(()=>{chrome.history.search=()=>new Promise(resolve=>{window.__finishSearch=resolve;});});
+ await busy.locator('#query').fill('X');await busy.locator('#search').click();
+ check(await busy.locator('#language button:disabled').count()===2,'language controls disabled during history operation');
+ await busy.evaluate(()=>window.__finishSearch([]));
+ await busy.waitForFunction(()=>!document.querySelector('#search').disabled);
+ check(await busy.locator('#language button:disabled').count()===0,'language controls enabled after history operation');
+ await busy.close();
+ const failures=await browser.newPage({viewport:{width:1280,height:800}});await installMock(failures,demoHistory.slice(0,3));
+ await failures.goto(origin+'/extension/manager.html');await failures.locator('#query').fill('X');await failures.locator('#search').click();await failures.waitForFunction(()=>document.querySelector('#count').textContent.startsWith('3'));
+ await failures.evaluate(url=>window.__failDelete=url,demoHistory[0].url);
+ await failures.locator('#selectAll').click();await failures.locator('#delete').click();await failures.locator('[value=confirm]').click();
+ await failures.waitForFunction(()=>document.querySelector('#status').textContent.includes('could not be verified'));
+ check((await failures.locator('#selected').textContent()).startsWith('1'),'failed URL remains selected');
+ await failures.evaluate(()=>{window.__failDelete=null;window.__failVerify=true;});
+ await failures.locator('#delete').click();await failures.locator('[value=confirm]').click();
+ await failures.waitForFunction(()=>document.querySelector('#status').textContent.includes('verification failed'));
+ check(!(await failures.locator('#status').textContent()).includes('Verified:'),'never claims successful verification on failure');
+ await failures.close();
+ for(const width of [1440,390]){
+   const page=await browser.newPage({viewport:{width,height:1000}});page.on('pageerror',e=>errors.push(e.message));
+   const response=await page.goto(origin+'/site/');check(response.status()===200,'website serves');
+   const overflow=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,elements:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>e.tagName+'.'+e.className)}));
+   check(overflow.scroll<=overflow.width,'responsive site no horizontal overflow '+JSON.stringify(overflow));
+   check(await page.locator('img').evaluateAll(imgs=>imgs.every(i=>i.complete && i.naturalWidth>0)),'all website images loaded');
+   await page.screenshot({path:root+'test-results/site-'+width+'.png',fullPage:true});
+   if(width===1440) await page.screenshot({path:root+'test-results/site-hero.png'});
+   await page.getByRole('button',{name:'简体中文',exact:true}).click();
+   check(await page.locator('h1').textContent()==='留一点过去，多一点空间。','site Chinese translation');
+   await page.goto(origin+'/site/privacy.html');check(await page.locator('html').getAttribute('lang')==='zh-CN','privacy follows language');
+   check(!(await page.locator('main').textContent()).includes('What it processes'),'privacy content localized');
+   await page.close();
+ }
+ check(!errors.length,'no runtime errors: '+errors.join('; '));
+ console.log(checks+' browser assertions passed. Mock history only; no real browser profile accessed.');
+}finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

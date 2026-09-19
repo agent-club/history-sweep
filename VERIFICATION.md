@@ -1,0 +1,17 @@
+ # Verification — 0.3.0
+
+Date: 2026-09-19.
+
+- 14 Node tests passed: existing search semantics, translation key/placeholder parity, default English, translated variable messages.
+- 61 isolated Chrome browser assertions passed: full page and popup, 124 synthetic matches, select-all beyond rendered rows, exclusions, cancellation, confirmed deletion, failure retention, verification failure messaging, language persistence, popup-to-tab query handoff, and bilingual website/privacy pages. The EN / 中文 segmented controls were checked for selected state, keyboard focus, preserved query/mode/selection/scroll, translated placeholder and confirmation, and disabling during a pending history operation.
+- Extension viewport: full page 1280 × 800, popup 440 × 590. Website viewports: 1440 × 1000 and 390 × 1000; DPR 1. No horizontal overflow in tested states. Delete actions remain visible without scrolling in the tested extension viewports.
+- Product screenshots and visual inspection covered English/Chinese extension views and the responsive website. All product screenshots contain synthetic fixture records.
+- The popup was reimagined with built-in ImageGen and implemented against the saved visual target. The 1083 × 1453 source was normalized to 440 × 590 for a side-by-side full-view comparison. After one fix iteration, the count/selection summary is a single line, six result rows fit above the persistent action bar, passive status copy no longer consumes compact space, and the table header is absent from the popup. The project-root `design-qa.md` records `final result: passed`.
+- UI icons use licensed Phosphor SVG assets with the license included in the extension bundle. No text glyphs, CSS drawings or raster placeholders are used for UI controls.
+- Codex in-app browser verification covered EN/中文 switching, query entry, clear-search, localized unavailable-API feedback and the empty state; no console warnings or errors were present. The history API path remains covered by the 61 isolated browser assertions with synthetic data.
+- The extension visual refresh now strictly approximates selected ImageGen option 3: the source three-slash mark, short brand divider, diagonal header rule, independent language controls, query clear divider, obsidian control zone, ivory result surface, celadon selection states and wine-red destructive action. Browser measurements verified the compact popup at 440 × 590: topbar y=0–64, search y=64–158, results y=158–526 and the persistent footer y=526–590. The query is 404 × 38px, the second row is 196px / 198px with a 10px gap, and the footer actions are 140px / 142px. The 1280 × 800 manager uses the same visual system. Existing 61 browser assertions passed again; history logic was unchanged.
+- All required generated image dimensions were validated. The extension ZIP has manifest.json at its root and excludes tests, fixtures and developer tools. Website ZIP includes the matching extension download.
+- Tested with installed Chrome through isolated Playwright contexts; no user browser profile or real history was accessed. The history API was mocked, so this does not replace native extension installation testing in a disposable Chrome profile.
+- No Chrome Web Store submission, public website deployment, Git commit or Git push was performed.
+
+Remaining before Chrome Web Store submission: developer contact email, owner review of privacy text, native extension installation smoke test, store submission and review. The public site, support URL, domain, and hosting privacy information are configured.
