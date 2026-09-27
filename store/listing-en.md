@@ -24,6 +24,6 @@ ENGLISH AND SIMPLIFIED CHINESE
 The interface starts in English. Switch languages in either view; your preference is saved locally.
 
 PLEASE NOTE
-Deleting a URL removes all its visits and cannot be undone. Chrome may sync deletions across signed-in devices. Keep the extension window open until the operation finishes. Scans are limited to 100,000 distinct URLs; a notice appears when the limit is reached. The extension verifies selected URLs after deletion and identifies those still present.
+Deleting a URL removes all its visits and cannot be undone. Chrome may sync deletions across signed-in devices. Confirmed deletion continues if you close the extension window. Keep Chrome running; reopen and search to review the result. Tasks cannot resume after Chrome exits. Scans are limited to 100,000 distinct URLs; a notice appears when the limit is reached. The extension verifies selected URLs after deletion and identifies those still present.
 
 Screenshots use illustrative data, not real browsing history.

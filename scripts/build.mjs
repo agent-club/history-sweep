@@ -13,7 +13,7 @@ for(const [file,w,h,allowAlpha=false] of [['icon-128.png',128,128,true],['promo-
 }
 await mkdir(root+'dist',{recursive:true});await mkdir(root+'site/downloads',{recursive:true});
 const extensionZip=root+'dist/history-sweep-'+manifest.version+'.zip';
-const entries=['manifest.json','popup.html','manager.html','app.css','app.mjs','view.mjs','i18n.mjs','history-utils.mjs','locales','_locales','icons'];
+const entries=['manifest.json','background.mjs','popup.html','manager.html','app.css','app.mjs','view.mjs','i18n.mjs','history-utils.mjs','locales','_locales','icons'];
 execFileSync('zip',['-q','-r','-FS',extensionZip,...entries],{cwd:root+'extension'});
 execFileSync('unzip',['-t',extensionZip]);
 await copyFile(extensionZip,root+'site/downloads/history-sweep-'+manifest.version+'.zip');

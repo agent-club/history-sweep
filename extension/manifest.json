@@ -1,5 +1,10 @@
 {
   "manifest_version": 3,
+  "minimum_chrome_version": "110",
+  "background": {
+    "service_worker": "background.mjs",
+    "type": "module"
+  },
   "name": "History Sweep",
   "version": "0.3.0",
   "default_locale": "en",

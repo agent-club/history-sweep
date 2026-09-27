@@ -7,6 +7,8 @@
     "dev": "node scripts/serve.mjs",
     "test": "node --test tests/*.test.mjs extension/tests/history-utils.test.mjs",
     "test:browser": "node scripts/verify.mjs",
+    "test:native": "node scripts/verify-native.mjs",
+    "test:toolbar": "node scripts/verify-toolbar.mjs",
     "assets": "node scripts/assets.mjs",
     "build": "node scripts/build.mjs",
     "deploy:site": "wrangler deploy site --name history-sweep --domain sweep.agentclub.dev --compatibility-date 2026-09-18"

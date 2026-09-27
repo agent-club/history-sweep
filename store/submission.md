@@ -15,7 +15,7 @@ Status: website deployed; extension prepared locally but NOT submitted or listed
 ## Suggested listing fields
 Name: History Sweep
 Primary language: English
-Category: Productivity (choose the closest available category in the current dashboard).
+Category: Tools (工具); confirm the closest current dashboard category.
 Website URL: https://sweep.agentclub.dev/
 Privacy URL: https://sweep.agentclub.dev/privacy
 Support URL: https://github.com/agent-club/history-sweep/issues
@@ -26,15 +26,15 @@ Do not invent store URLs, publisher identity, ratings, installation counts, or a
 Help users search, review, select, and delete their Chrome browsing history in batches.
 
 ## history permission justification (paste-ready)
-History Sweep uses chrome.history.search to display history matching the user's query, chrome.history.deleteUrl to remove only URLs explicitly selected and confirmed by the user, and chrome.history.getVisits to verify deletion. Processing happens locally. Browsing history is not transmitted to the developer or any third party.
+History Sweep uses chrome.history.search to display history matching the user's query, chrome.history.deleteUrl to remove only URLs explicitly selected and confirmed by the user, and chrome.history.getVisits in its service worker to verify deletion. The worker continues confirmed operations when the popup closes; it does not recover tasks after Chrome exits. Processing happens locally. Browsing history is not transmitted to the developer or any third party.
 
 ## Remote code justification
 No remotely hosted code. JavaScript, styles, translations, and icons are included in the extension package. The extension has no host permissions, no analytics, and a connect-src 'none' policy.
 
 ## Data practices to disclose accurately
 - Accessed locally: browsing history URLs, titles, visit counts, and last visit times.
-- Local memory: current search results and selections; no persistent history copy.
-- Persisted locally: language preference only (localStorage).
+- Local memory: current search results and selections, one-time search handoffs, and confirmed deletion queues. Completed queue results are released by the page or discarded within 60 seconds; worker termination discards them sooner. No persistent history copy.
+- Persisted locally: language preference only (localStorage). Search terms are not included in workspace URLs.
 - Transmitted by extension: none.
 - Sale, advertising, profiling, credit decisions: none.
 - Passwords, cookies, authentication information, payments, page contents: not accessed.
@@ -47,7 +47,7 @@ No remotely hosted code. JavaScript, styles, translations, and icons are include
 2. Visit a disposable page such as https://example.com.
 3. Open the toolbar popup. It starts in English; switch language using EN/简中.
 4. Search example.com using Exact domain. Review the listed URLs.
-5. Use Select all, then uncheck any page to keep.
+5. Use Select all, click it again to deselect all, then select all and uncheck any page to keep.
 6. Click Delete selected. Cancel once to verify no change. Repeat and confirm only with disposable test data.
 7. Wait for the verification message. Use Open full page to inspect the larger view.
 8. No account or login is required.
@@ -56,7 +56,7 @@ No remotely hosted code. JavaScript, styles, translations, and icons are include
 - Confirm product name and publisher details.
 - Supply the developer contact email and review the final privacy policy.
 - Use the deployed website, privacy, and support URLs listed above in the dashboard.
-- Validate in a disposable Chrome extension profile; automated UI tests here use mocked history.
+- Review the extension manually in a disposable Chrome profile. Automated tests cover mocked history up to 100,000 URLs and a native unpacked extension with local test visits, including deletion after the UI closes and search handoff without URL query data.
 - Submit the extension ZIP and assets through the owner's developer account.
 - After approval, replace the website's pre-release CTA with the real store link.
 
