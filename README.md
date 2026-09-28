@@ -45,7 +45,7 @@ Select all covers every matching result, including rows outside the current rend
 Deleting a URL removes all visits and may propagate through Chrome sync. Deletion needs explicit confirmation; completion is checked per selected URL.
 
 ## Release
-Current version: 0.3.0, pre-release. The website is deployed at https://sweep.agentclub.dev; the extension has not been submitted to or listed on the Chrome Web Store.
+Current version: 0.3.1, pre-release. The website is deployed at https://sweep.agentclub.dev; the extension has not been submitted to or listed on the Chrome Web Store.
 Read store/submission.md for the ready-to-use fields, assets, and remaining owner-supplied details.
 Public support: https://github.com/agent-club/history-sweep/issues. The site privacy page documents Cloudflare Pages hosting; the Chrome Web Store developer contact email still needs to be supplied in the dashboard.
 No license grant is assumed; add the owner's chosen license before public source distribution.

@@ -8,7 +8,7 @@ export function view(t, compact) {
 
   return `${compact ? '' : `<aside class="sidebar">${brand}<span class="side-label">${t('workspace')}</span><div class="side-active">${icon('clock-counter-clockwise')}${t('history')}</div><div class="side-bottom"><h3>${t('privacy')}</h3><p>${t('privacyBody')}</p><span class="local-dot">${t('local')}</span></div></aside>`}
   <main class="app-shell">
-    <header class="topbar">${compact ? brand : `<span class="breadcrumb">${t('workspace')} <span>/</span> ${t('history')}</span>`}<div class="top-actions">${language}${compact ? openButton : `<span class="version">v0.3</span>`}</div></header>
+    <header class="topbar">${compact ? brand : `<span class="breadcrumb">${t('workspace')} <span>/</span> ${t('history')}</span>`}<div class="top-actions">${language}${compact ? openButton : `<span class="version">v0.3.1</span>`}</div></header>
     ${compact ? '' : `<section class="intro"><span class="eyebrow">${t('pageEyebrow')}</span><h1>${t('heading')}</h1><p>${t('intro')}</p></section>`}
     <form id="searchForm" class="search-panel">
       <label class="query-field"><span>${t('searchLabel')}</span><div class="input-wrap">${icon('magnifying-glass')}<input id="query" type="text" required autocomplete="off" aria-label="${t('searchLabel')}" placeholder="${t('placeholder')}"><button id="clearQuery" class="clear-query" type="button" aria-label="${t('clearQuery')}" hidden>${icon('x')}</button></div></label>

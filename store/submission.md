@@ -1,9 +1,9 @@
-# Chrome Web Store submission pack — v0.3.0
+# Chrome Web Store submission pack — v0.3.1
 
 Status: website deployed; extension prepared locally but NOT submitted or listed.
 
 ## Files
-- Upload package: dist/history-sweep-0.3.0.zip. manifest.json is at the ZIP root.
+- Upload package: dist/history-sweep-0.3.1.zip. manifest.json is at the ZIP root.
 - Listing copy: listing-en.md and listing-zh-CN.md.
 - Store icon: assets/icon-128.png (128 × 128, transparent padding).
 - Small promotional tile: assets/promo-small-440x280.png (required).
