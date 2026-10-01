@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dependency } from './runtime.mjs';
+import { createServer } from './serve.mjs';
+import { installMock } from './fixtures.mjs';
+
+const { chromium } = dependency('playwright');
+const root = fileURLToPath(new URL('../', import.meta.url));
+const sites = [['x.com', 124], ['github.com', 3], ['reddit.com', 2], ['youtube.com', 1], ['notion.so', 1]];
+const records = sites.flatMap(([host, count], site) => Array.from({ length: count }, (_, index) => ({
+  url: `https://${host}/synthetic-x/${index}`, title: `Synthetic x result ${index}`,
+  lastVisitTime: Date.UTC(2026, 8, 19, 12) - (site * 1000 + index) * 60000, visitCount: index % 3,
+}))).concat([{ url: 'https://keep.test/untouched', title: 'Keep this page', lastVisitTime: 1 }]);
+const server = createServer();
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+const origin = `http://127.0.0.1:${server.address().port}`;
+let browser;
+let checks = 0;
+const check = (condition, message) => { assert.ok(condition, message); checks++; };
+try {
+  browser = await chromium.launch({ headless: true, ...(process.env.HISTORY_SWEEP_CHROME ? { executablePath: process.env.HISTORY_SWEEP_CHROME } : {}) });
+  await mkdir(root + 'test-results', { recursive: true });
+  for (const layout of ['manager', 'popup']) {
+    const context = await browser.newContext({ viewport: layout === 'popup' ? { width: 440, height: 590 } : { width: 1536, height: 1024 } });
+    const page = await context.newPage(); const errors = []; page.on('pageerror', error => errors.push(error.message));
+    await installMock(page, records);
+    await page.goto(`${origin}/extension/${layout}.html`);
+    await page.locator('#query').fill('x'); await page.locator('#mode').selectOption('contains'); await page.locator('#search').click();
+    await page.waitForFunction(() => !document.querySelector('#search').disabled);
+    check(await page.locator('.website-group').count() === 5, 'five matching websites are grouped');
+    const x = page.locator('.website-group[data-hostname="x.com"]');
+    const github = page.locator('.website-group[data-hostname="github.com"]');
+    check(await page.locator('#groupBySite').getAttribute('aria-pressed') === 'true', 'grouped by default');
+    check(await x.locator('.history-row').count() === 3, 'short preview keeps other categories within reach');
+    check(await github.locator('.history-row').count() === 0, 'collapsed groups render no rows');
+    await x.locator('.group-select').check();
+    check((await page.locator('#selected').textContent()).startsWith('124'), 'group selection covers non-rendered rows');
+    check(await x.locator('.row-select:checked').count() === 3, 'visible row checkboxes follow group selection');
+    await github.locator('.group-select').check();
+    check((await page.locator('#selected').textContent()).startsWith('127'), 'multiple groups can be selected');
+    await x.locator('.group-toggle').click();
+    check((await page.locator('#selected').textContent()).startsWith('127') && await x.locator('.history-row').count() === 0, 'collapse keeps selection');
+    await x.locator('.group-toggle').click();
+    check(await x.locator('.group-toggle').evaluate(node => node === document.activeElement), 'group toggle keeps keyboard focus');
+    await x.locator('.row-select').first().uncheck();
+    check(await x.locator('.group-select').evaluate(node => node.indeterminate && !node.checked), 'individual exclusion gives partial group state');
+    const excluded = await x.locator('.row-select').first().getAttribute('data-url');
+    check((await page.locator('#selected').textContent()).startsWith('126'), 'individual exclusion updates total');
+    await page.screenshot({ path: `${root}test-results/grouped-${layout}.png` });
+    await x.locator('.group-load-more').click();
+    check(await x.locator('.history-row').count() === (layout === 'popup' ? 43 : 103), 'load more grows only its group');
+    check(await x.locator('.row-select').last().isChecked(), 'newly shown rows retain group selection');
+    await github.locator('.group-toggle').click();
+    check(await github.locator('.row-select:checked').count() === 3, 'selecting collapsed group persists on expansion');
+    await page.getByRole('button', { name: '简体中文', exact: true }).click();
+    check(await x.locator('.group-select').evaluate(node => node.indeterminate) && await x.locator('.group-toggle').getAttribute('aria-expanded') === 'true', 'language preserves mixed state and expansion');
+    check((await page.locator('#siteCount').textContent()).includes('5') && (await page.locator('#selected').textContent()).includes('126'), 'Chinese group and selection counts');
+    if (layout === 'manager') check((await page.locator('#selectedSites').textContent()).includes('2'), 'footer counts selected websites');
+    await page.locator('#query').fill('changed');
+    check(await x.locator('.group-select').isDisabled() && await page.locator('#delete').isDisabled(), 'edited criteria disable group selection and deletion');
+    await page.locator('#query').fill('x');
+    await page.locator('#groupBySite').click();
+    check(await page.locator('#table').isVisible() && !(await page.locator('#groups').isVisible()), 'flat list is available');
+    check((await page.locator('#selected').textContent()).includes('126'), 'view switch preserves selection');
+    await page.locator('#groupBySite').click();
+    await page.locator('#expandGroups').click();
+    check(await page.locator('.group-toggle[aria-expanded=true]').count() === 5, 'expand all sites');
+    await page.locator('#expandGroups').click();
+    check(await page.locator('.group-toggle[aria-expanded=false]').count() === 5, 'collapse all sites');
+    await x.locator('.group-toggle').click();
+    await page.locator('#delete').click();
+    check((await page.locator('#confirmBody').textContent()).includes('126'), 'confirmation uses selected URLs, not group totals');
+    await page.locator('#confirmDialog [value=cancel]').click();
+    check(await page.evaluate(() => window.__deleted.length) === 0, 'cancel never deletes');
+    await page.locator('#delete').click(); await page.locator('#confirmDialog [value=confirm]').click();
+    await page.waitForFunction(() => document.querySelector('#status').dataset.kind === 'done');
+    const deleted = await page.evaluate(() => window.__deleted);
+    check(deleted.length === 126 && !deleted.includes(excluded), 'excluded URL survives group deletion');
+    check(deleted.every(url => ['x.com', 'github.com'].includes(new URL(url).hostname)), 'unselected groups and unrelated URLs survive');
+    check(await page.locator('.website-group').count() === 4 && (await page.locator('#count').textContent()).startsWith('5'), 'groups rebuild after deletion');
+    await page.locator('#clearQuery').click();
+    check(await page.locator('.website-group').count() === 0 && await page.locator('#empty').isVisible(), 'clear search resets groups');
+    check(!errors.length, `no runtime errors: ${errors.join('; ')}`);
+    await context.close();
+  }
+  const page = await browser.newPage();
+  await installMock(page, Array.from({ length: 105 }, (_, index) => ({ url: `https://site-${index}.example.test/x`, title: 'x' })));
+  await page.goto(origin + '/extension/manager.html'); await page.locator('#query').fill('x'); await page.locator('#mode').selectOption('contains'); await page.locator('#search').click();
+  await page.waitForFunction(() => document.querySelectorAll('.website-group').length === 100);
+  check(await page.locator('.history-row').count() === 1, 'many sites keep initial row rendering bounded');
+  await page.locator('#selectAll').click();
+  check((await page.locator('#selected').textContent()).startsWith('105'), 'global selection includes non-rendered sites');
+  await page.locator('#loadMore').click();
+  check(await page.locator('.website-group').count() === 105 && await page.locator('.group-select:checked').count() === 105, 'more sites inherit selection');
+  await page.close();
+  console.log(`${checks} website-group assertions passed. Synthetic history only.`);
+} finally {
+  await browser?.close(); await new Promise(resolve => server.close(resolve));
+}

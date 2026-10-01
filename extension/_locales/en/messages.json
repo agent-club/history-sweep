@@ -1,4 +1,5 @@
 {
+  "sweepSite": { "message": "Find this website in History Sweep" },
   "description": {
     "message": "Find, select, and delete browsing history in batches. A calmer, more private way to tidy up Chrome."
   }

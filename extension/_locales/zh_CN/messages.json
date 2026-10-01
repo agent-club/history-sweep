@@ -1,4 +1,5 @@
 {
+  "sweepSite": { "message": "在 History Sweep 中查找此网站" },
   "description": {
     "message": "精准搜索、一键全选、批量清理浏览历史。所有操作都在本机完成。"
   }

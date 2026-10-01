@@ -28,7 +28,7 @@ try{
      await page.locator('#query').fill('X'); await page.locator('#search').click();
      await page.waitForFunction(()=>document.querySelector('#count').textContent.startsWith('124'));
      await page.locator('#selectAll').click();
-     await page.locator('input[type=checkbox]').nth(1).uncheck();
+     await page.locator('.row-select').nth(1).uncheck();
      await page.mouse.move(0, 0);
      const suffix=lang==='en'?'en':'zh';
      await page.screenshot({path:root+'site/assets/'+layout+'-'+suffix+'.png'});

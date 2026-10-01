@@ -45,13 +45,16 @@ try {
 
   await page.locator('#query').fill('127.0.0.1');
   await page.locator('#mode').selectOption('host-exact');
+  await page.waitForFunction(() => document.querySelector('#query').getAttribute('aria-expanded') === 'true');
+  assert.equal(await page.locator('#suggestionsList [role=option]').count(), 1, 'native Worker completes the local hostname under extension CSP');
+  assert.equal(await page.locator('#suggestionsList .suggestion-text').textContent(), '127.0.0.1');
   await page.locator('#search').click();
   await page.waitForFunction(count => document.querySelector('#count').textContent.startsWith(`${count} `), localVisits);
   await page.locator('#selectAll').click();
   assert.match(await page.locator('#selected').textContent(), new RegExp(`^${localVisits} selected`));
   await page.locator('#selectAll').click();
   assert.match(await page.locator('#selected').textContent(), /^0 selected/);
-  await page.locator('#rows tr').first().locator('.page-cell').click();
+  await page.locator('.history-row').first().locator('.page-cell').click();
   assert.match(await page.locator('#selected').textContent(), /^1 selected/);
   await page.locator('#delete').click();
   await page.locator('#confirmDialog [value=confirm]').click();
@@ -63,11 +66,11 @@ try {
   const backgroundVisit = `${origin}/site/?background-test`;
   await page.goto(backgroundVisit);
   await page.goto(`chrome-extension://${id}/popup.html`);
-  assert.equal(await page.getByRole('textbox', { name: 'Find in your history', exact: true }).count(), 1);
+  assert.equal(await page.getByRole('combobox', { name: 'Find in your history', exact: true }).count(), 1);
   await page.locator('#query').fill('127.0.0.1');
   await page.locator('#mode').selectOption('host-exact');
   await page.locator('#search').click();
-  await page.waitForFunction(() => document.querySelector('#rows tr'));
+  await page.waitForFunction(() => document.querySelector('.history-row'));
   await page.getByRole('checkbox', { name: `Select ${backgroundVisit}`, exact: true }).check();
   const worker = context.serviceWorkers().find(item => item.url().endsWith('/background.mjs'));
   assert.ok(worker, 'extension service worker is active');
@@ -93,6 +96,11 @@ try {
   await review.goto(`chrome-extension://${id}/popup.html`);
   await review.locator('#query').fill('127.0.0.1');
   await review.locator('#mode').selectOption('host-exact');
+  await review.locator('#filters > summary').click();
+  await review.locator('#timeRange').selectOption('custom');
+  const today = await review.evaluate(() => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; });
+  await review.locator('#startDate').fill(today); await review.locator('#endDate').fill(today);
+  await review.locator('#filters > summary').click();
   const fullPagePromise = context.waitForEvent('page');
   await review.locator('#openFull').click();
   const fullPage = await fullPagePromise;
@@ -100,6 +108,18 @@ try {
   assert.equal(new URL(fullPage.url()).search, '');
   assert.equal(new URL(fullPage.url()).hash, '');
   assert.equal(await fullPage.locator('#mode').inputValue(), 'host-exact');
+  assert.equal(await fullPage.locator('#timeRange').inputValue(), 'custom');
+  assert.equal(await fullPage.locator('#startDate').inputValue(), today);
+  assert.equal(await fullPage.locator('#endDate').inputValue(), today);
+  await fullPage.locator('#editProtection').click();
+  await fullPage.locator('#protectionInput').fill('127.0.0.1'); await fullPage.locator('#saveProtection').click();
+  await fullPage.waitForFunction(() => !document.querySelector('#protectionDialog').open && !document.querySelector('#search').disabled);
+  await fullPage.locator('#filters > summary').click();
+  await fullPage.locator('#search').click();
+  await fullPage.waitForFunction(() => document.querySelector('#count').textContent.startsWith('0 '));
+  assert.equal(await fullPage.evaluate(async () => (await chrome.storage.local.get('protectedSites')).protectedSites[0]), '127.0.0.1');
+  assert.equal(await fullPage.locator('#delete').isDisabled(), true);
+  assert.ok(await fullPage.locator('#protectedCount').isVisible(), 'real kept rules exclude matching test URLs');
   console.log('Native extension smoke passed: real history deletion survives a closed UI; search handoff leaves a clean URL. Disposable profile only.');
 
   const staleRoot = await mkdtemp(join(tmpdir(), 'history-sweep-stale-manifest-'));
@@ -124,16 +144,10 @@ try {
     });
     await stalePage.goto(`${origin}/site/?stale-manifest-test`);
     await stalePage.goto(`chrome-extension://${staleId}/popup.html`);
-    await stalePage.locator('#query').fill('127.0.0.1');
-    await stalePage.locator('#mode').selectOption('host-exact');
-    await stalePage.locator('#search').click();
-    await stalePage.waitForFunction(() => document.querySelector('#rows tr'));
-    await stalePage.locator('#selectAll').click();
-    await stalePage.locator('#delete').click();
-    await stalePage.locator('#confirmDialog [value=confirm]').click();
     await stalePage.waitForFunction(() => document.querySelector('#status').dataset.kind === 'reloadExtension');
     assert.match(await stalePage.locator('#status').textContent(), /chrome:\/\/extensions/);
-    assert.equal(await stalePage.locator('#delete').isEnabled(), true);
+    assert.equal(await stalePage.locator('#delete').isDisabled(), true);
+    assert.equal(await stalePage.locator('#search').isDisabled(), true, 'missing worker cannot bypass kept-rule loading');
     const unchanged = await stalePage.evaluate(async origin =>
       (await chrome.history.search({ text: '', startTime: 0, maxResults: 100 })).filter(item => item.url.startsWith(origin)).length, origin);
     assert.equal(unchanged, 1, 'missing background does not delete or falsely claim success');

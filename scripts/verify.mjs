@@ -18,10 +18,11 @@ try{
    const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await installMock(page);
    await page.goto(origin+'/extension/'+layout+'.html');
    check(await page.locator('html').getAttribute('lang')==='en','default English even on Chinese browser');
-   check(await page.getByRole('textbox',{name:'Find in your history',exact:true}).count()===1,'search input has an accessible name');
+   check(await page.getByRole('combobox',{name:'Find in your history',exact:true}).count()===1,'search input has an accessible name');
    check(await page.getByRole('combobox',{name:'Match by',exact:true}).count()===1,'match mode has an accessible name');
    await page.locator('#query').fill('X');await page.locator('#search').click();
    await page.waitForFunction(()=>document.querySelector('#count').textContent.startsWith('124'));
+   await page.locator('#groupBySite').click();
    check(await page.locator('#openFullFooter').count()===(layout==='popup'?1:0),'open full page action appears only in popup');
    check(!(await page.locator('#empty').isVisible()),'empty state hidden with results');
    await page.locator('#selectAll').click();
@@ -36,11 +37,11 @@ try{
    await page.keyboard.press('Space');
    check((await page.locator('#selected').textContent()).startsWith('0'),'keyboard deselects every match');
    await page.locator('#selectAll').click();
-   await page.locator('#rows tr').first().locator('.page-title').click();
+   await page.locator('.history-row').first().locator('.page-title').click();
    check((await page.locator('#selected').textContent()).startsWith('123'),'clicking a result row deselects it');
-   await page.locator('#rows tr').first().locator('.page-title').click();
+   await page.locator('.history-row').first().locator('.page-title').click();
    check((await page.locator('#selected').textContent()).startsWith('124'),'clicking a result row selects it again');
-   await page.locator('input[type=checkbox]').first().uncheck();
+   await page.locator('.row-select').first().uncheck();
    check((await page.locator('#selected').textContent()).startsWith('123'),'exclude one row');
    if(layout==='popup'){
      await page.locator('#openFull').click();
@@ -70,7 +71,7 @@ try{
    check(await page.locator('#query').inputValue()==='X' && await page.locator('#mode').inputValue()==='smart','language switch preserves query and mode');
    check(await page.locator('#resultScroll').evaluate(node=>node.scrollTop)===100,'language switch preserves result scroll');
    check(await page.locator('#query').getAttribute('placeholder')==='试试 X、x.com 或关键词','Chinese search placeholder');
-   check(await page.getByRole('textbox',{name:'搜索浏览历史',exact:true}).count()===1 && await page.getByRole('combobox',{name:'匹配方式',exact:true}).count()===1,'accessible field names follow Chinese locale');
+   check(await page.getByRole('combobox',{name:'搜索浏览历史',exact:true}).count()===1 && await page.getByRole('combobox',{name:'匹配方式',exact:true}).count()===1,'accessible field names follow Chinese locale');
    check((await page.locator('#selected').textContent()).includes('123 条已选'),'language switch preserves selection');
    await page.getByRole('button',{name:'English',exact:true}).focus();await page.keyboard.press('Enter');
    check(await page.locator('html').getAttribute('lang')==='en' && await page.getByRole('button',{name:'English',exact:true}).evaluate(node=>node===document.activeElement),'keyboard language switch keeps focus');
@@ -129,7 +130,7 @@ try{
  await handoff.close();
  const stale=await browser.newPage({viewport:{width:440,height:590}});await installMock(stale,demoHistory.slice(0,2));
  await stale.goto(origin+'/extension/popup.html');await stale.locator('#query').fill('X');await stale.locator('#search').click();
- await stale.waitForFunction(()=>document.querySelector('#rows tr'));await stale.locator('#selectAll').click();
+ await stale.waitForFunction(()=>document.querySelector('.history-row'));await stale.locator('#selectAll').click();
  await stale.evaluate(()=>{window.__backgroundUnavailable=true});
  for(const lang of ['en','zh-CN']){
    await stale.getByRole('button',{name:lang==='en'?'English':'简体中文',exact:true}).click();
@@ -148,8 +149,9 @@ try{
  await bulk.goto(origin+'/extension/manager.html');await bulk.locator('#query').fill('bulk.example.test');await bulk.locator('#mode').selectOption('host-exact');
  const scanStarted=Date.now();await bulk.locator('#search').click();await bulk.waitForFunction(()=>document.querySelector('#count').textContent.startsWith('100,000'));
  console.log('100,000 URL synthetic scan completed in '+(Date.now()-scanStarted)+'ms on this machine.');
+ await bulk.locator('#groupBySite').click();
  check((await bulk.locator('#status').textContent()).includes('Scan limit reached'),'scan limit is disclosed');
- check(await bulk.locator('#rows tr').count()===100,'large scan keeps initial rendering bounded');
+ check(await bulk.locator('.history-row').count()===100,'large scan keeps initial rendering bounded');
  await bulk.locator('#selectAll').click();check((await bulk.locator('#selected').textContent()).startsWith('100,000'),'large selection includes all scanned matches');
  await bulk.locator('#delete').click();check((await bulk.locator('#confirmBody').textContent()).includes('100,000'),'large batch still requires explicit confirmation');
  await bulk.locator('#confirmDialog [value=cancel]').click();check(await bulk.evaluate(()=>window.__deleted.length)===0,'large batch cancellation never deletes');

@@ -41,9 +41,10 @@ try {
   });
   const cdp = await context.browser().newBrowserCDPSession();
   let sequence = 0;
-  async function popupSession() {
+  async function popupSession(fromWorker = false) {
     await page.bringToFront();
-    await page.evaluate(() => chrome.action.openPopup());
+    if (fromWorker) await worker.evaluate(() => chrome.action.openPopup());
+    else await page.evaluate(() => chrome.action.openPopup());
     for (let attempt = 0; attempt < 100; attempt++) {
       const target = (await cdp.send('Target.getTargets')).targetInfos.find(item => item.url === `chrome-extension://${id}/popup.html`);
       if (target) return (await cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: false })).sessionId;
@@ -79,7 +80,7 @@ try {
     throw new Error('Toolbar condition did not complete');
   }
   const popup = await popupSession();
-  await waitFor(popup, 'Boolean(document.getElementById("query"))');
+  await waitFor(popup, 'Boolean(document.getElementById("query")) && !document.getElementById("query").disabled');
   await evaluate(popup, 'document.getElementById("query").value="127.0.0.1";document.getElementById("mode").value="host-exact";document.getElementById("searchForm").requestSubmit();true');
   await waitFor(popup, 'document.getElementById("count").textContent.startsWith("2 ")');
   await evaluate(popup, `[...document.querySelectorAll('input[type=checkbox]')].find(item => item.getAttribute('aria-label') === ${JSON.stringify('Select ' + removedUrl)}).click();document.getElementById('delete').click();true`);
@@ -93,7 +94,7 @@ try {
   await page.waitForFunction(async url => (await chrome.history.getVisits({ url })).length === 0, removedUrl);
   assert.equal(await page.evaluate(async url => (await chrome.history.getVisits({ url })).length > 0, keptUrl), true, 'unselected visit stays');
   const nextPopup = await popupSession();
-  await waitFor(nextPopup, 'Boolean(document.getElementById("query"))');
+  await waitFor(nextPopup, 'Boolean(document.getElementById("query")) && !document.getElementById("query").disabled');
   const fullPagePromise = context.waitForEvent('page');
   await evaluate(nextPopup, 'document.getElementById("query").value="127.0.0.1";document.getElementById("mode").value="host-exact";document.getElementById("openFull").click();true');
   const fullPage = await fullPagePromise;
@@ -101,7 +102,14 @@ try {
   assert.equal(new URL(fullPage.url()).search, '');
   assert.equal(new URL(fullPage.url()).hash, '');
   assert.equal(await fullPage.locator('#mode').inputValue(), 'host-exact');
-  console.log('Real toolbar popup passed: cancel preserves history; confirmed deletion survives popup close; unselected visit stays; workspace handoff succeeds. Disposable profile only.');
+  await page.goto(keptUrl);
+  const websitePopup = await popupSession(true);
+  await waitFor(websitePopup, 'Boolean(document.getElementById("query")) && !document.getElementById("query").disabled');
+  await evaluate(websitePopup, 'document.getElementById("currentSite").click();true');
+  // Programmatic openPopup does not grant activeTab; the unavailable state must stay safe.
+  await waitFor(websitePopup, 'document.getElementById("status").dataset.kind === "currentSiteUnavailable"');
+  assert.match(await evaluate(websitePopup, 'document.getElementById("selected").textContent'), /^0 selected/);
+  console.log('Real toolbar popup passed: cancel preserves history; confirmed deletion survives popup close; unselected visit stays; workspace handoff succeeds; missing activeTab permission is handled. Disposable profile only.');
 } finally {
   if (context) await context.close();
   await new Promise(resolve => server.close(resolve));
