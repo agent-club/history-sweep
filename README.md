@@ -1,59 +1,54 @@
 # History Sweep
 
-A local-first Chrome extension for searching and clearing browsing history in batches, with an English / Simplified Chinese interface and a matching bilingual website.
+**English** · [简体中文](README.zh-CN.md)
 
-## Layout
-- extension/ — load this directory in Chrome; includes popup, full workspace, shared UI, translations, and icons.
-- site/ — deployable static website and privacy page. No backend, analytics, remote fonts, or build framework.
-- store/ — listing copy, submission notes, icons, screenshots, and promotional images.
-- scripts/ — local preview server, synthetic-data screenshots, browser verification, and packaging.
-- tests/ — localization checks; extension/tests/ contains search matching tests.
-- dist/ — generated upload ZIP and deployment ZIP (ignored by Git).
+Find the browsing history you want to remove. Keep everything else.
 
-## Install locally
-Open chrome://extensions, enable Developer mode, choose Load unpacked, and select extension/. Pin History Sweep to the toolbar.
-If upgrading from the old project, remove/unload the old unpacked entry first or select this new extension directory. No browsing data is changed by installing.
-After updating unpacked files, especially manifest.json or background.mjs, click Reload for History Sweep at chrome://extensions. Close existing popup/workspace views and reopen the extension before trying again.
+History Sweep is a Chrome extension that helps you search, review, and delete browsing history by website, keyword, or date. Clear a single page or a batch of results without wiping your entire history. Everything is processed on your device, with no account or history upload.
 
-For Chrome Web Store installs, Chrome downloads updates automatically. A ready update appears as a compact banner with an Update action; deletion and verification must finish before reloading. The banner drops into place once, respects reduced motion, and can be dismissed for the current view. Updating reloads the extension and clears the current in-memory selection; reopen it afterward.
+[Install from Chrome Web Store](https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm) · [Website](https://sweep.agentclub.dev/)
 
-Run `node scripts/preview-update.mjs` to inspect the banner animation at http://127.0.0.1:4190/design/update-preview/ using synthetic history and simulated update notifications.
+![History Sweep workspace with illustrative browsing history](site/assets/manager-en.png)
 
-## Website preview
-Run npm run dev and open http://127.0.0.1:4173/site/.
-The default interface language is English, regardless of browser locale. The language picker remembers a manual choice.
-The hero includes a silent, nine-second Remotion feature film in both languages. It plays once while visible, supports pause/replay and chapter navigation, and stays on its poster when reduced motion is enabled. Run `npm run render:opening` to regenerate the MP4s and posters from `remotion/` (uses local Google Chrome; override with `HISTORY_SWEEP_CHROME`). Rendering is a development step; the published site serves static video files without a React runtime.
-A file:// preview is not recommended because ES modules require a suitable origin.
+## What you can do
 
-## Development
-Requires Node.js 22+ and zip on PATH.
-Run npm install, then npx playwright install chromium for isolated browser verification.
-- npm test — search and translation tests.
-- npm run assets — generate icons and product/store screenshots from synthetic data.
-- npm run test:browser — test search, bulk selection, cancellation, deletion, failures, localization, popup handoff and responsive website.
-- npm run test:site — check bilingual desktop/mobile layouts, downloads, film playback, chapter navigation, language switching, and reduced motion in an isolated browser.
-- npm run test:features — test time filters, deletion previews, kept websites, cross-window updates and the current-website entry using synthetic history.
-- npm run test:native — load the unpacked extension in a disposable Chromium profile and verify its real history permission, selection and deletion against local test pages.
-- npm run test:toolbar — open a visible disposable Chromium window and exercise the actual toolbar popup, including its distinct message sender metadata, cancellation, deletion after popup close and full-page handoff.
-- npm run build — create extension and website ZIP files, validate asset sizes, and include the extension download on the site.
+- **Find the right pages.** Search by website, exact domain, domain and subdomains, or words in page titles and URLs. Suggestions from your own history help you complete a search, with support for Simplified and Traditional Chinese text.
+- **Narrow down by date.** Choose today, the last 7 or 30 days, or a custom date range. You can also search by date without a keyword.
+- **Review by website.** Results are grouped by hostname. Expand a website, select its matching pages together, or switch to a flat list and choose individual pages.
+- **Keep websites you care about.** Add domains to your kept websites. Their pages and subdomains stay out of deletion.
+- **Delete one page or a batch.** Review the selected URLs before confirming. Deleting a single row leaves your other batch selections in place.
+- **Choose your space.** Use a compact toolbar popup, a full-page workspace, or a modal over the current webpage. Change the opening method in Preferences.
+- **Search the current website.** Use the popup's current-website button or the page's right-click menu to find that site's history.
+- **Use English or Simplified Chinese.** Switch languages in the extension; your choice is remembered.
 
-Optional environment variables:
-- HISTORY_SWEEP_NODE_MODULES: alternate directory containing playwright and sharp.
-- HISTORY_SWEEP_CHROME: path to an installed Chrome executable for isolated headless tests.
-- HISTORY_SWEEP_CHROMIUM: path to a Chromium executable that supports loading unpacked extensions for the native smoke test.
-- PORT: local preview port (default 4173).
+## Get started
 
-`test:browser` uses a temporary browser context with an injected in-memory history API. `test:native` loads the real extension API in a disposable browser profile and creates only local test visits. Neither test attaches to the user's browser profile.
+Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm), pin History Sweep to your toolbar, and click its icon. Requires Chrome 110 or later.
 
-## Behavior and limits
-Chrome permissions are history (search and delete), activeTab (the user-invoked current website or in-page modal), scripting (inserting the modal host when that opening method is chosen), contextMenus (the website right-click entry), and storage (kept website rules and opening preference saved only on this device). Search results and brief background deletion/handoff state stay in memory; language preference stays in localStorage. Popup-to-workspace search conditions, including date filters, use a one-time in-memory handoff, never URL query parameters. No history upload, account, tracking or remote code.
-Time filters match each URL's last visit using local calendar dates, with both custom endpoint dates included. A time filter can be used without a keyword. Deleting a selected URL still removes all of its visits, including visits outside the filter; the confirmation previews selected URLs by website and repeats this warning. Kept-domain rules include subdomains, are checked again by the worker, and cannot be changed while a deletion is running. The popup's current-website button and the page right-click entry start exact-host searches with no automatic selection or deletion.
-Each scan reads up to 100,000 URLs and displays a cap notice. Smart matching uses exact hostname labels for ASCII site terms, domain matching for full domains, and title/URL text for non-ASCII terms. Existing search semantics are preserved.
-Select all covers every matching result, including rows outside the current render window. Confirmed deletion runs in an extension service worker and continues when the popup or workspace closes. Keep Chrome running; reopen and search to review the result. Worker state is in memory, so tasks do not resume after Chrome exits, extension reloads, or unexpected worker termination. Chrome 110+ is required because extension API calls keep an active worker alive.
-Deleting a URL removes all visits and may propagate through Chrome sync. Deletion needs explicit confirmation; completion is checked per selected URL.
+1. Enter a website or keyword, or choose a date filter, then search.
+2. Review the results and select the pages you want to remove. Website selection and Select all include matching pages beyond those currently visible.
+3. Click **Delete selected**, review the confirmation, and confirm. You can cancel without removing anything.
 
-## Release
-Workspace version: 0.3.2. The website is deployed at https://sweep.agentclub.dev; the extension is listed on the Chrome Web Store.
-Read store/submission.md for the ready-to-use fields, assets, and remaining owner-supplied details.
-Public support: https://github.com/agent-club/history-sweep/issues. The site privacy page documents Cloudflare hosting. Version 0.3.2 is saved as a store draft; see store/submission.md for the verified submission status.
-No license grant is assumed; add the owner's chosen license before public source distribution.
+Confirmed deletion continues if you close the extension view. Keep Chrome running, then reopen History Sweep and search again to review the result. Opening the full page carries over your search conditions; select the pages again in that view.
+
+You can also download a package from the [website](https://sweep.agentclub.dev/#get). Unzip it, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the extracted folder. If using this repository directly, select `extension/`.
+
+## Your history stays on your device
+
+History Sweep does not upload browsing history, require an account, or add analytics. Searches, suggestions, and deletion are processed locally. Your language, kept websites, and opening preference are saved on this device.
+
+Chrome's history permission lets the extension search, remove, and verify records. Other permissions support the current-website action, right-click entry, in-page modal, and saved preferences. The extension does not collect page content or run remote code.
+
+Read the [privacy policy](https://sweep.agentclub.dev/privacy) for details.
+
+## Before you delete
+
+**Deletion cannot be undone. Removing a URL deletes all visits to it, including visits outside your chosen date range.** Date filters use each URL's last visit. Chrome may sync history deletions across signed-in devices.
+
+Each search reads up to 100,000 URLs. If that limit is reached, a notice appears and older records may be missing. Suggestions and current-website searches never select or delete pages automatically.
+
+Keep Chrome open until deletion finishes. Tasks do not resume after Chrome exits, the extension reloads, or its background process stops unexpectedly. If a webpage cannot display the in-page modal, History Sweep opens the full workspace instead.
+
+## Feedback
+
+Found a problem or have a suggestion? [Open an issue](https://github.com/agent-club/history-sweep/issues).
