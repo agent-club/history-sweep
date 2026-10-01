@@ -1,69 +1,91 @@
-# Design QA — History Sweep premium option 3
+# UI 色彩与动效重设计验收
 
-- Source visual truth: `design/history-sweep-premium-target-option-3.png`
-- Implementation screenshot: `design/history-sweep-premium-implementation.png`
-- Full-view comparison: `design/history-sweep-premium-comparison.png`
-- Viewport: 440 × 590 CSS px, device scale factor 1, Simplified Chinese, query `X`, Smart match, 124 synthetic results, 123 selected.
-- Source pixels: 1083 × 1453. Normalized to 440 × 590 for comparison; the aspect-ratio delta is below 0.1%.
-- Implementation pixels: 440 × 590 at DPR 1.
-- State: compact popup with populated results and a persistent destructive action.
+范围：推翻上一版蓝绿色配色，参考 Apple 官网的中性色和主按钮蓝色，重新编排交互动效。保留已确认的界面布局与现有搜索、匹配、选择、分组、删除及复查行为。
 
-## Findings
+## 参考与视觉证据
 
-No actionable P0, P1 or P2 differences remain.
+- 参考：[Apple 官网](https://www.apple.com/)。实际浏览并读取计算样式：内容白色 `#ffffff`、正文 `#1d1d1f`、浅背景 `#f5f5f7`、主按钮 `#0071e3`。截图为 `test-results/apple-reference.png`、`apple-light-reference.png`。本轮参考其色彩关系，不宣称复刻 Apple 页面布局或动效。
+- 管理页：`http://127.0.0.1:4183/preview/manager.html`；截图 `test-results/apple-ui-manager.png`，1014×878 CSS px。中文、124 项 / 5 个网站、X 选中 48 项、GitHub 部分选中 2 项，两组展开。
+- 弹窗：`test-results/apple-ui-popup.png`，440×590 CSS px，X 选中 48 项。
+- 窄屏：`test-results/apple-ui-mobile.png`，375×812 CSS px 视口的整页截图。浏览器实测 scrollWidth 与视口均为 375，无横向溢出。
+- 动效：`test-results/apple-motion.gif`，440×590、25 fps，包含分组折叠、展开、确认删除与完成反馈；`apple-motion-frames.png` 为时间序列抽帧检查。
+- 所有交互与截图只使用虚构历史记录。Apple 产品图片仅作为参考截图，没有加入插件资源。
 
-- Fonts and typography: passed. The implementation keeps the source's strong result count, restrained metadata and compact modern sans-serif hierarchy while using the system stack for reliable English and Chinese rendering. Titles truncate without wrapping into timestamps.
-- Spacing and layout rhythm: passed after iteration. The 64px brand bar and 94px search zone form the target's 158px dark control region. The query field is 404 × 38px; the second row is split into 196px and 198px controls with a 10px gap. The 48px results summary, six complete 52px rows and fixed 64px action bar fit the 590px viewport without overlap.
-- Colors and visual tokens: passed. Obsidian `#151b19`, ivory `#fbfbf8`, celadon `#3d6556` / `#e3ece7`, and wine red `#b63d4a` reproduce the selected direction's restrained semantic palette. There are no gradients competing with the data.
-- Image quality and asset fidelity: passed. The selected concept's three-slash mark was extracted from the source visual into a transparent local PNG and rendered at 36 × 36px. Search, clear, select-all, external-link and trash controls use the existing licensed Phosphor SVG family; there are no placeholder assets or text-glyph icons.
-- Copy and content: passed. The selected design's Chinese control labels, mixed-language fixture titles, truthful result count and selected count are preserved. Existing localized safety and empty-state copy remains intact.
-- Behavior and accessibility: passed. Search, match mode, select all, per-row exclusion, language switching, full-page navigation, deletion confirmation and disabled states remain functional. Focus-visible rings, semantic labels, keyboard controls and reduced-motion handling are retained.
-- Responsiveness: passed for the selected 440 × 590 target. The same tokens were adapted to the 1280 × 800 manager and existing narrow manager layout without altering information architecture.
+## 本轮修正
 
-### Accepted P3 differences
+1. 旧版蓝绿底色、带色阴影和酒红色危险操作造成复古感：内容改白色，层次用银灰与近黑，主操作使用 `#0071e3`；选中行仅保留极浅冷色，品牌标记改近黑。毛玻璃集中在顶栏、底栏和浮层。
+2. 每次渲染都会重新播放整组淡入，选择操作显得拖沓：移除常驻列表入场动画，只有用户展开的分组播放短淡入。
+3. 原数字滚动、双层长光环和纵向完成卡片拖慢反馈：数字立即显示验证后的数量；改为紧凑横向卡片、单次短脉冲和勾选揭示。
+4. 删除后剩余分组位置突变：用删除前后的位置差补偿动画，让剩余分组顺势上移，可见被删行短促退出。
 
-- The source is a generated raster image with baked-in font antialiasing and very soft texture. The implementation uses native HTML controls and the local system font stack, so glyph rasterization is browser-native while size, weight and geometry follow the reference.
-- The Canvas/download overlay visible in the user's screenshot belongs to the image viewer rather than the product and is intentionally excluded.
+## 五项视觉检查
 
-## Comparison history
+- 字体：系统字体优先，随后为 SF Pro Text、Helvetica Neue 等。主要标题与列表密度沿用现有布局；中文、英文、截断及窄屏换行通过界面检查。
+- 间距：管理页、440px 弹窗、375px 窄屏保持现有功能控件；列表滚动正常。完成卡片不拦截点击，数据和操作状态立即更新。
+- 色彩：浏览器实测主按钮 `rgb(0,113,227)`、正文 `rgb(29,29,31)`。白底对比度：主按钮白字 4.70:1，辅助文字 `#6e6e73` 为 5.07:1，危险文字 `#c52932` 为 5.62:1。
+- 资产：复用现有品牌与图标；新增普通勾选来自 [Phosphor 官方 SVG](https://raw.githubusercontent.com/phosphor-icons/core/main/assets/regular/check.svg)，使用现有 MIT 许可证。无新增远程图片请求。
+- 文案：本轮未改功能及状态文案。完成卡片沿用现有双语文案，对辅助技术隐藏；现有 live status 播报已验证结果。
 
-### Iteration 1
+## 动效节奏与状态边界
 
-- P2: the first implementation's dark control region was about 198px tall versus roughly 158px in the normalized source, reducing the visible result area.
-- P2: applying an inverse filter to the existing brand asset produced a visually heavy white tile against the obsidian header.
-- Fixes: reduced the brand bar from 76px to 64px, compacted the search zone to 100px, reduced compact controls to 42px/38px, tightened the results summary to 48px and restored the original brand asset on the dark surface.
+- 按钮按下缩至 0.96，100ms；分组高度过渡 220ms，展开内容淡入 130ms；确认对话框入场 180ms。
+- 后台 `done` 且 `remaining.length === 0` 后才播放完成反馈。可见行最多六条，180ms 退出、逐条延迟 18ms；剩余分组上移 260ms。
+- 完成卡片从删除按钮位置以采样阻尼弹簧曲线展开，340ms；勾选圈轻回弹 240ms，勾选揭示 150ms，单次扩散 360ms。卡片保留 2.2 秒，再用 160ms 消退。
+- 部分失败、复查失败、状态请求失败及取消不显示成功反馈；编辑搜索或重新开始操作清理旧反馈及行快照。
+- 系统减少动态效果时不运行 CSS 或脚本动画，保留静态完成确认。动画不阻塞真实结果更新与后续操作。
 
-### Iteration 2
+## 新鲜验证
 
-- P2: the implementation still used the old product mark, grouped language control and omitted the source's vertical/diagonal separators.
-- P2: the query field, result-row typography and footer buttons remained smaller or differently proportioned than the source.
-- Fixes: added the source three-slash mark, short brand rule, diagonal header rule, independent language buttons, query clear divider, source-aligned typography, 52px rows and 140/142px footer actions.
+- 指定已安装 Chrome 运行 `scripts/verify-ui-motion.mjs`：64 项通过，覆盖两个界面的成功与失败路径、立即显示数量、无重复列表入场、快照清理、自动消退及减少动态效果。
+- 同样运行 `scripts/verify-groups.mjs`：60 项通过，覆盖分组、部分选择、隐藏行选择、双语切换、取消与删除后的更新。
+- 两脚本使用环境变量 `HISTORY_SWEEP_CHROME=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`；默认 Playwright 浏览器未安装，首次启动没有执行测试。改用已安装 Chrome 后上述检查完整通过。
+- 浏览器视觉检查完成管理页、弹窗和窄屏；应用脚本语法检查、diff 空白检查与 `npm run build` 通过。
+- 本地包：`dist/history-sweep-0.3.1.zip`，同步到 `site/downloads/history-sweep-0.3.1.zip`。未安装到用户原生浏览器，未读取或删除真实浏览历史，未提交或发布。
 
-### Iteration 3
+当前打开方式仍为工具栏弹窗和独立页面；当前 Tab 内全局 Modal 尚未接入。本轮聚焦色彩与动效，没有把删除确认对话框当成该打开方式。
 
-- Evidence: `design/history-sweep-premium-comparison.png`.
-- Post-fix result: header/search geometry, dark/light boundary, list alignment, selected-row treatment and footer composition align with the normalized source. No actionable P0/P1/P2 mismatch remains.
+本轮前源码备份：`/tmp/history-sweep-ui/apple-baseline/`；此前 UI 改动前备份：`/tmp/history-sweep-ui/baseline/`。本地预览服务为 `/tmp/history-sweep-ui/preview.mjs`。
 
-## Focused comparison evidence
+final result: passed
 
-- Header/search: verified the dark region, language state, query field, selector and ivory primary action together because hierarchy depends on their combined proportion.
-- Results/footer: verified the count toolbar, title/URL/date grid, selected-row surface and persistent delete action together because density and semantic color must coexist in the 590px frame.
-- Separate micro-crops were not needed: all type, icons and borders are legible in the 900 × 590 side-by-side comparison.
 
-## Browser evidence
+## 2026-10-01：商店更新横幅与下落动画
 
-- Codex in-app browser rendered `extension/popup.html`; computed regions were topbar y=0–64, search y=64–158, results y=158–526 and footer y=526–590. Query geometry was x=18, y=64, 404 × 38px; the mode and primary controls were 196 × 38px and 198 × 38px.
-- EN/中文 switching, query entry and localized unavailable-API feedback were tested in the local preview.
-- Console warnings/errors: none.
-- 61 isolated Chrome assertions passed with a mocked history API and synthetic records. No real browser profile or browsing history was accessed or deleted.
+本节仅验收新增更新横幅及直接相关状态；此前内容与其他任务已有改动保留。
 
-## Implementation checklist
+- 模式：截图近似还原，无 Figma 图层与精确尺寸约束。
+- 视觉源：`design/update-preview/reference.png`（1536 × 1024，用户确认的横条方案）。
+- 浏览器实现：`design/update-preview/implemented.jpg`（440 × 590）；并排对照 `design/update-preview/comparison.jpg` 与 `design/update-preview/task.jpg`（均 1163 × 938）。
+- 视口：插件 iframe 440 × 590 CSS px。来源画板以 1300 / 1536 的比例显示并裁出对应状态，比较时按接近 440px 的窗口宽度归一化；实现按 1 CSS px / 图像 px 捕获。未宣称亚像素或整页一致。
+- 全视图对照：上述 comparison / task 已将设计与实现放在同一截图中，分别比较空闲与复查中状态。横幅保持单行、文案在左、按钮居右，且不遮盖任务结果。
+- 聚焦检查：横幅在并排截图中以约 404px 宽显示，文字与按钮可读，因此未另存放大的局部裁图。DOM 测量补充了 404 × 52px 横幅、32px 按钮、12px 文案与 22px 图标尺寸。
 
-- [x] Selected option 3 resolved to the third displayed ImageGen result.
-- [x] Source and implementation compared together at 440 × 590.
-- [x] P0/P1/P2 findings fixed and re-captured.
-- [x] Popup and full-page visual systems aligned.
-- [x] Bilingual and primary interaction states checked.
-- [x] Browser regression and console checks passed.
+### Findings 与五类视觉检查
+
+- 无本轮范围内需修复的 P0/P1/P2 问题。
+- 字体与排版：沿用系统字体及 PingFang 回退，12px 半粗文案；中文、英文及失败文案保持单行，无横向溢出。
+- 间距与布局：52px 横幅高度由 32px 按钮和上下各 10px 内边距组成；按钮组右对齐，下方 14px 间距。出现时展开占位，结果区收缩，底部删除操作保持可见。
+- 颜色：复用 mist、mist-strong、primary、muted 等现有 token，正常和任务禁用状态清楚区分。
+- 素材：使用项目现有 Phosphor 图标体系的官方 arrows-clockwise SVG，复用 MIT 授权，无手绘图标或栅格占位。图标比生成稿略小，属 P3，可后续调节；不阻塞本次验收。
+- 文案：采用已确认的“新版本 / 更新 / 稍后 / 任务完成后更新”，真实版本来自 Chrome 事件；0.3.2 只用于模拟预览。重载与选择清空说明保留在更新按钮 title 中。
+
+### 交互、状态与迭代记录
+
+- 下落动画 320ms，起点 -48px，轻回弹到 +3px，再回到 0；占位展开 260ms。任务中首次出现的 animationstart 计数为 1，复查完成恢复更新后仍为 1。
+- 重复通知不重播；“稍后”收起后同版本通知不重新展开。切换语言重建视图时保留状态，不重播。
+- 模拟减少动态效果：data-motion=false，动画计数为 0，保留静态横幅。
+- 模拟更新失败：显示重试提示并恢复按钮；中英文均无横向溢出。
+- 模拟任务结束：按钮由禁用恢复可用；点击后 reload 计数为 1。
+- 本轮先发现重复渲染会重设动效属性，已限制为真正出现/收起时才切换；后续浏览器计数验证通过。
+- 预览脚本中的 hash 状态会被生产路由清理，已改为初始化时捕获 query 状态并使用独立 run 参数；该修复仅涉及模拟页面。
+- 检查了浏览器错误日志：宿主日志出现一次 MutationObserver.observe 参数错误，当前检查的应用入口/直接依赖不含该调用，来源未定位。预览应用自身 error / unhandledrejection 计数均为 0；核心交互验证完成。未将宿主日志称为零错误。
+
+### 验证与缺口
+
+- `node --test tests/background.test.mjs tests/i18n.test.mjs`：17 项通过，包括版本状态、worker 恢复、升级后旧提示失效、跨窗口删除/复查保护、重载与删除接受的顺序以及权限边界。
+- 7 个本轮涉及的 JavaScript 模块语法检查通过；目标 diff 空白检查通过。
+- 浏览器使用模拟 Chrome API 与示例历史数据；未操作真实历史、未重载用户已安装插件、未发布到商店。
+- 商店真实下载、安装和重载链路仍需发布含本功能的版本后验证。本轮视觉范围为 popup 横幅，管理页与真实网页内 modal 未做独立截图验收。
+- Implementation checklist：本轮必要修复已完成。Follow-up polish：如需更接近生成稿，可微调更新图标尺寸。
 
 final result: passed

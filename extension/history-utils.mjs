@@ -1,3 +1,5 @@
+import { normalizeSearchText } from './search-text.mjs';
+
 export const MAX_HISTORY_RESULTS = 100000;
 
 export function normalizeHostname(value) {
@@ -55,12 +57,12 @@ function matchesSmartTerm(item, term) {
     return hostname.split(".").includes(term);
   }
 
-  const title = (item.title || "").toLowerCase();
-  return title.includes(term) || item.url.toLowerCase().includes(term);
+  const title = normalizeSearchText(item.title || "");
+  return title.includes(term) || normalizeSearchText(item.url).includes(term);
 }
 
 export function filterHistoryItems(items, query, mode) {
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = normalizeSearchText(query.trim());
   if (!normalizedQuery) return [];
 
   if (mode === "smart") {
@@ -70,8 +72,8 @@ export function filterHistoryItems(items, query, mode) {
 
   if (mode === "contains") {
     return items.filter((item) => {
-      const url = (item.url || "").toLowerCase();
-      const title = (item.title || "").toLowerCase();
+      const url = normalizeSearchText(item.url || "");
+      const title = normalizeSearchText(item.title || "");
       return url.includes(normalizedQuery) || title.includes(normalizedQuery);
     });
   }
