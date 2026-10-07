@@ -2,6 +2,8 @@
 
 [English](README.md) · **简体中文**
 
+[![LINUX DO](https://shorturl.at/ggSqS)](https://linux.do)
+
 找到想删除的浏览记录，留下其余内容。
 
 History Sweep 是一款 Chrome 插件，帮助你按网站、关键词或日期搜索、查看和删除浏览历史。你可以删除单个页面，也可以批量清理选中的记录，无需清空全部历史。所有处理都在本机完成，不需要账号，也不上传浏览记录。

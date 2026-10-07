@@ -2,6 +2,8 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
+[![LINUX DO](https://shorturl.at/ggSqS)](https://linux.do)
+
 Find the browsing history you want to remove. Keep everything else.
 
 History Sweep is a Chrome extension that helps you search, review, and delete browsing history by website, keyword, or date. Clear a single page or a batch of results without wiping your entire history. Everything is processed on your device, with no account or history upload.
