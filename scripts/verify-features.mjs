@@ -44,7 +44,7 @@ try {
     check(await page.locator('#delete').isDisabled(), 'changing time conditions disables deletion of old selection');
     await page.locator('#startDate').fill('2026-10-01'); await page.locator('#endDate').fill('2026-10-01');
     await page.getByRole('button', { name: 'English', exact: true }).click();
-    check(await page.locator('#startDate').inputValue() === '2026-10-01' && await page.locator('#filters').evaluate(node => node.open), 'language switch preserves draft dates and filter state');
+    check(await page.locator('#startDate').inputValue() === '2026-10-01' && !(await page.locator('#filters').evaluate(node => node.open)), 'language switch preserves draft dates while its outside click dismisses the filter');
     await closeFilters(page); await search(page);
     check((await page.locator('#count').textContent()).startsWith('82'), 'custom range includes its complete final day and excludes missing timestamps');
     check((await page.locator('#selected').textContent()).startsWith('0'), 'new search clears old selection');

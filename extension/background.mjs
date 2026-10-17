@@ -1,11 +1,13 @@
 import { defaultTimeFilter, resolveTimeRange, parseProtectedSites, isProtectedUrl } from './history-filters.mjs';
 import { createLauncher } from './launcher.mjs';
+import { createActivityLog } from './activity-log.mjs';
 
 const launcher = createLauncher(chrome);
 void launcher.register().catch(() => {});
 
 const handoffs = new Map();
 const jobs = new Map();
+const activityLog = createActivityLog(chrome.storage.local);
 const modes = new Set(['smart', 'host-subdomains', 'host-exact', 'contains']);
 let policyQueue = Promise.resolve();
 let applyingUpdate = false;
@@ -92,7 +94,7 @@ function ownerKey(message, sender) {
   return `popup:${message.clientId}`;
 }
 
-async function runDeletion(job, urls) {
+async function runDeletion(job, urls, details) {
   let cursor = 0;
   try {
     await Promise.all(Array.from({ length: Math.min(8, urls.length) }, async () => {
@@ -114,6 +116,10 @@ async function runDeletion(job, urls) {
       }
     }));
     job.remaining = remaining;
+    // Record the worker's verified result once, even if its initiating view has closed.
+    // A local statistics failure must not turn a completed deletion into a failed deletion.
+    const retained = new Set(remaining);
+    await activityLog.record(urls.length - remaining.length, urls.filter(url => !retained.has(url)).map(url => ({ url, ...details.get(url) }))).catch(() => {});
     job.phase = remaining.length ? 'partial' : 'done';
   } catch { job.phase = 'verifyFailed'; }
   finally {
@@ -124,6 +130,7 @@ async function runDeletion(job, urls) {
 }
 
 async function handleMessage(message, sender, owner) {
+  if (message.type === 'get-activity') return activityLog.read();
   if (message.type === 'get-update-state') return withPolicyLock(readUpdateState);
   if (message.type === 'apply-update') return withPolicyLock(async () => {
     if (applyingUpdate) throw new Error('UPDATE_RELOADING');
@@ -180,7 +187,16 @@ async function handleMessage(message, sender, owner) {
       jobs.set(job.id, job);
       // Notify every view without making history deletion depend on update UI storage.
       await publishUpdateState().catch(() => {});
-      void runDeletion(job, [...new Set(message.urls)]);
+      const selected = new Set(message.urls);
+      const details = new Map();
+      if (Array.isArray(message.details)) for (const item of message.details) {
+        if (!item || !selected.has(item.url)) continue;
+        details.set(item.url, {
+          ...(typeof item.title === 'string' ? { title: item.title } : {}),
+          ...(Number.isFinite(item.lastVisitTime) && item.lastVisitTime > 0 ? { lastVisitTime: item.lastVisitTime } : {}),
+        });
+      }
+      void runDeletion(job, [...selected], details);
       return snapshot(job);
     });
   }

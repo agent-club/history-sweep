@@ -1,0 +1,58 @@
+.nav.wrap,.hero-lead.wrap { width: 88%; max-width: 1440px; }
+.hero-lead { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0,.82fr) minmax(0,1.18fr); align-items: center; gap: 40px; min-height: min(700px,calc(100svh - 100px)); padding-block: 20px 140px; }
+.nav.wrap .nav-links { font-size: 14px; }
+.hero-lead .hero-copy { min-width: 0; text-align: left; }
+.hero-lead #hero-title { margin: 0; font-size: clamp(44px,4.7vw,78px); letter-spacing: -.055em; }
+html[lang=zh-CN] .hero-lead #hero-title { letter-spacing: .025em; }
+.hero-lead .hero-description { margin: 25px 0 0; max-width: 540px; font-size: clamp(16px,1.4vw,22px); }
+.hero-lead .hero-actions { justify-content: flex-start; margin-top: 30px; gap: 25px; }
+.hero-lead .hero-actions .button { padding: 18px 23px; gap: 18px; font-size: 14px; }
+.hero-lead .trust-line { justify-content: flex-start; margin-top: 25px; gap: 10px; font-size: 11px; white-space: nowrap; }
+.hero-lead .intro-replay { margin-top: 15px; padding-left: 0; }
+.hero .sweep-art,.hero #pixel-sweep { height: var(--hero-art-height,820px); }
+.hero .sweep-art { object-position: center bottom; }
+.hero > .product-scene { margin-top: 120px; }
+.hero-demo { min-width: 0; width: 100%; max-width: 740px; margin: 0; padding-top: 20px; }
+.hero-tilt { position: relative; transform: translateY(30px) perspective(1400px) rotateY(-24deg) rotateX(10deg) rotateZ(-2deg); transform-origin: center; }
+.hero-surface { position: relative; overflow: hidden; border: 5px solid #303232; border-radius: 19px; background: #f1f1ef; box-shadow: 0 0 0 1px #c0c3ba70,0 32px 65px #00000070,0 8px 18px #00000070; }
+.hero-surface video { display: block; width: 100%; height: auto; aspect-ratio: 1000 / 680; object-fit: cover; }
+#hero-delete-particles { position: absolute; pointer-events: none; left: 5px; top: -55px; width: calc(100% + 180px); height: calc(100% + 110px); }
+.hero-demo figcaption { display: flex; align-items: center; justify-content: flex-end; gap: 18px; padding-right: 14px; margin-top: 68px; color: #999d95; font: 9px/1.5 monospace; letter-spacing: 1px; }
+#hero-delete-toggle { border: 0; border-bottom: 1px solid #666a62; background: transparent; color: #b6bab1; padding: 5px 0; font: 10px/1.4 Arial,sans-serif; cursor: pointer; }
+#hero-delete-toggle:disabled { border-color: transparent; }
+@media (max-width:1100px) {
+  .hero-lead { gap: 30px; }
+  .hero-lead #hero-title { font-size: clamp(40px,4.7vw,60px); }
+  .hero-lead .hero-actions { gap: 17px; }
+  .hero-lead .hero-actions .button { padding: 16px 18px; gap: 11px; font-size: 12px; }
+  .hero-lead .film-link { font-size: 12px; gap: 8px; }
+  .hero-lead .trust-line { flex-wrap: wrap; white-space: normal; gap: 7px; font-size: 10px; }
+  .hero-surface { border-width: 4px; border-radius: 15px; }
+  .hero-demo figcaption { gap: 12px; font-size: 8px; }
+}
+@media (max-width:900px) {
+  .hero-lead { grid-template-columns: minmax(0,1fr); gap: 52px; min-height: auto; padding-block: 28px 65px; }
+  .hero-lead .hero-copy { text-align: center; }
+  .hero-lead #hero-title { margin-inline: auto; font-size: clamp(42px,6.1vw,64px); }
+  .hero-lead .hero-description { margin-inline: auto; }
+  .hero-lead .hero-actions,.hero-lead .trust-line { justify-content: center; }
+  .hero-demo { width: 88%; max-width: 680px; margin-inline: auto; }
+  .hero-tilt { transform: perspective(1400px) rotateY(-8deg) rotateX(4deg) rotateZ(-4deg); }
+  .hero-demo figcaption { justify-content: center; padding-right: 0; margin-top: 29px; }
+  .hero > .product-scene { margin-top: 60px; }
+}
+@media (max-width:760px) {
+  .nav.wrap,.hero-lead.wrap { width: calc(100% - 40px); }
+  .hero-lead { gap: 37px; padding-block: 10px 36px; }
+  .hero-lead #hero-title { font-size: clamp(34px,8vw,54px); }
+  .hero-lead .hero-description { font-size: 14px; margin-top: 21px; }
+  .hero-lead .hero-actions { margin-top: 23px; }
+  .hero-lead .hero-actions .button { min-height: 49px; font-size: 12px; padding: 14px 16px; }
+  .hero-lead .trust-line { font-size: 9px; margin-top: 20px; }
+  .hero-demo { width: 96%; padding-top: 5px; }
+  .hero-surface { border-width: 3px; border-radius: 11px; }
+  #hero-delete-particles { left: 3px; top: -57px; }
+  .hero-demo figcaption { font-size: 8px; letter-spacing: .6px; margin-top: 25px; }
+  .hero > .product-scene { margin-top: 40px; }
+}
+@media (prefers-reduced-motion:reduce) { .hero-tilt { transform: perspective(1400px) rotateY(-5deg) rotateZ(-3deg); } }

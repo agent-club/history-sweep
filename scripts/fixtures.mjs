@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 const backgroundSource = (await readFile(new URL('../extension/background.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '');
+const activityLogSource = (await readFile(new URL('../extension/activity-log.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
 const filterSource = (await readFile(new URL('../extension/history-filters.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
 const launcherSource = (await readFile(new URL('../extension/launcher.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '').replace(/\bexport /g, '');
 const modalHostSource = (await readFile(new URL('../extension/modal-host.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
@@ -53,10 +54,18 @@ export async function installMock(page, records = demoHistory) {
       storage: {
         local: {
           get: async key => {
+            if (key === 'localActivity') {
+              if (window.__failActivityRead) throw new Error('fixture');
+              const value = localStorage.getItem('fixture-activity'); return value === null ? {} : { localActivity: JSON.parse(value) };
+            }
             if (key === 'launchMode') { const launchMode = localStorage.getItem('fixture-launch-mode'); return launchMode === null ? {} : { launchMode }; }
             if (window.__failRulesRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-kept-sites'); return value === null ? {} : { protectedSites: JSON.parse(value) };
           },
           set: async data => {
+            if (Object.hasOwn(data, 'localActivity')) {
+              if (window.__failActivitySave) throw new Error('fixture');
+              localStorage.setItem('fixture-activity', JSON.stringify(data.localActivity)); changed({ localActivity: { newValue: data.localActivity } });
+            }
             if (Object.hasOwn(data, 'launchMode')) { localStorage.setItem('fixture-launch-mode', data.launchMode); changed({ launchMode: { newValue: data.launchMode } }); }
             if (Object.hasOwn(data, 'protectedSites')) {
               if (window.__failRulesSave) throw new Error('fixture'); localStorage.setItem('fixture-kept-sites', JSON.stringify(data.protectedSites)); changed({ protectedSites: { newValue: data.protectedSites } });
@@ -72,5 +81,5 @@ export async function installMock(page, records = demoHistory) {
     };
   }, records);
   // Exercise the production message handler rather than a second implementation.
-  await page.addInitScript(modalHostSource + '\n' + launcherSource + '\n' + filterSource + '\n' + backgroundSource);
+  await page.addInitScript(modalHostSource + '\n' + launcherSource + '\n' + filterSource + '\n' + activityLogSource + '\n' + backgroundSource);
 }

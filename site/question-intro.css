@@ -1,0 +1,58 @@
+html[data-intro-active=true] { overflow: hidden; }
+.question-intro { position: fixed; inset: 0; margin: 0; padding: 0; width: 100%; height: 100dvh; max-width: none; max-height: none; border: 0; color: #f0efec; background: rgb(16 17 18 / var(--intro-cover,1)); overflow: hidden; }
+.question-intro:not([open]) { display: none; }
+.question-intro::backdrop { background: transparent; }
+.intro-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.intro-top { position: absolute; z-index: 3; left: 5%; right: 5%; top: 30px; display: flex; align-items: center; justify-content: space-between; gap: 20px; opacity: var(--intro-copy,1); }
+.intro-wordmark { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 650; letter-spacing: -.4px; }
+.intro-wordmark img { width: 28px; height: 28px; }
+#intro-skip { border: 1px solid #4e4f4c; background: #1c1d1d; color: #d9d9d3; padding: 11px 16px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+#intro-skip:focus-visible { outline: 1px solid #a4a59f; outline-offset: 4px; }
+#intro-pixels { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#intro-ribbon { position: absolute; max-width: none; object-fit: cover; pointer-events: none; transform-origin: 0 0; }
+.intro-question-copy { position: absolute; z-index: 2; width: 88%; max-width: 1050px; left: 50%; top: 37%; transform: translateX(-50%); text-align: center; opacity: var(--intro-copy,1); font-family: "Helvetica Neue","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; }
+.intro-kicker { font-size: 10px; font-weight: 400; line-height: 1.6; letter-spacing: 1.6px; color: #90958e; margin-bottom: 36px; }
+.intro-question p { font-size: clamp(32px,4.5vw,64px); font-weight: 400; line-height: 1.45; letter-spacing: -.025em; opacity: var(--intro-ink,1); }
+html[lang=zh-CN] .intro-question p { font-family: "PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; letter-spacing: .025em; }
+.intro-question .intro-line { display: block; overflow: clip; padding: .12em .12em .16em; margin: -.12em -.12em -.16em; }
+.intro-question .intro-line > span { display: block; transform-origin: 50% 70%; }
+.question-intro[data-phase=questions] .intro-question .intro-line:first-child { font-size: .76em; font-weight: 300; letter-spacing: .035em; color: #b3b8b0; margin-bottom: .16em; }
+.question-intro[data-phase=questions] .intro-question .intro-line:last-child { color: #f0efec; }
+.question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question-copy { top: 39%; max-width: 1180px; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 32px; }
+.question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-kicker { grid-column: 1 / -1; margin-bottom: 10px; opacity: var(--intro-ink,1); }
+.question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question { position: relative; }
+.question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question::before { content: '0' attr(data-intro-question); display: block; margin-bottom: 20px; color: #7c7e79; font: 10px/1 monospace; letter-spacing: 2px; opacity: var(--intro-ink,1); }
+.question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question:nth-of-type(1)::before { content: '01'; }
+.question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question:nth-of-type(2)::before { content: '02'; }
+.question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question:nth-of-type(3)::before { content: '03'; }
+.question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question p { font-size: clamp(19px,2.1vw,28px); letter-spacing: -.015em; line-height: 1.55; }
+.intro-answer { font-size: clamp(32px,4.6vw,68px); font-weight: 650; line-height: 1.2; letter-spacing: -2px; }
+.intro-bottom { position: absolute; left: 5%; right: 5%; bottom: 34px; display: flex; align-items: center; justify-content: space-between; gap: 25px; color: #9a9b95; font: 9px/1.4 monospace; letter-spacing: 1px; opacity: var(--intro-copy,1); }
+.intro-progress { display: flex; flex: 1; max-width: 220px; gap: 7px; }
+.intro-progress i { position: relative; flex: 1; height: 2px; background: #343536; }
+.intro-progress i::after { content: ''; position: absolute; inset: 0; background: #e0e0d9; transform: scaleX(var(--intro-progress,0)); transform-origin: left; box-shadow: 0 0 9px #ffffff40; }
+.intro-replay { display: inline-flex; align-items: center; gap: 6px; margin-top: 13px; min-height: 28px; padding: 3px 8px; border: 0; background: transparent; color: #93948f; font-size: 10px; }
+.intro-replay:hover { color: #f0efec; }
+.intro-replay > span:first-child { font-size: 15px; }
+.question-intro[data-phase=static] .intro-question-copy { top: 27%; }
+.question-intro[data-phase=static] .intro-question { margin-bottom: 20px; }
+.question-intro[data-phase=static] .intro-question p { font-size: clamp(20px,2.5vw,30px); letter-spacing: 0; }
+.question-intro[data-phase=static] .intro-bottom { display: none; }
+@media (max-width:760px) {
+  .intro-top { top: 22px; }
+  .intro-wordmark { font-size: 14px; }
+  .intro-wordmark img { width: 24px; height: 24px; }
+  #intro-skip { padding: 10px 12px; font-size: 10px; }
+  .intro-question-copy { width: 92%; top: 37%; }
+  .intro-question p { font-size: clamp(25px,6.4vw,38px); line-height: 1.5; letter-spacing: -.02em; }
+  .intro-kicker { margin-bottom: 28px; font-size: 9px; letter-spacing: 1px; }
+  .intro-bottom { bottom: 28px; gap: 17px; font-size: 8px; }
+  .intro-bottom > span:last-child { display: none; }
+  .intro-progress { max-width: 160px; }
+  .question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question-copy { top: 23%; grid-template-columns: minmax(0,1fr); gap: 23px; }
+  .question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-kicker { margin-bottom: 0; }
+  .question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question::before { position: absolute; left: 4px; top: 5px; font-size: 8px; }
+  .question-intro:is([data-phase=gather],[data-phase=handoff]) .intro-question p { font-size: clamp(17px,4.7vw,23px); letter-spacing: 0; }
+  .question-intro[data-phase=static] .intro-question-copy { top: 24%; }
+  .question-intro[data-phase=static] .intro-question p { font-size: 18px; }
+}

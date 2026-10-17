@@ -15,8 +15,9 @@ History Sweep is a Chrome extension that helps you search, review, and delete br
 ## What you can do
 
 - **Find the right pages.** Search by website, exact domain, domain and subdomains, or words in page titles and URLs. Suggestions from your own history help you complete a search, with support for Simplified and Traditional Chinese text.
-- **Narrow down by date.** Choose today, the last 7 or 30 days, or a custom date range. You can also search by date without a keyword.
-- **Review by website.** Results are grouped by hostname. Expand a website, select its matching pages together, or switch to a flat list and choose individual pages.
+- **Narrow down by date.** Choose today, the last 3, 7 or 30 days, or a custom date range. You can also search by date without a keyword.
+- **Browse recent history by date or website.** Opening the extension shows the last three local calendar days. Expand a date to see website summaries, or switch to website grouping over the same results. Counts refer to unique pages, grouped by each URL’s last visit.
+- **View local activity.** The chart icon beside Settings opens a yearly or three-month heatmap. Cleanup totals include verified tasks and confirmed removed URLs, starting when tracking begins. Daily counts and one website summary per date stay on this device: hostname, latest page title when available, and last-visit time. Full deleted URLs are not logged. Both views show website icons ordered by latest visit, wrapping onto additional rows; hover to preview a date and click to pin it. The browsing view groups existing pages by their last visit date, not daily visit counts.
 - **Keep websites you care about.** Add domains to your kept websites. Their pages and subdomains stay out of deletion.
 - **Delete one page or a batch.** Review the selected URLs before confirming. Deleting a single row leaves your other batch selections in place.
 - **Choose your space.** Use a compact toolbar popup, a full-page workspace, or a modal over the current webpage. Change the opening method in Preferences.
@@ -39,7 +40,7 @@ See the [test setup, observations, and limits](docs/comparison-2026-10.md). The 
 
 Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm), pin History Sweep to your toolbar, and click its icon. Requires Chrome 110 or later.
 
-1. Enter a website or keyword, or choose a date filter, then search.
+1. Browse the last three days immediately, or enter a website or keyword and search. Choose a date range to narrow results; empty searches respect explicit dates.
 2. Review the results and select the pages you want to remove. Website selection and Select all include matching pages beyond those currently visible.
 3. Click **Delete selected**, review the confirmation, and confirm. You can cancel without removing anything.
 
@@ -49,9 +50,9 @@ You can also download a package from the [website](https://sweep.agentclub.dev/#
 
 ## Your history stays on your device
 
-History Sweep does not upload browsing history, require an account, or add analytics. Searches, suggestions, and deletion are processed locally. Your language, kept websites, and opening preference are saved on this device.
+History Sweep does not upload browsing history, require an account, or add analytics. Searches, suggestions, and deletion are processed locally. Your language, appearance, kept websites, and opening preference are saved on this device.
 
-Chrome's history permission lets the extension search, remove, and verify records. Other permissions support the current-website action, right-click entry, in-page modal, and saved preferences. The extension does not collect page content or run remote code.
+Chrome's history permission lets the extension search, remove, and verify records. The favicon permission displays Chrome-provided website icons beside website group headings. Other permissions support the current-website action, right-click entry, in-page modal, and saved preferences. The extension does not collect page content or run remote code.
 
 Read the [privacy policy](https://sweep.agentclub.dev/privacy) for details.
 

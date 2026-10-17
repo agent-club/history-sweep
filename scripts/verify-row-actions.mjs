@@ -32,6 +32,7 @@ try {
     const target = rows.nth(1);
     await page.locator('.topbar').hover();
     check(await target.locator('.row-delete').evaluate(el => getComputedStyle(el).opacity === '0'), `${layout}: actions hidden without hover`);
+    await target.scrollIntoViewIfNeeded();
     const bounds = await target.boundingBox();
     await target.hover(); await page.waitForTimeout(400);
     const animation = await target.locator('.row-hover-trail').evaluate(el => ({
@@ -70,7 +71,7 @@ try {
     check(await rows.first().locator('.row-delete').isDisabled(), `${layout}: stale results cannot be deleted`);
     await page.locator('#query').fill('design');
     await page.locator('#groupBySite').click();
-    check(await page.locator('#table .row-delete').count() === 3, `${layout}: flat view has per-row actions`);
+    check(await page.locator('#groups .row-delete').count() === 3, `${layout}: website view has per-row actions`);
     await rows.nth(1).locator('.row-delete').focus();
     check(await rows.nth(1).locator('.row-delete').evaluate(el => getComputedStyle(el).pointerEvents !== 'none'), `${layout}: keyboard focus reveals action`);
     await page.getByRole('button', { name: '简体中文', exact: true }).click();

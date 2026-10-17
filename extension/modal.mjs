@@ -6,6 +6,7 @@ try {
   const response = await chrome.runtime.sendMessage({ type: 'claim-modal', token });
   if (!response?.ok) throw new Error('Invalid modal launch');
   // Never initialize history access in an iframe that was embedded by an unrelated page.
+  await import('./theme.js');
   await import('./app.mjs');
   document.getElementById('query').focus();
   document.addEventListener('keydown', event => {

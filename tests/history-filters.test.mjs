@@ -5,7 +5,7 @@ import { defaultTimeFilter, resolveTimeRange, filterByTime, parseProtectedSites,
 test('date ranges include complete local calendar days and exclude the next midnight', () => {
   const now = new Date(2026, 9, 1, 16);
   assert.equal(resolveTimeRange(defaultTimeFilter(), now), null);
-  for (const [range, first] of [['today', new Date(2026, 9, 1)], ['7days', new Date(2026, 8, 25)], ['30days', new Date(2026, 8, 2)]]) {
+  for (const [range, first] of [['today', new Date(2026, 9, 1)], ['3days', new Date(2026, 8, 29)], ['7days', new Date(2026, 8, 25)], ['30days', new Date(2026, 8, 2)]]) {
     const window = resolveTimeRange({ ...defaultTimeFilter(), range }, now);
     assert.equal(window.startTime, first.getTime());
     assert.equal(window.endTime, new Date(2026, 9, 2).getTime());
@@ -16,6 +16,22 @@ test('date ranges include complete local calendar days and exclude the next midn
   }
   const sameDay = resolveTimeRange({ range: 'custom', startDate: '2026-10-01', endDate: '2026-10-01' });
   assert.equal(sameDay.endTime, new Date(2026, 9, 2).getTime());
+});
+
+test('three-day range follows local midnights across daylight saving time', () => {
+  const originalTimezone = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+  try {
+    // DST starts on March 8, 2026, so these three local days span 71 hours.
+    const now = new Date(2026, 2, 9, 12);
+    const window = resolveTimeRange({ ...defaultTimeFilter(), range: '3days' }, now);
+    assert.equal(window.startTime, new Date(2026, 2, 7).getTime());
+    assert.equal(window.endTime, new Date(2026, 2, 10).getTime());
+    assert.equal(window.endTime - window.startTime, 71 * 60 * 60 * 1000);
+  } finally {
+    if (originalTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimezone;
+  }
 });
 
 test('invalid dates and reversed ranges are rejected instead of broadening the search', () => {

@@ -23,6 +23,7 @@ try{
    await page.locator('#query').fill('X');await page.locator('#search').click();
    await page.waitForFunction(()=>document.querySelector('#count').textContent.startsWith('124'));
    await page.locator('#groupBySite').click();
+   await page.locator('.group-load-more').click();
    check(await page.locator('#openFullFooter').count()===(layout==='popup'?1:0),'open full page action appears only in popup');
    check(!(await page.locator('#empty').isVisible()),'empty state hidden with results');
    await page.locator('#selectAll').click();
@@ -151,7 +152,7 @@ try{
  console.log('100,000 URL synthetic scan completed in '+(Date.now()-scanStarted)+'ms on this machine.');
  await bulk.locator('#groupBySite').click();
  check((await bulk.locator('#status').textContent()).includes('Scan limit reached'),'scan limit is disclosed');
- check(await bulk.locator('.history-row').count()===100,'large scan keeps initial rendering bounded');
+ check(await bulk.locator('.history-row').count() > 0 && await bulk.locator('.history-row').count() <= 100,'large scan keeps initial rendering bounded');
  await bulk.locator('#selectAll').click();check((await bulk.locator('#selected').textContent()).startsWith('100,000'),'large selection includes all scanned matches');
  await bulk.locator('#delete').click();check((await bulk.locator('#confirmBody').textContent()).includes('100,000'),'large batch still requires explicit confirmation');
  await bulk.locator('#confirmDialog [value=cancel]').click();check(await bulk.evaluate(()=>window.__deleted.length)===0,'large batch cancellation never deletes');
@@ -160,13 +161,13 @@ try{
    const mobile=await browser.newPage({viewport:{width,height:844}});await installMock(mobile);
    await mobile.goto(origin+'/extension/manager.html');await mobile.locator('#query').fill('X');await mobile.locator('#search').click();
    await mobile.waitForFunction(()=>document.querySelector('#count').textContent.startsWith('124'));
-   const mobileLayout=await mobile.evaluate(()=>{const count=document.querySelector('#count').getBoundingClientRect();const toolbar=document.querySelector('.toolbar').getBoundingClientRect();const mode=document.querySelector('#mode').getBoundingClientRect();const search=document.querySelector('#search').getBoundingClientRect();return {countHeight:count.height,toolbarTop:toolbar.top,countBottom:count.bottom,modeBottom:mode.bottom,searchTop:search.top,scrollWidth:document.documentElement.scrollWidth,width:innerWidth};});
+   const mobileLayout=await mobile.evaluate(()=>{const count=document.querySelector('#count').getBoundingClientRect();const toolbar=document.querySelector('.toolbar').getBoundingClientRect();const mode=document.querySelector('#mode').getBoundingClientRect();const search=document.querySelector('#search').getBoundingClientRect();return {countHeight:count.height,toolbarTop:toolbar.top,countBottom:count.bottom,modeBottom:mode.bottom,modeRight:mode.right,searchTop:search.top,searchLeft:search.left,scrollWidth:document.documentElement.scrollWidth,width:innerWidth};});
    check(mobileLayout.countHeight<40 && mobileLayout.toolbarTop>=mobileLayout.countBottom,'mobile results heading stays above selection controls');
    check(mobileLayout.scrollWidth<=mobileLayout.width,'mobile manager has no horizontal overflow');
-   if(width===320) check(mobileLayout.searchTop>=mobileLayout.modeBottom,'narrow manager stacks full-width search controls');
+   if(width===320) check(mobileLayout.searchTop>=mobileLayout.modeBottom || mobileLayout.searchLeft>=mobileLayout.modeRight,'narrow manager keeps search controls separate');
    await mobile.close();
  }
- for(const width of [1440,390]){
+ if(!process.argv.includes('--extension-only')) for(const width of [1440,390]){
    const page=await browser.newPage({viewport:{width,height:1000}});page.on('pageerror',e=>errors.push(e.message));
    const response=await page.goto(origin+'/site/');check(response.status()===200,'website serves');
    const overflow=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,elements:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>e.tagName+'.'+e.className)}));

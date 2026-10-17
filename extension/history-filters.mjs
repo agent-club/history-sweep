@@ -1,7 +1,7 @@
 export const defaultTimeFilter = () => ({ range: 'all', startDate: '', endDate: '' });
 
 export function resolveTimeRange(filter, now = new Date()) {
-  if (!filter || !['all', 'today', '7days', '30days', 'custom'].includes(filter.range) ||
+  if (!filter || !['all', 'today', '3days', '7days', '30days', 'custom'].includes(filter.range) ||
       typeof filter.startDate !== 'string' || typeof filter.endDate !== 'string') throw new Error('INVALID_TIME_RANGE');
   if (filter.range === 'all') return null;
   const date = value => {
@@ -18,7 +18,7 @@ export function resolveTimeRange(filter, now = new Date()) {
   } else {
     start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     end = new Date(start);
-    start.setDate(start.getDate() - ({ today: 0, '7days': 6, '30days': 29 })[filter.range]);
+    start.setDate(start.getDate() - ({ today: 0, '3days': 2, '7days': 6, '30days': 29 })[filter.range]);
   }
   // Use local calendar days and an exclusive next-day boundary, including on DST days.
   end.setDate(end.getDate() + 1);

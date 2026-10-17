@@ -142,9 +142,6 @@ export function setupDatePicker({ lang, t }) {
   listen(document, 'keydown', event => {
     if (dialog.open && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); }
   });
-  listen(document, 'pointerdown', event => {
-    if (dialog.open && !dialog.contains(event.target) && !activeInput.closest('.date-control').contains(event.target)) close();
-  }, { capture: true });
   listen(document, 'focusin', event => {
     if (dialog.open && !dialog.contains(event.target) && !activeInput.closest('.date-control').contains(event.target)) close();
   });
@@ -152,6 +149,9 @@ export function setupDatePicker({ lang, t }) {
   listen(window, 'resize', position);
   listen(document, 'scroll', event => { if (!dialog.contains(event.target)) position(); }, { capture: true });
   return {
+    isOpen: () => dialog.open,
+    contains: target => dialog.contains(target) || !!activeInput?.closest('.date-control').contains(target),
+    close,
     sync() {
       toggles.forEach((button, index) => { button.disabled = fields[index].disabled; });
       if (dialog.open && (activeInput.disabled || document.getElementById('customDates').hidden)) close();

@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import * as filters from '../extension/history-filters.mjs';
 import { createLauncher } from '../extension/launcher.mjs';
+import { createActivityLog } from '../extension/activity-log.mjs';
 
 const source = (await readFile(new URL('../extension/background.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '');
 const sender = { id: 'fixture', frameId: 0, documentId: 'popup-document', url: 'chrome-extension://fixture/popup.html' };
@@ -34,7 +35,7 @@ function worker(history, sessions = {}, currentVersion = '0.3.1') {
     contextMenus: { create: menu => { menus.push(menu); }, onClicked: { addListener: callback => { menuClicked = callback; } } },
     runtime: { id: 'fixture', getManifest: () => ({ version: currentVersion }), reload: () => { reloads++; }, onUpdateAvailable: { addListener: callback => { updateAvailable = callback; } }, getURL: path => 'chrome-extension://fixture/' + path, onMessage: { addListener: value => { listener = value; } }, onInstalled: { addListener: callback => { installed.push(callback); } }, onStartup: { addListener() {} } },
   };
-  runInNewContext(source, { ...filters, createLauncher, chrome, URL, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date });
+  runInNewContext(source, { ...filters, createLauncher, createActivityLog, chrome, URL, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date });
   return {
     opened, timers, saved, menus, injected, popups, sessions, updateAvailable: details => updateAvailable(details), get reloads() { return reloads; }, clickAction: tab => actionClicked(tab), install: () => installed.forEach(callback => callback()), clickMenu: info => menuClicked(info), setActiveUrl: url => { activeUrl = url; },
     send: (message, from = sender) => new Promise(resolve => {
@@ -50,6 +51,40 @@ async function finished(w, id) {
   }
   throw new Error('Deletion did not finish');
 }
+
+test('activity counts one verified task, excludes failed URLs, and status polling does not recount', async () => {
+  const w = worker({ deleteUrl: async () => {}, getVisits: async ({ url }) => url.endsWith('/keep') ? [{ visitId: '1' }] : [] });
+  const started = await w.send({ type: 'start-delete', urls: ['https://example.test/a', 'https://example.test/a', 'https://example.test/keep'] });
+  assert.equal((await finished(w, started.data.id)).phase, 'partial');
+  await w.send({ type: 'delete-status', id: started.data.id });
+  const { log } = (await w.send({ type: 'get-activity' })).data;
+  assert.equal(Object.values(log.days)[0].operations, 1);
+  assert.equal(Object.values(log.days)[0].pages, 1);
+  assert.equal(JSON.stringify(w.saved).includes('https:'), false);
+  assert.equal((await w.send({ type: 'get-activity' }, { ...sender, url: 'https://example.test/' })).ok, false);
+});
+
+test('unverified deletions never become confirmed removed-page statistics', async () => {
+  const w = worker({ deleteUrl: async () => {}, getVisits: async () => { throw new Error('verification unavailable'); } });
+  const started = await w.send({ type: 'start-delete', urls: ['https://example.test/a'] });
+  assert.equal((await finished(w, started.data.id)).phase, 'verifyFailed');
+  assert.deepEqual(Object.keys((await w.send({ type: 'get-activity' })).data.log.days), []);
+});
+
+test('cleanup website metadata includes only verified selected URLs and survives a closed initiating view', async () => {
+  const w = worker({ deleteUrl: async () => {}, getVisits: async ({ url }) => url.includes('keep.example') ? [{}] : [] });
+  const time = new Date(2026, 9, 17, 12).getTime();
+  const started = await w.send({ type: 'start-delete', urls: ['https://removed.example/page', 'https://keep.example/page'], details: [
+    { url: 'https://removed.example/page', title: 'Removed title', lastVisitTime: time, extra: 'must not persist' },
+    { url: 'https://keep.example/page', title: 'Kept title', lastVisitTime: time + 1 },
+    { url: 'https://unselected.example/page', title: 'Unselected title', lastVisitTime: time + 2 },
+  ] });
+  assert.equal((await finished(w, started.data.id)).phase, 'partial');
+  const day = Object.values((await w.send({ type: 'get-activity' })).data.log.days)[0];
+  assert.equal(day.pages, 1); assert.equal(day.websitesComplete, true);
+  assert.deepEqual(day.websites, [{ domain: 'removed.example', title: 'Removed title', lastVisitTime: time }]);
+  assert.doesNotMatch(JSON.stringify(w.saved), /https:|Kept title|Unselected title|extra/);
+});
 
 test('Chrome update metadata survives worker suspension and is ignored after installation', async () => {
   const w = worker({});

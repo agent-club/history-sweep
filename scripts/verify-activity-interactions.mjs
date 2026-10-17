@@ -1,0 +1,104 @@
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { dependency } from './runtime.mjs';
+import { createServer } from './serve.mjs';
+import { installMock } from './fixtures.mjs';
+
+const { chromium } = dependency('playwright');
+const server = createServer();
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+const browser = await chromium.launch({ headless: true, ...(process.env.HISTORY_SWEEP_CHROME ? { executablePath: process.env.HISTORY_SWEEP_CHROME } : {}) });
+const output = new URL('../test-results/activity-interactions/', import.meta.url);
+const time = new Date('2026-10-17T12:00:00+08:00');
+const records = [{ url: 'https://example.test/notes', title: 'Synthetic notes', lastVisitTime: time.getTime(), visitCount: 1 }];
+const log = { version: 1, startedOn: '2025-01-01', days: { '2026-10-17': { operations: 2, pages: 8 } } };
+let checks = 0;
+const check = (value, message) => { assert.ok(value, message); checks++; };
+const errors = [];
+try {
+  await mkdir(output, { recursive: true });
+  for (const [layout, viewport] of [['manager', { width: 1536, height: 1024 }], ['popup', { width: 440, height: 590 }], ['narrow', { width: 375, height: 812 }]]) {
+    const context = await browser.newContext({ viewport, timezoneId: 'Asia/Shanghai' });
+    const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
+    await page.clock.setFixedTime(time);
+    await installMock(page, records);
+    await page.addInitScript(log => {
+      localStorage.setItem('fixture-activity', JSON.stringify(log));
+      localStorage.setItem('language', 'zh-CN');
+      const send = chrome.runtime.sendMessage;
+      chrome.runtime.sendMessage = async message => {
+        if (message.type === 'get-activity' && window.__holdActivity) await new Promise(resolve => { window.__releaseActivity = resolve; });
+        return send(message);
+      };
+      const search = chrome.history.search;
+      chrome.history.search = async options => {
+        if (window.__holdBrowsing) await new Promise(resolve => { window.__releaseBrowsing = resolve; });
+        return search(options);
+      };
+    }, log);
+    await page.goto(`http://127.0.0.1:${server.address().port}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`);
+    await page.waitForFunction(() => document.querySelector('#search') && !document.querySelector('#search').disabled);
+    await page.evaluate(() => { window.__holdActivity = true; });
+    await page.locator('#toggleActivity').click();
+    await page.waitForFunction(() => window.__releaseActivity);
+    check(await page.locator('#activityContent').isVisible(), `${layout}: slow reads render content placeholders immediately`);
+    check(await page.locator('#activityPanel').getAttribute('data-loading') === 'true', `${layout}: skeleton is identified as loading`);
+    check(await page.locator('.activity-day:not(:disabled)').count() === 0, `${layout}: skeleton dates cannot be selected`);
+    check(await page.locator('#activityStats strong').allTextContents().then(values => values.every(value => value.trim() === '')), `${layout}: loading never fabricates zero counts`);
+    const chartY = (await page.locator('#activityGrid').boundingBox()).y;
+    const chartScroll = await page.locator('.activity-chart-scroll').evaluate(node => node.scrollLeft);
+    await page.screenshot({ path: new URL(`${layout}-skeleton.png`, output).pathname });
+    await page.evaluate(() => { window.__holdActivity = false; window.__releaseActivity(); });
+    await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
+    check(Math.abs((await page.locator('#activityGrid').boundingBox()).y - chartY) < 3, `${layout}: chart position remains stable when data arrives`);
+    check(await page.locator('.activity-day[aria-pressed=true]').count() === 1, `${layout}: initial data selects exactly one date`);
+    check(await page.locator('.activity-chart-scroll').evaluate((node, before) => Math.abs(node.scrollLeft - before) < 2, chartScroll), `${layout}: skeleton and loaded calendar use the same horizontal position`);
+    await page.locator('.activity-day[data-date="2026-10-16"]').click();
+    await page.evaluate(() => { window.__selectedCell = document.querySelector('.activity-day[aria-pressed=true]'); });
+    await page.locator('.activity-day[data-date="2026-10-17"]').hover();
+    await page.waitForFunction(() => document.querySelector('#activityTooltip').dataset.open === 'true' && document.querySelector('#activityTooltip').textContent.includes('8 个页面'));
+    check((await page.locator('#activityDate').textContent()).includes('16'), `${layout}: hover preserves the selected date's detail`);
+    check(await page.evaluate(() => document.querySelector('.activity-day[aria-pressed=true]') === window.__selectedCell), `${layout}: hover keeps a single selected cell`);
+    await page.locator('#activityTitle').hover();
+    await page.waitForFunction(() => document.querySelector('#activityTooltip').hidden);
+    await page.locator('#toggleActivity').click();
+    await page.waitForFunction(() => document.querySelector('#activityPanel').hidden);
+    await page.locator('#toggleActivity').click();
+    check(await page.evaluate(() => document.querySelector('.activity-day[aria-pressed=true]') === window.__selectedCell), `${layout}: reopen retains existing chart nodes and selection`);
+    await page.locator('.activity-day[aria-pressed=true]').focus();
+    await page.keyboard.press('ArrowUp');
+    check(await page.locator('.activity-day[aria-pressed=true]').getAttribute('data-date') === '2026-10-15', `${layout}: keyboard moves the unique selection`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('#activityTooltip').hidden);
+    check(await page.locator('#activityGrid [aria-describedby=activityTooltip]').count() === 0, `${layout}: Escape removes tooltip association`);
+    await page.evaluate(() => { window.__holdActivity = true; window.__releaseActivity = null; window.dispatchEvent(new Event('focus')); });
+    await page.waitForFunction(() => window.__releaseActivity);
+    check(await page.evaluate(() => document.querySelector('.activity-day[data-date="2026-10-16"]') === window.__selectedCell), `${layout}: background refresh retains cached chart`);
+    check(await page.locator('#activityPanel').getAttribute('data-loading') === 'false', `${layout}: background refresh keeps data visible`);
+    await page.evaluate(() => { window.__holdActivity = false; window.__releaseActivity(); });
+    await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
+    await page.evaluate(() => { window.__holdBrowsing = true; });
+    await page.locator('[data-activity-mode=browsing]').click();
+    await page.waitForFunction(() => window.__releaseBrowsing);
+    check(await page.locator('#activityPanel').getAttribute('data-loading') === 'true', `${layout}: uncached mode renders skeleton instead of an empty panel`);
+    // Switching back before completion must not let the older request overwrite cleanup.
+    await page.locator('[data-activity-mode=cleanup]').click();
+    await page.evaluate(() => { window.__holdBrowsing = false; window.__releaseBrowsing(); });
+    await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
+    check((await page.locator('#activityStats').textContent()).includes('2 次清理'), `${layout}: late mode response cannot overwrite current mode`);
+    check(await page.locator('.activity-day[aria-pressed=true]').count() === 1, `${layout}: rapid switching retains exactly one selection`);
+    await page.locator('[data-activity-range=quarter]').click();
+    check(await page.locator('.activity-day[aria-pressed=true]').count() === 1, `${layout}: range switch selects one available day`);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('history-sweep:set-theme', { detail: 'dark' })));
+    await page.locator('.activity-day[data-date="2026-10-16"]').hover();
+    await page.waitForFunction(() => document.querySelector('#activityTooltip').dataset.open === 'true');
+    await page.waitForFunction(() => Number(getComputedStyle(document.querySelector('#activityTooltip')).opacity) === 1);
+    await page.screenshot({ path: new URL(`${layout}-selected-dark.png`, output).pathname });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    check(await page.locator('#activityTooltip').evaluate(node => getComputedStyle(node).transitionDuration === '0s'), `${layout}: reduced motion disables tooltip transitions`);
+    check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${layout}: no page horizontal overflow`);
+    await context.close();
+  }
+  assert.deepEqual(errors, []);
+  console.log(`${checks} activity interaction assertions passed. Delayed reads, refresh, rapid mode switching and keyboard selection; synthetic data only.`);
+} finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

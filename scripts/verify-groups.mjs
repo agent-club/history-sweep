@@ -28,10 +28,11 @@ try {
     await page.goto(`${origin}/extension/${layout}.html`);
     await page.locator('#query').fill('x'); await page.locator('#mode').selectOption('contains'); await page.locator('#search').click();
     await page.waitForFunction(() => !document.querySelector('#search').disabled);
+    await page.locator('#groupBySite').click();
     check(await page.locator('.website-group').count() === 5, 'five matching websites are grouped');
     const x = page.locator('.website-group[data-hostname="x.com"]');
     const github = page.locator('.website-group[data-hostname="github.com"]');
-    check(await page.locator('#groupBySite').getAttribute('aria-pressed') === 'true', 'grouped by default');
+    check(await page.locator('#groupBySite').getAttribute('aria-pressed') === 'true', 'website view is selected');
     check(await x.locator('.history-row').count() === 3, 'short preview keeps other categories within reach');
     check(await github.locator('.history-row').count() === 0, 'collapsed groups render no rows');
     await x.locator('.group-select').check();
@@ -60,10 +61,21 @@ try {
     await page.locator('#query').fill('changed');
     check(await x.locator('.group-select').isDisabled() && await page.locator('#delete').isDisabled(), 'edited criteria disable group selection and deletion');
     await page.locator('#query').fill('x');
-    await page.locator('#groupBySite').click();
-    check(await page.locator('#table').isVisible() && !(await page.locator('#groups').isVisible()), 'flat list is available');
+    await page.locator('#groupByDate').click();
+    check(await page.locator('#groups').isVisible() && await page.locator('.date-group').count() > 0, 'date grouping is available');
     check((await page.locator('#selected').textContent()).includes('126'), 'view switch preserves selection');
+    await page.locator('#expandGroups').click();
+    check(await page.locator('.date-toggle[aria-expanded=false], .group-toggle[aria-expanded=false]').count() === 0, 'date expand-all opens both dates and their website groups');
+    check(await page.locator('#expandGroups span').evaluate(node => node.getBoundingClientRect().width > 20 && getComputedStyle(node).clipPath === 'none'), 'expand/collapse action has visible text at every width');
+    check(await page.locator('#expandGroups').getAttribute('aria-label') === '收起全部', 'all expanded exposes the collapse action');
+    await page.locator('#expandGroups').click();
+    check(await page.locator('.date-toggle[aria-expanded=true]').count() === 0, 'date collapse-all closes every date');
+    check(await page.locator('#expandGroups').getAttribute('aria-label') === '展开全部', 'collapsed dates expose the expand action');
+    await page.locator('#expandGroups').click();
+    await page.locator('#resultScroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
     await page.locator('#groupBySite').click();
+    check(await page.locator('#resultScroll').evaluate(node => node.scrollTop) === 0, 'website switch starts at the top of its results');
+    check(await page.locator('.date-group').count() === 0 && await page.locator('#groupBySite').getAttribute('aria-pressed') === 'true', 'switch replaces date hierarchy and activates the website control');
     await page.locator('#expandGroups').click();
     check(await page.locator('.group-toggle[aria-expanded=true]').count() === 5, 'expand all sites');
     await page.locator('#expandGroups').click();
@@ -86,7 +98,7 @@ try {
   }
   const page = await browser.newPage();
   await installMock(page, Array.from({ length: 105 }, (_, index) => ({ url: `https://site-${index}.example.test/x`, title: 'x' })));
-  await page.goto(origin + '/extension/manager.html'); await page.locator('#query').fill('x'); await page.locator('#mode').selectOption('contains'); await page.locator('#search').click();
+  await page.goto(origin + '/extension/manager.html'); await page.locator('#query').fill('x'); await page.locator('#mode').selectOption('contains'); await page.locator('#search').click(); await page.locator('#groupBySite').click();
   await page.waitForFunction(() => document.querySelectorAll('.website-group').length === 100);
   check(await page.locator('.history-row').count() === 1, 'many sites keep initial row rendering bounded');
   await page.locator('#selectAll').click();

@@ -1,0 +1,27 @@
+:root {
+  color-scheme: dark;
+  --paper: #101112;
+  --ink: #f0efec;
+  --muted: #a5a5a3;
+  --line: #343536;
+  --rust: #d7d7d2;
+  --sage: #191a1b;
+  font-family: Arial, "Helvetica Neue", "PingFang SC", sans-serif;
+}
+
+.nav { border-bottom-color: var(--line); }
+.brand img { width: 34px; height: 34px; }
+.language-switch { background: #202122; border-color: #343536; }
+.language-switch button { color: #a5a5a3; }
+.language-switch button:hover { color: #f0efec; background: #2a2b2c; }
+.language-switch button[aria-pressed=true] { color: #f0efec; background: #353637; box-shadow: none; }
+.legal h1 { font-family: inherit; font-weight: 750; letter-spacing: -2.6px; line-height: 1.08; }
+.legal h1 em { color: #a5a5a3; font-style: normal; }
+.legal h2 { font-weight: 650; }
+.legal a:hover { color: #fff; border-color: #d7d7d2; }
+.legal .updated { color: #929290; }
+
+@media (max-width: 760px) {
+  .brand img { width: 30px; height: 30px; }
+  .legal h1 { letter-spacing: -1.8px; }
+}

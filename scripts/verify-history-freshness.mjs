@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { dependency } from './runtime.mjs';
+import { createServer } from './serve.mjs';
+import { installMock } from './fixtures.mjs';
+const { chromium } = dependency('playwright');
+const server = createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+const origin = `http://127.0.0.1:${server.address().port}`;
+const browser = await chromium.launch({ headless: true, ...(process.env.HISTORY_SWEEP_CHROME ? { executablePath: process.env.HISTORY_SWEEP_CHROME } : {}) });
+const record = (name, day, time = '12:00:00') => ({ url: `https://freshness.test/${name}`, title: `Illustrative ${name}`, lastVisitTime: Date.parse(`2026-10-${day}T${time}+08:00`), visitCount: 1 });
+let checks = 0;
+const check = (ok, label) => { assert.ok(ok, label); checks++; };
+const ready = page => page.waitForFunction(() => !document.querySelector('#search').disabled && document.querySelector('#status').dataset.kind === 'scanned');
+try {
+  for (const layout of ['manager', 'popup', 'modal']) {
+    const context = await browser.newContext({ timezoneId: 'Asia/Shanghai', reducedMotion: 'reduce', viewport: layout === 'popup' ? { width: 440, height: 590 } : { width: 1120, height: 800 } });
+    const page = await context.newPage();
+    await page.clock.setFixedTime(new Date('2026-10-16T23:59:00+08:00'));
+    const initial = [record('last-night', '16', '23:58:00'), record('older', '14')];
+    await installMock(page, initial);
+    await page.addInitScript(items => {
+      const records = new Map(items.map(item => [item.url, item])); const listeners = [];
+      chrome.history.onVisited = { addListener: fn => listeners.push(fn) };
+      chrome.history.search = async ({ startTime, endTime, maxResults }) => [...records.values()].filter(item => item.lastVisitTime >= startTime && (endTime === undefined || item.lastVisitTime <= endTime)).slice(0, maxResults);
+      window.__visit = item => { records.set(item.url, item); listeners.forEach(fn => fn(item)); };
+      window.__searchCalls = 0; const search = chrome.history.search;
+      chrome.history.search = options => { window.__searchCalls++; return search(options); };
+    }, initial);
+    if (layout === 'modal') await page.route('**/extension/manager.html', async route => {
+      const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
+    });
+    await page.goto(`${origin}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`); await ready(page);
+    check(await page.locator('#count').textContent() === '2 results', 'pre-midnight range includes the oldest of three days');
+    await page.clock.setFixedTime(new Date('2026-10-17T00:01:00+08:00'));
+    await page.evaluate(item => window.__visit(item), record('after-midnight', '17', '00:00:30'));
+    await page.waitForFunction(() => document.querySelector('.date-group[data-date="2026-10-17"]'), null, { timeout: 3000 });
+    await ready(page);
+    check(await page.locator('#count').textContent() === '2 results', `${layout}: new day is included and the day outside the rolling calendar window expires`);
+    check((await page.locator('.date-toggle').first().textContent()).includes('Today'), 'newest group is labelled Today');
+    check(await page.locator('.date-group[data-date="2026-10-14"]').count() === 0, 'expired date is removed');
+    await page.locator('.date-group[data-date="2026-10-17"] .date-toggle').click();
+    await page.getByRole('checkbox', { name: 'Select all pages from Today', exact: true }).check();
+    await page.evaluate(item => window.__visit(item), record('while-selecting', '17', '00:00:45'));
+    await page.waitForTimeout(350);
+    check((await page.locator('#selected').textContent()).startsWith('1'), 'incoming visits preserve the existing selection');
+    check(await page.locator('#count').textContent() === '2 results', 'selection defers automatic replacement of the result set');
+    await page.locator('#selectAll').click(); await page.locator('#selectAll').click();
+    await page.waitForFunction(() => document.querySelector('#count').textContent === '3 results'); await ready(page);
+    check((await page.locator('#selected').textContent()).startsWith('0'), 'deferred refresh resumes after selection is cleared and selects nothing');
+    await page.locator('#openPreferences').click();
+    await page.evaluate(item => window.__visit(item), record('while-dialog-open', '17', '00:00:47'));
+    await page.waitForTimeout(350);
+    check(await page.locator('#count').textContent() === '3 results', 'an open dialog defers result changes');
+    await page.locator('#closePreferences').click();
+    await page.waitForFunction(() => document.querySelector('#count').textContent === '4 results'); await ready(page);
+    check(await page.locator('#count').textContent() === '4 results', 'closing the dialog resumes a deferred refresh');
+    await page.locator('#query').fill('draft-that-is-not-submitted');
+    await page.evaluate(item => window.__visit(item), record('while-editing', '17', '00:00:50'));
+    await page.waitForTimeout(350);
+    check(await page.locator('#query').inputValue() === 'draft-that-is-not-submitted' && await page.locator('#count').textContent() === '4 results', 'incoming visits do not submit an edited search');
+    await page.locator('#query').fill(''); await page.waitForFunction(() => document.querySelector('#count').textContent === '5 results'); await ready(page);
+    await page.locator('#filterToggle').click(); await page.locator('#timeRange').selectOption('custom');
+    await page.locator('#startDate').fill('2026-10-14'); await page.locator('#endDate').fill('2026-10-14'); await page.mouse.click(2, 2);
+    await page.locator('#search').click(); await ready(page);
+    check(await page.locator('#count').textContent() === '1 results', 'explicit past range is honored');
+    await page.evaluate(item => window.__visit(item), record('outside-explicit-range', '17', '00:00:55'));
+    const before = await page.evaluate(() => window.__searchCalls);
+    await page.waitForFunction(n => window.__searchCalls > n && !document.querySelector('#search').disabled, before);
+    check(await page.locator('#count').textContent() === '1 results' && await page.locator('#timeRange').inputValue() === 'custom', 'refresh does not replace explicit dates with the recent default');
+    check((await page.evaluate(() => window.__deleted.length)) === 0, 'refresh never deletes history');
+    await context.close();
+  }
+  console.log(`${checks} history freshness assertions passed. Synthetic records only.`);
+} finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

@@ -79,8 +79,41 @@ try {
     }
     throw new Error('Toolbar condition did not complete');
   }
+  async function clickPopup(sessionId, selector) {
+    const point = await evaluate(sessionId, `(() => { const node = document.querySelector(${JSON.stringify(selector)}); const box = node.getBoundingClientRect(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; })()`);
+    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+      await cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id: ++sequence, method: 'Input.dispatchMouseEvent', params: { type, ...point, ...(type === 'mouseMoved' ? {} : { button: 'left', clickCount: 1 }) } }) });
+    }
+  }
   const popup = await popupSession();
   await waitFor(popup, 'Boolean(document.getElementById("query")) && !document.getElementById("query").disabled');
+  // Test actual pointer input in the browser action popup, rather than only programmatic clicks.
+  await evaluate(popup, `(() => {
+    window.testNativeSearch = chrome.history.search;
+    const today = new Date(); const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    chrome.history.search = async () => [
+      { url: 'http://127.0.0.1/illustrative-today', title: 'Illustrative today', lastVisitTime: today.getTime() },
+      { url: 'http://127.0.0.2/illustrative-other-site', title: 'Illustrative second website', lastVisitTime: today.getTime() },
+      { url: 'http://127.0.0.1/illustrative-yesterday', title: 'Illustrative yesterday', lastVisitTime: yesterday.getTime() }
+    ];
+    document.getElementById('searchForm').requestSubmit(); return true;
+  })()`);
+  await waitFor(popup, 'document.querySelectorAll(".date-group").length === 2 && !document.getElementById("search").disabled');
+  await clickPopup(popup, '#groupBySite');
+  await waitFor(popup, 'document.getElementById("groupBySite").getAttribute("aria-pressed") === "true" && document.querySelectorAll(".date-group").length === 0 && document.querySelectorAll(".website-group").length === 2');
+  await clickPopup(popup, '#groupByDate');
+  await waitFor(popup, 'document.querySelectorAll(".date-group").length === 2');
+  await clickPopup(popup, '#expandGroups');
+  await waitFor(popup, 'document.getElementById("expandGroups").textContent === "Collapse all" && document.querySelectorAll(".date-toggle[aria-expanded=false], .group-toggle[aria-expanded=false]").length === 0');
+  assert.ok(await evaluate(popup, 'document.querySelector("#expandGroups span").getBoundingClientRect().width > 20'), 'real popup exposes a visible collapse label');
+  await clickPopup(popup, '#expandGroups');
+  await waitFor(popup, 'document.getElementById("expandGroups").textContent === "Expand all" && document.querySelectorAll(".date-toggle[aria-expanded=true]").length === 0');
+  await clickPopup(popup, '[data-language="zh-CN"]');
+  await clickPopup(popup, '#groupBySite');
+  await waitFor(popup, 'document.getElementById("groupBySite").getAttribute("aria-pressed") === "true" && document.querySelectorAll(".website-group").length === 2');
+  await clickPopup(popup, '[data-language="en"]');
+  await evaluate(popup, 'chrome.history.search = window.testNativeSearch; delete window.testNativeSearch; true');
+
   await evaluate(popup, 'document.getElementById("query").value="127.0.0.1";document.getElementById("mode").value="host-exact";document.getElementById("searchForm").requestSubmit();true');
   await waitFor(popup, 'document.getElementById("count").textContent.startsWith("2 ")');
   await evaluate(popup, `[...document.querySelectorAll('input[type=checkbox]')].find(item => item.getAttribute('aria-label') === ${JSON.stringify('Select ' + removedUrl)}).click();document.getElementById('delete').click();true`);
@@ -109,7 +142,7 @@ try {
   // Programmatic openPopup does not grant activeTab; the unavailable state must stay safe.
   await waitFor(websitePopup, 'document.getElementById("status").dataset.kind === "currentSiteUnavailable"');
   assert.match(await evaluate(websitePopup, 'document.getElementById("selected").textContent'), /^0 selected/);
-  console.log('Real toolbar popup passed: cancel preserves history; confirmed deletion survives popup close; unselected visit stays; workspace handoff succeeds; missing activeTab permission is handled. Disposable profile only.');
+  console.log('Real toolbar popup passed: trusted pointer grouping switches and visible expand/collapse in both languages; cancel preserves history; confirmed deletion survives popup close; unselected visit stays; workspace handoff succeeds; missing activeTab permission is handled. Disposable profile only.');
 } finally {
   if (context) await context.close();
   await new Promise(resolve => server.close(resolve));
