@@ -67,3 +67,9 @@ Chrome 的历史记录权限用于搜索、删除及核验记录。favicon 权�
 ## 反馈
 
 发现问题或有建议？欢迎[提交 Issue](https://github.com/agent-club/history-sweep/issues)。
+
+## 许可证
+
+除另有说明外，History Sweep 自行编写的源代码采用 Mozilla Public License 2.0（MPL-2.0）许可证，详见 [LICENSE](LICENSE)。
+
+第三方组件与素材保留各自的许可证和声明。

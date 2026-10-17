@@ -67,3 +67,9 @@ Keep Chrome open until deletion finishes. Tasks do not resume after Chrome exits
 ## Feedback
 
 Found a problem or have a suggestion? [Open an issue](https://github.com/agent-club/history-sweep/issues).
+
+## License
+
+Unless otherwise noted, History Sweep's project-owned source code is licensed under the Mozilla Public License 2.0 (MPL-2.0). See [LICENSE](LICENSE).
+
+Third-party components and assets retain their respective licenses and notices.
