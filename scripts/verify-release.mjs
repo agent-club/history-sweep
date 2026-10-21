@@ -32,15 +32,20 @@ try {
       const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
     });
     await page.goto(`${origin}/extension/${layout === 'modal' ? 'manager' : layout}.html`); await ready(page);
-    check(await page.locator('#count').textContent() === '4 results', `${layout}: first open shows exactly three local days`);
-    check(await page.locator('#timeRange').inputValue() === '3days', 'default range is visible and accurate');
+    check(await page.locator('#count').textContent() === '5 results', `${layout}: first open includes the past week`);
+    check(await page.locator('#timeRange').inputValue() === '7days', 'default week range is visible and accurate');
+    check(await page.locator('#groupBySite').getAttribute('aria-pressed') === 'true', 'website view is the first-use default');
+    // Keep the existing three-day grouping regression explicit, independent of defaults.
+    await filters(page); await page.locator('#timeRange').selectOption('3days');
+    await outside(page); await page.locator('#search').click(); await ready(page);
+    await page.locator('#groupByDate').click();
     check(await page.locator('.date-group').count() === 3, 'three date summaries');
     check(await page.locator('.date-group').first().locator('.date-toggle').getAttribute('aria-expanded') === 'true', 'today expanded');
     check((await page.locator('.date-group').first().locator('.date-summary').textContent()) === '2 pages · 2 websites', 'counts are pages and distinct websites, not visit events');
     check((await page.locator('#selected').textContent()).startsWith('0') && await page.locator('#delete').isDisabled(), 'default results select and delete nothing');
     check(!await page.locator('#query').evaluate(node => node.required), 'empty query has no browser required-field error');
     await page.locator('#query').fill('   '); await page.locator('#query').press('Enter'); await ready(page);
-    check(await page.locator('#count').textContent() === '4 results', 'whitespace search uses the same three-day window');
+    check(await page.locator('#count').textContent() === '4 results', 'whitespace search preserves the explicit three-day window');
     await page.locator('.date-group').first().locator('.date-select').check();
     check((await page.locator('#selected').textContent()).startsWith('2'), 'date selection includes collapsed website rows');
     await page.locator('#groupBySite').click();
@@ -88,8 +93,10 @@ try {
     const box = await page.locator('#preferencesDialog').boundingBox();
     await page.mouse.click(box.x + 5, box.y + 5);
     check(await page.locator('#preferencesDialog').evaluate(node => node.open), 'dialog padding is an internal click');
-    const before = await snapshot(page); await page.mouse.click(3, 3);
-    check(!await page.locator('#preferencesDialog').evaluate(node => node.open), 'Preferences backdrop cancels');
+    const before = await snapshot(page);
+    if (layout === 'popup') await page.locator('#dismissPreferences').click();
+    else await page.mouse.click(3, 3);
+    check(!await page.locator('#preferencesDialog').evaluate(node => node.open), 'Preferences close control or backdrop cancels');
     check((await snapshot(page)).messages === before.messages && (await snapshot(page)).deleted === 0, 'backdrop does not save preferences or delete history');
     await page.locator('#openPreferences').click(); await page.waitForFunction(() => !document.querySelector('#launchChoices').disabled);
     check(await page.locator('[name=launchMode]:checked').inputValue() === saved, 'reopen restores the saved preference');
@@ -106,7 +113,13 @@ try {
     const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
   });
   await host.goto(`${origin}/release-host`);
-  await host.evaluate(async () => { const { injectModal } = await import('/extension/modal-host.mjs'); injectModal(location.origin + '/extension/manager.html'); });
+  await host.evaluate(async () => {
+    const { injectModal } = await import('/extension/modal-host.mjs');
+    const attach = Element.prototype.attachShadow;
+    Element.prototype.attachShadow = function(options) { const root = attach.call(this, options); window.__releaseModalRoot = root; return root; };
+    try { injectModal(location.origin + '/extension/manager.html'); }
+    finally { Element.prototype.attachShadow = attach; }
+  });
   await host.waitForFunction(() => window.__historySweepModalHost?.isConnected());
   await host.waitForFunction(() => !!document.querySelector('div'));
   const frame = host.frames().find(frame => frame.url().includes('/extension/manager.html')) || await host.waitForEvent('framenavigated', { predicate: frame => frame.url().includes('/extension/manager.html') });
@@ -119,8 +132,19 @@ try {
   await host.mouse.click(3, 3); await frame.waitForFunction(() => !document.querySelector('#filters').open);
   check(await host.evaluate(() => window.__historySweepModalHost.isConnected()), 'host backdrop second closes filter, preserving main modal');
   await frame.locator('#openPreferences').click(); await frame.waitForFunction(() => !document.querySelector('#launchChoices').disabled);
+  await host.waitForFunction(() => window.__releaseModalRoot.querySelector('button').hidden);
+  check(await host.evaluate(() => getComputedStyle(window.__releaseModalRoot.querySelector('button')).display === 'none'), 'outer close is absent while preferences are open');
+  await host.evaluate(() => window.postMessage({ type: 'history-sweep:preferences', open: false }, location.origin));
+  check(await host.evaluate(() => window.__releaseModalRoot.querySelector('button').hidden), 'host page cannot spoof drawer visibility');
+  await frame.locator('#defaultViewToggle').click();
+  await host.mouse.click(3, 3);
+  await frame.waitForFunction(() => document.querySelector('#defaultViewToggle').getAttribute('aria-expanded') === 'false');
+  check(await frame.locator('#preferencesDialog').evaluate(node => node.open) && await host.evaluate(() => window.__releaseModalRoot.querySelector('button').hidden), 'host backdrop first closes the custom menu while retaining the drawer and hiding outer close');
+
   await host.mouse.click(3, 3); await frame.waitForFunction(() => !document.querySelector('#preferencesDialog').open);
   check(await host.evaluate(() => window.__historySweepModalHost.isConnected()), 'host backdrop cancels Preferences without closing main modal');
+  await host.waitForFunction(() => !window.__releaseModalRoot.querySelector('button').hidden);
+  check(await host.evaluate(() => getComputedStyle(window.__releaseModalRoot.querySelector('button')).display !== 'none'), 'outer close returns after drawer exit');
   await host.evaluate(() => window.postMessage({ type: 'history-sweep:layer-dismissed', requestId: 3, handled: false }, location.origin));
   check(await host.evaluate(() => window.__historySweepModalHost.isConnected()), 'a host-page message cannot spoof the extension-frame dismissal response');
   await host.mouse.click(3, 3); await host.waitForFunction(() => !window.__historySweepModalHost);
@@ -141,16 +165,16 @@ try {
   const empty = await context.newPage(); await empty.clock.setFixedTime(new Date('2026-10-16T12:00:00+08:00'));
   await installMock(empty, [{ url: 'https://old.test/older', lastVisitTime: Date.parse('2026-10-01T12:00:00+08:00') }]);
   await empty.goto(`${origin}/extension/manager.html`); await ready(empty);
-  check(await empty.locator('#count').textContent() === '0 results' && (await empty.locator('#empty h3').textContent()).includes('last 3 days'), 'no recent history does not look further back');
+  check(await empty.locator('#count').textContent() === '0 results' && (await empty.locator('#empty h3').textContent()).includes('past week'), 'no recent history does not look further back');
   await empty.locator('#query').fill('nothing-matches'); await empty.locator('#search').click(); await ready(empty);
   check(await empty.locator('#empty h3').textContent() === 'No matching pages.', 'successful no-match differs from recent-history empty state');
   await empty.locator('#query').fill('old.test'); await empty.locator('#search').click(); await ready(empty);
   check(await empty.locator('#count').textContent() === '1 results', 'keyword search keeps existing all-time default');
   await empty.locator('#clearQuery').click(); await ready(empty);
-  check(await empty.locator('#timeRange').inputValue() === '3days' && await empty.locator('#count').textContent() === '0 results', 'clearing keyword restores default recent browsing');
+  check(await empty.locator('#timeRange').inputValue() === '7days' && await empty.locator('#count').textContent() === '0 results', 'clearing keyword restores default recent browsing');
   check(await empty.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '375px layout does not overflow');
   await empty.screenshot({ path: new URL('../test-results/release-mobile-empty.png', import.meta.url).pathname });
   await context.close();
   assert.deepEqual(errors, []);
-  console.log(`${checks} v0.4.0 assertions passed. Synthetic history only.`);
+  console.log(`${checks} release assertions passed. Synthetic history only.`);
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

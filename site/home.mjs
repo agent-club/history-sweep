@@ -4,6 +4,11 @@ import './feature-lab.mjs';
 import './hero-demo.mjs';
 import {initializePixelSweep} from './pixel-sweep.mjs';
 
+const navigation = document.querySelector('.nav');
+const updateNavigationDivider = () => navigation.toggleAttribute('data-scrolled', scrollY > 8);
+addEventListener('scroll', updateNavigationDivider, {passive: true});
+updateNavigationDivider();
+
 const video = document.getElementById('product-video');
 const demo = document.getElementById('demo');
 const toggle = document.getElementById('film-toggle');

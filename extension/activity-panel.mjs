@@ -1,13 +1,14 @@
-import { activityCalendar, browsingActivity, activitySummary } from './activity-calendar.mjs';
+import { activityCalendar, browsingActivityAsync, activitySummary } from './activity-calendar.mjs';
 import { parseDate } from './calendar-dates.mjs';
 import { MAX_HISTORY_RESULTS } from './history-utils.mjs';
 
 export function createActivityPanel({ compact, request, readHistory, t, language }) {
   let opened = false;
   try { opened = localStorage.getItem('activityOpen') === 'true'; } catch {}
-  let mode = 'cleanup', range = compact ? 'quarter' : 'year', year = new Date().getFullYear();
+  let mode = 'browsing', range = compact ? 'quarter' : 'year', year = new Date().getFullYear();
   let cleanup = null, browsing = null, selected = null, events, root, loading = false, failure = false, ticket = 0, refreshTimer;
   let collapseAnimation = null, tooltipTimer, tooltipHideTimer;
+  let scrollHintTimer, scrollHintPending = opened, scrollHintTicket = 0;
   let renderedRoot, renderedData, renderedKey, detailRoot, detailData, detailDate;
   const dirty = new Set();
   const $ = id => root.querySelector(`#${id}`);
@@ -17,6 +18,29 @@ export function createActivityPanel({ compact, request, readHistory, t, language
   const earliestYear = () => mode === 'cleanup'
     ? cleanup ? Number(cleanup.log.startedOn.slice(0, 4)) : year
     : browsing ? Math.min(new Date().getFullYear(), ...Object.keys(browsing.days).map(date => Number(date.slice(0, 4)))) : year;
+  function hideScrollHint() {
+    scrollHintTicket++;
+    clearTimeout(scrollHintTimer);
+    const hint = root?.querySelector('#activityScrollHint');
+    if (hint) hint.hidden = true;
+  }
+  function scheduleScrollHint() {
+    if (!scrollHintPending || loading || failure) return;
+    scrollHintPending = false;
+    const current = ++scrollHintTicket;
+    scrollHintTimer = setTimeout(async () => {
+      if (!opened || !root.isConnected) return;
+      if (loading || failure) { scrollHintPending = true; return; }
+      let allowed;
+      try { allowed = await request({ type: 'claim-activity-scroll-hint' }); } catch { return; }
+      if (!allowed?.show || current !== scrollHintTicket || !opened || !root.isConnected) return;
+      const hint = $('activityScrollHint');
+      hint.style.setProperty('--activity-legend-width', `${root.querySelector('.activity-legend').offsetWidth}px`);
+      hint.hidden = false;
+      // Match the selected concept: entrance, gesture and exit share one 1.2 s lifetime.
+      scrollHintTimer = setTimeout(() => { hint.hidden = true; }, 1200);
+    }, 300);
+  }
   function detail(date) {
     const day = days()?.[date];
     return mode === 'cleanup'
@@ -76,6 +100,7 @@ export function createActivityPanel({ compact, request, readHistory, t, language
   function collapse() {
     if (!opened) return;
     opened = false;
+    scrollHintPending = false; hideScrollHint();
     try { localStorage.setItem('activityOpen', 'false'); } catch {}
     hideTooltip();
     const toggle = document.getElementById('toggleActivity');
@@ -121,8 +146,8 @@ export function createActivityPanel({ compact, request, readHistory, t, language
     if (!opened) return;
     root.setAttribute('aria-busy', String(loading));
     $('activityYear').textContent = String(year);
-    $('activityPreviousYear').disabled = loading || year <= earliestYear();
-    $('activityNextYear').disabled = loading || year >= new Date().getFullYear();
+    $('activityPreviousYear').disabled = (loading && !days()) || year <= earliestYear();
+    $('activityNextYear').disabled = (loading && !days()) || year >= new Date().getFullYear();
     for (const button of root.querySelectorAll('[data-activity-mode]')) button.setAttribute('aria-pressed', String(button.dataset.activityMode === mode));
     for (const button of root.querySelectorAll('[data-activity-range]')) button.setAttribute('aria-pressed', String(button.dataset.activityRange === range));
     $('activityNotice').textContent = loading ? t('activityLoading') : failure ? t('activityLoadFailed') : '';
@@ -133,7 +158,8 @@ export function createActivityPanel({ compact, request, readHistory, t, language
     const skeleton = !data;
     root.dataset.loading = String(skeleton && !failure);
     if (failure) { hideTooltip(true); renderedData = null; return; }
-    const key = `${mode}:${year}:${range}:${language()}`;
+    scheduleScrollHint();
+    const key = `${mode}:${year}:${range}:${language()}:${new Date().toDateString()}`;
     // Retain the chart and favicon nodes on reopen and while refreshing cached data.
     if (data && renderedRoot === root && renderedData === data && renderedKey === key) return;
     hideTooltip(true);
@@ -210,10 +236,16 @@ export function createActivityPanel({ compact, request, readHistory, t, language
       if (source === 'cleanup') data = await request({ type: 'get-activity' });
       else {
         const items = await readHistory();
-        data = { days: browsingActivity(items), limited: items.length >= MAX_HISTORY_RESULTS };
+        const days = await browsingActivityAsync(items, () => current === ticket);
+        data = { days, limited: items.length >= MAX_HISTORY_RESULTS };
       }
       if (current !== ticket) return;
-      if (source === 'cleanup') cleanup = data; else browsing = data;
+      const previous = source === 'cleanup' ? cleanup : browsing;
+      const serialize = (key, value) => value instanceof Set ? [...value].sort() : value;
+      // An unchanged refresh must retain selected cells, decoded favicons and focus.
+      if (JSON.stringify(previous, serialize) !== JSON.stringify(data, serialize)) {
+        if (source === 'cleanup') cleanup = data; else browsing = data;
+      }
       dirty.delete(source);
       year = Math.max(earliestYear(), Math.min(year, new Date().getFullYear()));
     } catch { if (current === ticket) failure = true; }
@@ -257,6 +289,7 @@ export function createActivityPanel({ compact, request, readHistory, t, language
       }
     },
     mount() {
+      hideScrollHint(); scrollHintPending = opened;
       collapseAnimation?.cancel(); collapseAnimation = null;
       clearTimeout(tooltipTimer); clearTimeout(tooltipHideTimer);
       events?.abort(); events = new AbortController(); root = document.getElementById('activityPanel');
@@ -265,6 +298,7 @@ export function createActivityPanel({ compact, request, readHistory, t, language
         if (opened) return collapse();
         collapseAnimation?.cancel(); collapseAnimation = null; root.inert = false;
         opened = true;
+        scrollHintPending = true;
         try { localStorage.setItem('activityOpen', 'true'); } catch {}
         if (!days() || dirty.has(mode)) void load(); else render();
       });

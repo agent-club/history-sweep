@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   filterHistoryItems,
+  createHistoryMatcher,
   normalizeHostname,
   parseHostnames,
   parseSmartTerms,
@@ -57,6 +58,18 @@ test("smart search supports site labels and full domains together", () => {
     "https://x.com/home",
     "https://mobile.twitter.com/example",
   ]);
+});
+
+test('compiled smart queries preserve domain, label and text matching across candidates', () => {
+  const match = createHistoryMatcher('x twitter.com 小紅書 %%%.invalid', 'smart');
+  assert.equal(match(items[0]), true);
+  assert.equal(match(items[1]), true);
+  assert.equal(match(items[2]), false);
+  assert.equal(match({ url: 'https://example.org', title: '小红书网页版' }), true);
+  assert.equal(match({ url: 'invalid', title: '小红书' }), false);
+  assert.equal(match({ title: '小红书' }), false);
+  assert.equal(createHistoryMatcher('%%% .%%%', 'smart')({ url: 'https://example.org' }), false);
+  assert.equal(createHistoryMatcher(' ', 'contains')(items[0]), false);
 });
 
 test("smart search uses text matching for non-latin terms", () => {

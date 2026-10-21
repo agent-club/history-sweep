@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="home-page">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -12,11 +12,28 @@
   <meta property="og:url" content="https://sweep.agentclub.dev/">
   <link rel="icon" href="assets/mark.svg">
   <link rel="preload" as="image" href="assets/hero-ribbon.webp" fetchpriority="high">
+  <style>
+    html[data-intro-pending=true] { overflow: hidden; }
+    html[data-intro-pending=true] body { visibility: hidden; }
+    html[data-intro-pending=true] body::before { content: ''; position: fixed; inset: 0; z-index: 10000; visibility: visible; background: #101112; }
+  </style>
+  <script>
+    // Reserve the opening before first paint while the deferred module graph loads.
+    if (!location.hash && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.dataset.introPending = 'true';
+      setTimeout(() => {
+        if (document.documentElement.dataset.introPending === 'true') {
+          document.documentElement.dataset.introPending = 'expired';
+        }
+      }, 8000);
+    }
+  </script>
   <link rel="stylesheet" href="home.css">
   <link rel="stylesheet" href="features.css">
   <link rel="stylesheet" href="question-intro.css">
   <link rel="stylesheet" href="display-type.css">
   <link rel="stylesheet" href="hero-demo.css">
+  <link rel="stylesheet" href="comparison.css">
   <link rel="preload" href="assets/fonts/noto-serif-sc-display.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body>
@@ -31,7 +48,7 @@
 <a class="skip-link" href="#main" data-zh="跳至主要内容">Skip to content</a>
 <header class="nav wrap">
   <a class="brand" href="./"><img src="assets/product-mark.png" width="34" height="34" alt="">History Sweep</a>
-  <nav class="nav-links" aria-label="Main navigation"><a href="#features" data-zh="功能与玩法">Explore</a><a href="#how" data-zh="使用方式">How it works</a><a href="privacy.html" data-zh="隐私">Privacy</a><a href="https://github.com/agent-club/history-sweep">GitHub</a></nav>
+  <nav class="nav-links" aria-label="Main navigation"><a href="#features" data-zh="功能与玩法">Explore</a><a href="#how" data-zh="使用方式">How it works</a><a href="#compare" data-zh="工具对比">Compare</a><a href="privacy.html" data-zh="隐私">Privacy</a><a href="https://github.com/agent-club/history-sweep">GitHub</a></nav>
   <div class="nav-actions">
     <div id="language" class="language-switch" role="group" aria-label="Language"><button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="true">EN</button><button type="button" data-language="zh-CN" lang="zh-CN" aria-label="简体中文" aria-pressed="false">中文</button></div>
     <a class="button nav-cta" href="https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm"><span data-zh="添加至 Chrome">Add to Chrome</span><img class="icon light" src="assets/ui/arrow-square-out.svg" alt="" width="16" height="16"></a>
@@ -63,7 +80,7 @@
         <div class="film-controls"><span class="film-time" id="film-time">00:00 <span>/ 00:20</span></span><span class="film-note" data-zh="功能演示 · 静音">PRODUCT WALKTHROUGH · NO SOUND</span><button type="button" id="film-expand" class="film-expand" aria-controls="product-video"><span>Full screen</span><img class="icon" src="assets/ui/arrow-square-out.svg" width="15" height="15" alt=""></button><button type="button" id="film-toggle" aria-controls="product-video">Play demo</button></div>
       </div>
       <div class="film-chapters" role="group" aria-label="Explore the demonstration"><button type="button" data-chapter="0" aria-controls="product-video" aria-pressed="false"><span class="chapter-number">01</span><span data-zh="搜索">Search</span></button><button type="button" data-chapter="3" aria-controls="product-video" aria-pressed="false"><span class="chapter-number">02</span><span data-zh="筛选">Filter</span></button><button type="button" data-chapter="6" aria-controls="product-video" aria-pressed="false"><span class="chapter-number">03</span><span data-zh="选择">Select</span></button><button type="button" data-chapter="10" aria-controls="product-video" aria-pressed="false"><span class="chapter-number">04</span><span data-zh="核对">Review</span></button><button type="button" data-chapter="14" aria-controls="product-video" aria-pressed="false"><span class="chapter-number">05</span><span data-zh="清理">Sweep</span></button></div>
-      <p class="demo-caption" id="demo-description" data-zh="仅为演示数据 · 不会读取或删除你的浏览历史">Illustrative data only. This demo never accesses your browsing history.</p>
+      <p class="demo-caption" id="demo-description" data-zh="v0.4.0 流程演示 · 仅为演示数据，不会读取或删除你的浏览历史">v0.4.0 workflow. Illustrative data only; this demo never accesses your browsing history.</p>
     </div>
     <button class="ambient-toggle" id="ambient-toggle" type="button" aria-pressed="false">Pause background</button>
     <p class="permanent-note wrap"><img class="icon" src="assets/ui/trash.svg" width="16" height="16" alt=""><span data-zh="删除无法撤销，且会移除所选网址的全部访问记录。">Deletion is permanent and removes all visits to each selected URL.</span></p>
@@ -112,13 +129,64 @@
       <button class="text-link" type="button" data-jump-demo="6"><span data-zh="看看如何保留例外">See how to keep exceptions</span><img class="icon" src="assets/ui/arrow-square-out.svg" width="16" height="16" alt=""></button>
     </div>
   </section>
-  <section class="privacy-band" id="get" aria-labelledby="privacy-title">
+  <div class="comparison" data-comparison>
+<section class="cmp vs-compare battle-compare wrap" id="compare" aria-labelledby="compare-title">
+  <p class="cmp-kicker" data-zh="体验的差别 / THE SWEEP DIFFERENCE">THE SWEEP DIFFERENCE / A CLEARER EXPERIENCE</p>
+  <div class="cmp-heading vs-heading">
+    <h2 class="cmp-title" id="compare-title" data-zh="删得准。<br>留得住。">Clear with precision.<br>Keep with intention.</h2>
+    <p class="cmp-intro" data-zh="把想删的清掉，把重要的留下。<br>精确查找、逐页核对、删后复查，<br>一套为精细清理而做的现代界面。">Clear the visits you choose. Keep the ones that matter.<br>Precise scope, URL review and result checks,<br>in a modern workspace built for deliberate cleanup.</p>
+  </div>
+
+
+  <p class="battle-intent" data-zh="找准范围 · 核对选择 · 复查结果">FIND. REVIEW. VERIFY.</p>
+<p class="deck-intro"><b data-zh="同一任务，直接看差距。">THE SAME TASK. A CLEARER DIFFERENCE.</b><span data-zh="右侧五款竞品，点击右上角箭头切换。">Five competitors on the right. Use the arrows to draw a card.</span></p>
+<div class="vs-arena battle-arena deck-arena" id="feature-comparison"><button class="vs-motion-toggle" type="button" data-vs-motion aria-pressed="false"><span data-zh="暂停动效">Pause motion</span></button>
+<article class="vs-side vs-sweep" aria-labelledby="sweep-title">
+<header class="vs-side-heading"><p class="vs-overline" data-zh="我们的产品 / YOUR NEXT SWEEP">OUR PRODUCT / YOUR NEXT SWEEP</p><h3 id="sweep-title"><img src="assets/product-mark.png" width="27" height="27" alt="">History Sweep</h3><p data-zh="精细清理，把决定权留给你。">Deliberate cleanup. You make the call.</p></header>
+<div class="vs-window sweep-window battle-window"><div class="vs-window-bar"><span data-zh="为精细清理而设计">BUILT FOR PRECISE CLEANUP</span><span class="battle-pill" data-zh="我们的重点">OUR FOCUS</span></div>
+<div class="battle-rows">
+<div class="battle-row"><p class="battle-label"><span>01 /</span><span data-zh="找准范围">PRECISE SCOPE</span><i aria-hidden="true">✓</i></p><figure class="feature-figure" data-feature-side="own" data-feature-index="0"><button type="button" data-expand-image aria-label="Enlarge comparison image"><img src="assets/comparison/sweep-scope-en.svg" alt="History Sweep · 1 · Workflow diagram · enlarge" referrerpolicy="no-referrer" data-photo="false" loading="lazy" decoding="async"></button><figcaption>Workflow diagram · enlarge</figcaption></figure><strong data-zh="域名与文字，分得清。">Separate the site from a mention.</strong><p data-zh="精确域名、智能匹配、标题／网址文字，按需选范围。">Exact hostname, smart matching, or title/URL text. Choose your scope.</p></div>
+<div class="battle-row"><p class="battle-label"><span>02 /</span><span data-zh="保留例外">KEEP EXCEPTIONS</span><i aria-hidden="true">✓</i></p><figure class="feature-figure" data-feature-side="own" data-feature-index="1"><button type="button" data-expand-image aria-label="Enlarge comparison image"><img src="assets/comparison/sweep-keep-en.svg" alt="History Sweep · 2 · Workflow diagram · enlarge" referrerpolicy="no-referrer" data-photo="false" loading="lazy" decoding="async"></button><figcaption>Workflow diagram · enlarge</figcaption></figure><strong data-zh="整站能留，单页也能留。">Keep a site. Keep a single page.</strong><p data-zh="整组或逐条选择，确认前核对选中的网址。">Select a group or individual pages. Review the URLs before confirming.</p></div>
+<div class="battle-row"><p class="battle-label"><span>03 /</span><span data-zh="现代感">MODERN DESIGN</span><i aria-hidden="true">✓</i></p><figure class="feature-figure" data-feature-side="own" data-feature-index="2"><button type="button" data-expand-image aria-label="Enlarge comparison image"><img src="assets/manager-en.png" alt="History Sweep · 3 · Repository UI 0.3.2 · enlarge" referrerpolicy="no-referrer" data-photo="true" loading="lazy" decoding="async"></button><figcaption>Repository UI 0.3.2 · enlarge</figcaption></figure><strong data-zh="现代层级，任务一眼分明。">Modern hierarchy. A clear next step.</strong><p data-zh="搜索、范围、记录与动作各有位置，主次一眼分明。">Search, scope, records and actions have distinct visual levels.</p></div>
+<div class="battle-row"><p class="battle-label"><span>04 /</span><span data-zh="UI 舒适度">UI COMFORT</span><i aria-hidden="true">✓</i></p><figure class="feature-figure" data-feature-side="own" data-feature-index="3"><button type="button" data-expand-image aria-label="Enlarge comparison image"><img src="assets/popup-en.png" alt="History Sweep · 4 · Repository UI 0.3.2 · enlarge" referrerpolicy="no-referrer" data-photo="true" loading="lazy" decoding="async"></button><figcaption>Repository UI 0.3.2 · enlarge</figcaption></figure><strong data-zh="列表有呼吸，选择不费找。">Room to read. Less hunting around.</strong><p data-zh="按站分组、适度留白；选中数量和核对动作紧跟选择。">Website groups, measured spacing, and selection counts beside the next action.</p></div>
+</div></div><p class="vs-caption battle-punchline" data-zh="选前核对。<br><b>删后复查，心里有数。</b>">Review before deleting.<br><b>Verify the result afterward.</b></p>
+</article>
+<div class="vs-divider" aria-hidden="true"><span></span><b>VS</b><span></span></div>
+<article class="vs-side vs-category" aria-labelledby="category-title"><header class="vs-side-heading"><p class="vs-overline"><span data-vs-maker>betterhistory.io</span> / <span data-vs-users>100,000 users</span></p><h3 id="category-title" data-vs-name>Better History</h3><p data-battle-tagline>More management controls. A less focused cleanup path.</p></header>
+<nav class="deck-controls" aria-label="Switch competing extension"><div class="deck-control-status"><span data-deck-current>Better History</span><b data-deck-count aria-live="polite">04 / 05</b></div><div class="deck-control-actions"><button type="button" data-deck-prev aria-label="Previous competitor" title="Previous competitor"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 12H5m6-6-6 6 6 6"/></svg></button><button type="button" data-deck-next aria-label="Next competitor" title="Next competitor"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div></nav><div class="rival-deck" aria-label="Competing extension cards"><div class="deck-peeks"><button class="deck-card" type="button" data-vs-tool="clickandclean" aria-label="Compare with Click and Clean" aria-pressed="false" data-deck-slot="2"><span>Click and Clean</span><em aria-hidden="true">CN</em><b aria-hidden="true">01</b></button><button class="deck-card" type="button" data-vs-tool="clickclean" aria-label="Compare with Click&amp;Clean" aria-pressed="false" data-deck-slot="3"><span>Click&amp;Clean</span><em aria-hidden="true">C&amp;C</em><b aria-hidden="true">02</b></button><button class="deck-card" type="button" data-vs-tool="clearcache" aria-label="Compare with Clear Cache" aria-pressed="false" data-deck-slot="4"><span>Clear Cache</span><em aria-hidden="true">CC</em><b aria-hidden="true">03</b></button><button class="deck-card" type="button" data-vs-tool="betterhistory" aria-label="Compare with Better History" aria-pressed="true" data-deck-slot="0" hidden><span>Better History</span><em aria-hidden="true">BH</em><b aria-hidden="true">04</b></button><button class="deck-card" type="button" data-vs-tool="oneclick" aria-label="Compare with OneClick Cleaner" aria-pressed="false" data-deck-slot="1"><span>OneClick Cleaner</span><em aria-hidden="true">1C</em><b aria-hidden="true">05</b></button></div><div class="vs-window category-window battle-window"><div class="vs-window-bar"><span data-vs-name>Better History</span><span class="battle-pill" data-zh="这个任务里的局限">LIMITS FOR THIS TASK</span></div><div class="battle-rows">
+<div class="battle-row"><p class="battle-label"><span>01 /</span><span data-zh="找准范围">PRECISE SCOPE</span></p><figure class="feature-figure" data-feature-side="rival" data-feature-index="0"><button type="button" data-expand-image aria-label="Enlarge comparison image"><img src="assets/comparison/better-scope-en.svg" alt="Better History · 1 · Workflow diagram · enlarge" referrerpolicy="no-referrer" data-photo="false" loading="lazy" decoding="async"></button><figcaption>Workflow diagram · enlarge</figcaption></figure><strong data-battle-main="0">Text search can include mere mentions.</strong><p data-battle-note="0">The dated test matched another site’s query string; it required further filtering.</p></div>
+<div class="battle-row"><p class="battle-label"><span>02 /</span><span data-zh="保留例外">KEEP EXCEPTIONS</span></p><figure class="feature-figure" data-feature-side="rival" data-feature-index="1"><button type="button" data-expand-image aria-label="Enlarge comparison image"><img src="assets/comparison/better-keep-en.svg" alt="Better History · 2 · Workflow diagram · enlarge" referrerpolicy="no-referrer" data-photo="false" loading="lazy" decoding="async"></button><figcaption>Workflow diagram · enlarge</figcaption></figure><strong data-battle-main="1">Its keep rules target automatic cleanup.</strong><p data-battle-note="1">Selected deletion also works. Its documented whitelist protects scheduled cleanup.</p></div>
+<div class="battle-row"><p class="battle-label"><span>03 /</span><span data-zh="现代感">MODERN DESIGN</span><i aria-hidden="true">−</i></p><figure class="feature-figure" data-feature-side="rival" data-feature-index="2"><button type="button" data-expand-image aria-label="Enlarge comparison image"><img src="https://betterhistory.io/_next/image/?url=https%3A%2F%2Fadmin.betterhistory.io%2Fuploads%2F004_76ed8dc416.jpg&amp;w=3840&amp;q=75" alt="Better History · 3 · Official image · enlarge" referrerpolicy="no-referrer" data-photo="true" loading="lazy" decoding="async"></button><figcaption>Official image · enlarge</figcaption></figure><strong data-battle-main="2">Navigation and export compete for attention.</strong><p data-battle-note="2">Public images put date navigation, export and deletion controls in one workspace.</p></div>
+<div class="battle-row"><p class="battle-label"><span>04 /</span><span data-zh="UI 舒适度">UI COMFORT</span></p><figure class="feature-figure" data-feature-side="rival" data-feature-index="3"><button type="button" data-expand-image aria-label="Enlarge comparison image"><img src="https://betterhistory.io/_next/image/?url=https%3A%2F%2Fadmin.betterhistory.io%2Fuploads%2F004_76ed8dc416.jpg&amp;w=3840&amp;q=75" alt="Better History · 4 · Official image · enlarge" referrerpolicy="no-referrer" data-photo="true" loading="lazy" decoding="async"></button><figcaption>Official image · enlarge</figcaption></figure><strong data-battle-main="3">More time-navigation controls to scan.</strong><p data-battle-note="3">This is a visual assessment of the public layout; light/dark themes are supported.</p></div>
+</div></div></div><p class="vs-caption"><span data-battle-caption>Scoped to text search, keep rules and the public layout.</span><br><a data-battle-source href="https://betterhistory.io/" target="_blank" rel="noreferrer" data-zh="核对差异依据 ↗">Check the comparison evidence ↗</a></p></article>
+</div>
+
+
+
+
+
+
+
+  <div class="vs-research-link"><div><p data-zh="想看与具体工具的差别？">Looking for a product-by-product comparison?</p><span data-zh="五款高用户量插件 · 功能、流程、证据边界">Five widely used extensions · capabilities, workflow and evidence</span></div><a class="cmp-link" href="compare.html?tool=betterhistory"><span data-zh="查看完整对比">Explore the full comparison</span><span aria-hidden="true">↗</span></a></div>
+  <p class="vs-disclosure" data-zh="对照基于本项目文档、竞品官方说明与注明日期的旧实测。局限只针对所示流程；视觉评价基于官方展示图，不是用户研究分数。完整依据见二级对比页。">Based on repository documentation, official competitor listings and dated prior tests. Limits refer to the shown workflow. Visual assessments use public images, not usability scores; full evidence is on the detail page.</p>
+</section>
+<dialog class="image-dialog" data-image-dialog aria-label="Comparison image"><header><p data-image-caption>Comparison image</p><button type="button" data-close-image data-zh="关闭">Close</button></header><img src="/site/assets/product-mark.png" alt="Comparison image"></dialog>
+</div>
+<section class="privacy-band" id="get" aria-labelledby="privacy-title">
     <img src="assets/sweep-matte.png" width="1536" height="1024" alt="" class="privacy-ribbon" loading="lazy" aria-hidden="true">
     <div class="wrap privacy-inner"><div><p class="eyebrow" data-zh="隐私，从留在本机开始。">PRIVATE, BY STAYING LOCAL.</p><h2 id="privacy-title" data-zh="你的历史，<br>留在你这里。">Your history stays<br>with you.</h2></div><div class="privacy-action"><p data-zh="在浏览器内处理。不会发送给我们。">Processed inside your browser. Never sent to us.</p><a class="button white" href="https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm"><span data-zh="添加至 Chrome">Add to Chrome</span><img class="icon" src="assets/ui/arrow-square-out.svg" width="19" height="19" alt=""></a><a class="privacy-link" href="privacy.html" data-zh="阅读隐私说明">Privacy policy</a></div></div>
   </section>
 
 </main>
 <footer class="footer wrap"><a class="brand" href="./"><img src="assets/product-mark.png" width="28" height="28" alt="">History Sweep</a><span data-zh="为清爽的数字生活而造。">A small tool for a lighter digital life.</span><div><a href="https://github.com/agent-club/history-sweep">GitHub</a><a href="privacy.html" data-zh="隐私">Privacy</a><a href="https://github.com/agent-club/history-sweep/issues" data-zh="反馈">Feedback</a></div></footer>
+  <section class="support wrap" id="next-release" aria-label="Next release preview">
+    <details class="support-details"><summary><span data-zh="下一版预览 · v0.5.0 候选，尚未发布">Next release preview · v0.5.0 candidate, not yet released</span><img class="icon" src="assets/ui/caret-right.svg" width="20" height="20" alt=""></summary><div class="support-content">
+      <div><h3 data-zh="按频次查看，默认近一个星期。">Visit frequency. A week by default.</h3><p data-zh="按所选期间的实际访问次数排序，同次数按期间最后访问排序。首次默认按网站浏览今天及之前六个本地自然日，也可保存默认视图和时间。关键词搜索仍默认全部时间，除非明确选择范围；自定义日期仅用于临时查看。">Rank pages by actual visits within the selected period, breaking ties by their last visit in that period. First use opens By website for today and the previous six local dates. Save your preferred default view and range. Keyword searches still use all time unless you choose dates; custom dates are temporary.</p><p data-zh="日期与网站视图按网址的最后访问时间筛选。频次视图可以包含期间访问过、之后又访问过的页面。删除仍移除选中网址的全部访问，无法撤销。">Date and website views filter by each URL’s last visit. Frequency can include pages visited in the period and again afterward. Deletion still removes every visit to a selected URL and cannot be undone.</p></div>
+      <div><h3 data-zh="配置能带走，清理由你决定。">Carry your settings. Choose what to record.</h3><p data-zh="无痕清理可停止记录新清理的次数和网站明细，已有活动保留。新增返回顶部、快捷键设置入口和默认浮窗，已有打开方式保留。活动面板优先展示浏览记录，并支持向上滚动折叠。">Private cleanup stops saving new cleanup counts and website details; existing activity remains. Back to top, shortcut settings and a first-use modal help navigation while preserving saved opening choices. Local activity opens with Browsing history and can collapse when scrolling up.</p><p data-zh="WebDAV 仅手动传输语言、外观和打开方式，不上传浏览历史、清理活动或保留网站；可导出密码加密备份，在卸载后手动恢复。只有主动测试或传输时才请求所选主机权限。远端 JSON 可由服务商读取，备份不是自动快照。">WebDAV manually transfers language, appearance and opening preferences, excluding history, cleanup activity and kept websites. Export a password-encrypted backup for manual recovery after uninstall. Access is requested for the selected host only when testing or transferring. The provider can read remote JSON; backups are manual snapshots.</p><img src="assets/candidate-manager-sync-en.png" width="1280" height="800" style="width:100%;height:auto" alt="WebDAV configuration in the packaged candidate, with no saved connection" data-zh-alt="候选安装包中的 WebDAV 配置页面，未保存任何连接信息" loading="lazy"></div>
+      <div><h3 data-zh="来自候选界面的预览">A preview of the candidate interface</h3><img src="assets/candidate-manager-frequency-en.png" width="1280" height="800" style="width:100%;height:auto" alt="Frequency browsing candidate preview with synthetic history" data-zh-alt="使用虚构历史数据的频次浏览候选界面预览" loading="lazy"><p data-zh="合成数据，非用户真实历史。v0.5.0 尚未公开发布；上方视频和当前下载仍对应 v0.4.0。">Synthetic data, never personal history. v0.5.0 is not yet public; the videos and current download still represent v0.4.0.</p></div>
+      <div><h3 data-zh="由 Chrome 提供更新">Updates delivered by Chrome</h3><p data-zh="官方商店安装版打开时，最多每 15 分钟请求一次公开版本提示，适用时再由 Chrome 检查更新。只接收 JSON，不下载远程脚本；不发送浏览历史、搜索词或配置，托管方仍接收标准连接信息。删除或复查时不能通过更新按钮重新加载。解压安装版跳过此检查。">On opening, the official store installation requests public version hints at most once per 15 minutes and asks Chrome to check when appropriate. It receives JSON, not remote scripts. No history, search terms or configuration is sent; the host still receives standard connection information. The update button cannot reload during deletion or verification. Unpacked installations skip this check.</p><a class="text-link" href="https://github.com/agent-club/history-sweep/issues/8" data-zh="频次浏览与默认设置的需求范围">Frequency browsing and default-setting scope</a></div>
+    </div></details>
+  </section>
   <section class="support wrap" aria-label="Help and installation">
     <details class="support-details"><summary><span data-zh="几个小问题与其他安装方式">A few questions. Other ways to install.</span><img class="icon" src="assets/ui/caret-right.svg" width="20" height="20" alt=""></summary><div class="support-content">
       <div><h3 data-zh="删除后能恢复吗？">Can I undo a deletion?</h3><p data-zh="不能。删除一个网址会移除其全部访问记录，包括所选日期之外的访问。请先检查选中内容。Chrome 可能将删除同步至其他已登录设备。">No. Deleting a URL removes all of its visits, including those outside your date range. Review your selection first. Chrome may sync deletions across signed-in devices.</p></div>
@@ -129,5 +197,6 @@
     </div></details>
   </section>
 <script type="module" src="home.mjs"></script>
+<script type="module" src="comparison.mjs"></script>
 </body>
 </html>

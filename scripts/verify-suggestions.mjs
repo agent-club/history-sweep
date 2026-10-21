@@ -22,6 +22,78 @@ async function visible(page, count) {
   await page.waitForFunction(n => document.querySelector('#suggestionsPanel').dataset.open === 'true' && document.querySelector('#suggestionsList').children.length === n, count);
 }
 try {
+  for (const surface of [
+    { name: 'manager', file: 'manager', viewport: { width: 1280, height: 800 } },
+    { name: 'popup', file: 'popup', viewport: { width: 440, height: 590 } },
+    { name: 'modal', file: 'manager', viewport: { width: 960, height: 720 } },
+  ]) {
+    const page = await browser.newPage({ viewport: surface.viewport });
+    page.on('pageerror', error => errors.push(error.message)); await installMock(page, records);
+    if (surface.name === 'modal') await page.route('**/extension/manager.html', async route => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
+    });
+    await page.goto(`${origin}/extension/${surface.file}.html`);
+    await page.locator('#toggleActivity').click();
+    await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
+    await page.locator('#query').fill('site'); await visible(page, 10);
+    await page.waitForTimeout(220);
+    check(await page.locator('#suggestionsPanel').evaluate(node => {
+      const panel = node.getBoundingClientRect(), input = document.querySelector('#query').getBoundingClientRect();
+      return node.dataset.side === 'top' && panel.top >= 8 && panel.bottom <= input.top - 7;
+    }), `${surface.name}: activity pushes suggestions above the input within the viewport`);
+    if (surface.name !== 'popup') {
+      await page.locator('#query').fill('chinese'); await visible(page, 1);
+      check(await page.locator('#suggestionsPanel').getAttribute('data-side') === 'bottom', `${surface.name}: a short suggestion panel still opens below when it fits`);
+      await page.locator('#query').fill('site'); await visible(page, 10);
+      await page.setViewportSize({ ...surface.viewport, height: 1300 });
+      await page.waitForFunction(() => document.querySelector('#suggestionsPanel').dataset.side === 'bottom');
+      check(await page.locator('#suggestionsPanel').evaluate(node => node.getBoundingClientRect().bottom <= innerHeight - 7), `${surface.name}: resizing uses the newly available space below`);
+      await page.setViewportSize(surface.viewport);
+      await page.waitForFunction(() => document.querySelector('#suggestionsPanel').dataset.side === 'top');
+      check(true, `${surface.name}: shrinking the window flips suggestions upward again`);
+    }
+    if (surface.name === 'popup') {
+      await page.locator('.app-shell').evaluate(node => { node.scrollTop = 300; });
+      await page.waitForFunction(() => document.querySelector('#suggestionsPanel').dataset.side === 'bottom');
+      check(await page.locator('#suggestionsPanel').evaluate(node => node.getBoundingClientRect().bottom <= innerHeight - 7), 'popup: scrolling repositions and constrains the suggestion panel');
+      check(await page.locator('#suggestionsPanel').evaluate(node => node.getBoundingClientRect().bottom <= document.querySelector('.actionbar').getBoundingClientRect().top - 7), 'popup: suggestions stay above the fixed footer');
+    }
+    const outerState = () => page.evaluate(() => ({
+      activity: document.querySelector('#toggleActivity').getAttribute('aria-expanded'),
+      shell: document.querySelector('.app-shell').scrollTop,
+      document: document.scrollingElement.scrollTop,
+      queryTop: document.querySelector('#query').getBoundingClientRect().top,
+    }));
+    const before = await outerState();
+    const list = page.locator('#suggestionsList');
+    const box = await list.boundingBox();
+    await page.mouse.move(box.x + 20, box.y + 20); await page.mouse.wheel(0, 100);
+    await page.waitForFunction(() => document.querySelector('#suggestionsList').scrollTop > 0);
+    await page.waitForTimeout(260);
+    check(JSON.stringify(await outerState()) === JSON.stringify(before), `${surface.name}: suggestion wheel scrolls the list without collapsing activity or moving the page`);
+    for (const edge of ['bottom', 'top']) {
+      await list.evaluate((node, edge) => { node.scrollTop = edge === 'bottom' ? node.scrollHeight : 0; }, edge);
+      await page.mouse.wheel(0, edge === 'bottom' ? 160 : -160); await page.waitForTimeout(260);
+      check(JSON.stringify(await outerState()) === JSON.stringify(before), `${surface.name}: ${edge} suggestion boundary does not scroll the page`);
+    }
+    await list.evaluate(node => {
+      const touch = y => new Touch({ identifier: 1, target: node, clientX: 120, clientY: y });
+      node.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [touch(240)] }));
+      node.dispatchEvent(new TouchEvent('touchmove', { bubbles: true, touches: [touch(190)] }));
+      node.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] }));
+    });
+    await page.waitForTimeout(260);
+    check(JSON.stringify(await outerState()) === JSON.stringify(before), `${surface.name}: suggestion touch gesture does not collapse activity`);
+    await page.locator('#suggestionsPanel .suggestions-heading').dispatchEvent('wheel', { deltaY: 80 });
+    await page.waitForTimeout(260);
+    check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'true', `${surface.name}: suggestion heading wheel keeps activity open`);
+    await page.locator('#query').press('Escape');
+    await page.locator('.app-shell').dispatchEvent('wheel', { deltaY: 80 });
+    await page.waitForFunction(() => document.querySelector('#activityPanel').hidden);
+    check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'false', `${surface.name}: outer wheel still collapses activity`);
+    await page.close();
+  }
   for (const layout of ['manager', 'popup']) {
     const page = await browser.newPage({ viewport: layout === 'popup' ? { width: 440, height: 590 } : { width: 1280, height: 800 } });
     page.on('pageerror', error => errors.push(error.message)); await installMock(page, records);

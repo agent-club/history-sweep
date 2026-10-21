@@ -6,8 +6,10 @@
     "type": "module"
   },
   "name": "History Sweep",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "default_locale": "en",
+  "options_ui": { "page": "sync.html", "open_in_tab": true },
+  "optional_host_permissions": ["https://*/*"],
   "description": "__MSG_description__",
   "permissions": [
     "history",
@@ -25,24 +27,25 @@
   },
   "action": {
     "default_title": "History Sweep",
-    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png"
     }
   },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "modal.html"
-      ],
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ]
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+H",
+        "windows": "Alt+H",
+        "mac": "Option+H"
+      }
     }
-  ],
+  },
+  "web_accessible_resources": [{
+    "resources": ["modal.html"],
+    "matches": ["http://*/*", "https://*/*"]
+  }],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'none'"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https:"
   }
 }

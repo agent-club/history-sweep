@@ -15,7 +15,7 @@ try {
     const context = await browser.newContext({ timezoneId: 'Asia/Shanghai', reducedMotion: 'reduce', viewport: layout === 'popup' ? { width: 440, height: 590 } : { width: 1120, height: 800 } });
     const page = await context.newPage();
     await page.clock.setFixedTime(new Date('2026-10-16T23:59:00+08:00'));
-    const initial = [record('last-night', '16', '23:58:00'), record('older', '14')];
+    const initial = [record('last-night', '16', '23:58:00'), record('older', '10')];
     await installMock(page, initial);
     await page.addInitScript(items => {
       const records = new Map(items.map(item => [item.url, item])); const listeners = [];
@@ -29,14 +29,15 @@ try {
       const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
     });
     await page.goto(`${origin}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`); await ready(page);
-    check(await page.locator('#count').textContent() === '2 results', 'pre-midnight range includes the oldest of three days');
+    check(await page.locator('#count').textContent() === '2 results', 'pre-midnight range includes the oldest of seven days');
+    await page.locator('#groupByDate').click();
     await page.clock.setFixedTime(new Date('2026-10-17T00:01:00+08:00'));
     await page.evaluate(item => window.__visit(item), record('after-midnight', '17', '00:00:30'));
     await page.waitForFunction(() => document.querySelector('.date-group[data-date="2026-10-17"]'), null, { timeout: 3000 });
     await ready(page);
     check(await page.locator('#count').textContent() === '2 results', `${layout}: new day is included and the day outside the rolling calendar window expires`);
     check((await page.locator('.date-toggle').first().textContent()).includes('Today'), 'newest group is labelled Today');
-    check(await page.locator('.date-group[data-date="2026-10-14"]').count() === 0, 'expired date is removed');
+    check(await page.locator('.date-group[data-date="2026-10-10"]').count() === 0, 'expired date is removed');
     await page.locator('.date-group[data-date="2026-10-17"] .date-toggle').click();
     await page.getByRole('checkbox', { name: 'Select all pages from Today', exact: true }).check();
     await page.evaluate(item => window.__visit(item), record('while-selecting', '17', '00:00:45'));
@@ -59,7 +60,7 @@ try {
     check(await page.locator('#query').inputValue() === 'draft-that-is-not-submitted' && await page.locator('#count').textContent() === '4 results', 'incoming visits do not submit an edited search');
     await page.locator('#query').fill(''); await page.waitForFunction(() => document.querySelector('#count').textContent === '5 results'); await ready(page);
     await page.locator('#filterToggle').click(); await page.locator('#timeRange').selectOption('custom');
-    await page.locator('#startDate').fill('2026-10-14'); await page.locator('#endDate').fill('2026-10-14'); await page.mouse.click(2, 2);
+    await page.locator('#startDate').fill('2026-10-10'); await page.locator('#endDate').fill('2026-10-10'); await page.mouse.click(2, 2);
     await page.locator('#search').click(); await ready(page);
     check(await page.locator('#count').textContent() === '1 results', 'explicit past range is honored');
     await page.evaluate(item => window.__visit(item), record('outside-explicit-range', '17', '00:00:55'));

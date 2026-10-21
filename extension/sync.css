@@ -1,0 +1,40 @@
+.sync-page { display: block; min-width: 0; height: auto; overflow: auto; background: var(--canvas); color: var(--ink); }
+.sync-page main { width: min(720px, calc(100% - 40px)); margin: 44px auto; }
+.sync-page header { display: flex; align-items: center; gap: 14px; margin-bottom: 32px; }
+.sync-page header img { width: 42px; height: 42px; }
+.sync-page h1 { font-size: 25px; margin: 0 0 5px; }
+.sync-page header p { margin: 0; }
+.sync-page section { padding: 24px; margin: 20px 0; border: 1px solid var(--line, #ddd); border-radius: 14px; background: var(--surface, #fff); }
+.sync-page h2 { font-size: 18px; margin: 0 0 12px; }
+.sync-page p { font-size: 13px; line-height: 1.7; color: var(--muted, #666); }
+.sync-page label { display: grid; gap: 7px; font-size: 13px; margin: 17px 0; }
+.sync-page input, .sync-page select { width: 100%; min-width: 0; padding: 10px 12px; height: auto; border: 1px solid var(--line, #ccc); border-radius: 8px; color: inherit; background: var(--surface, #fff); font: inherit; }
+.sync-page fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.sync-page fieldset[hidden] { display: none; }
+.sync-page .sync-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.sync-page button { min-height: 38px; padding: 9px 15px; }
+.sync-page button:not(.primary) { border: 1px solid var(--line); border-radius: 8px; background: var(--mist); color: var(--ink); }
+.sync-page button:not(.primary):not(:disabled):hover { background: var(--mist-strong); }
+.sync-page button:disabled { opacity: .45; }
+.sync-page .sync-file-field > label { margin-bottom: 8px; }
+.sync-page .sync-file-picker { position: relative; display: flex; align-items: center; gap: 14px; min-height: 84px; padding: 16px; border: 1px dashed var(--control-line); border-radius: 12px; background: var(--field); transition: border-color .15s, background .15s, box-shadow .15s; }
+.sync-page .sync-file-picker:not([data-disabled="true"]):hover { border-color: var(--ink); background: var(--mist); }
+.sync-page .sync-file-picker:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.sync-page .sync-file-picker[data-selected="true"] { border-style: solid; border-color: var(--line); background: var(--surface); }
+.sync-page .sync-file-icon { width: 28px; height: 28px; flex: 0 0 auto; color: var(--muted); }
+.sync-page .sync-file-copy { display: grid; gap: 5px; flex: 1; min-width: 0; }
+.sync-page .sync-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; }
+.sync-page .sync-file-hint { font-size: 11px; line-height: 1.5; color: var(--muted); }
+.sync-page .sync-file-action { flex: 0 0 auto; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; font-weight: 550; }
+.sync-page .sync-file-picker input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.sync-page .sync-file-picker[data-disabled="true"] { opacity: .5; }
+.sync-page .sync-file-picker input:disabled { cursor: not-allowed; }
+.sync-page .sync-note { border-left: 3px solid var(--line, #bbb); padding-left: 14px; }
+.sync-page #syncStatus { position: sticky; bottom: 12px; padding: 12px 16px; border: 1px solid var(--line, #ddd); border-radius: 10px; background: var(--surface, #fff); color: inherit; overflow-wrap: anywhere; }
+.sync-page #syncStatus:empty { display: none; }
+.sync-page #syncStatus[data-error="true"] { color: var(--danger, #b33939); }
+.sync-page #restoreSummary { white-space: pre-line; overflow-wrap: anywhere; }
+.sync-page dialog { max-width: min(480px, calc(100% - 32px)); }
+.sync-page dialog button { margin: 5px; }
+.sync-page :focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+@media (max-width: 480px) { .sync-page main { width: calc(100% - 24px); margin: 24px auto; } .sync-page section { padding: 18px; } }

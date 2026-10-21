@@ -1,6 +1,7 @@
 import { defaultTimeFilter, resolveTimeRange, parseProtectedSites, isProtectedUrl } from './history-filters.mjs';
 import { createLauncher } from './launcher.mjs';
 import { createActivityLog } from './activity-log.mjs';
+import { createUpdateChecker, isNewerVersion } from './update-check.mjs';
 
 const launcher = createLauncher(chrome);
 void launcher.register().catch(() => {});
@@ -8,6 +9,7 @@ void launcher.register().catch(() => {});
 const handoffs = new Map();
 const jobs = new Map();
 const activityLog = createActivityLog(chrome.storage.local);
+const checkForUpdate = createUpdateChecker(chrome);
 const modes = new Set(['smart', 'host-subdomains', 'host-exact', 'contains']);
 let policyQueue = Promise.resolve();
 let applyingUpdate = false;
@@ -24,8 +26,7 @@ async function readUpdateState() {
   const { extensionUpdate } = await chrome.storage.session.get('extensionUpdate');
   // Session metadata survives worker suspension, but must not advertise an already installed version.
   if (!extensionUpdate || extensionUpdate.installedVersion !== chrome.runtime.getManifest().version ||
-      typeof extensionUpdate.version !== 'string' || !/^\d+(?:\.\d+){0,3}$/.test(extensionUpdate.version) ||
-      extensionUpdate.version === extensionUpdate.installedVersion) return { update: null };
+      !isNewerVersion(extensionUpdate.version, extensionUpdate.installedVersion)) return { update: null };
   return { update: { version: extensionUpdate.version, busy: deletionRunning() } };
 }
 
@@ -34,11 +35,15 @@ async function publishUpdateState() {
   if (update) await chrome.storage.session.set({ extensionUpdate: { ...update, installedVersion: chrome.runtime.getManifest().version } });
 }
 
-chrome.runtime.onUpdateAvailable.addListener(({ version }) => {
-  if (typeof version !== 'string' || !/^\d+(?:\.\d+){0,3}$/.test(version)) return;
-  void withPolicyLock(() => chrome.storage.session.set({ extensionUpdate: {
+function recordAvailableUpdate(version) {
+  if (!isNewerVersion(version, chrome.runtime.getManifest().version)) return Promise.resolve();
+  return withPolicyLock(() => chrome.storage.session.set({ extensionUpdate: {
     version, installedVersion: chrome.runtime.getManifest().version, busy: deletionRunning(),
-  } })).catch(() => {});
+  } }));
+}
+
+chrome.runtime.onUpdateAvailable.addListener(({ version }) => {
+  void recordAvailableUpdate(version).catch(() => {});
 });
 
 async function readProtectedSites() {
@@ -66,8 +71,12 @@ function websiteHost(value) {
   throw new Error('CURRENT_SITE_UNAVAILABLE');
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(details => {
   chrome.contextMenus.create({ id: 'sweep-site', title: chrome.i18n.getMessage('sweepSite'), contexts: ['page'], documentUrlPatterns: ['http://*/*', 'https://*/*'] });
+  if (details?.reason === 'install') void withPolicyLock(async () => {
+    const { activityScrollHint } = await chrome.storage.local.get('activityScrollHint');
+    if (activityScrollHint === undefined) await chrome.storage.local.set({ activityScrollHint: { installedAt: Date.now(), lastShownOn: null } });
+  }).catch(() => {});
 });
 chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId !== 'sweep-site') return;
@@ -81,7 +90,7 @@ function trustedPage(sender) {
 }
 
 function snapshot(job) {
-  return { id: job.id, total: job.total, completed: job.completed, phase: job.phase, remaining: job.remaining };
+  return { id: job.id, total: job.total, completed: job.completed, phase: job.phase, remaining: job.remaining, privateCleanup: job.privateCleanup };
 }
 
 function ownerKey(message, sender) {
@@ -119,7 +128,7 @@ async function runDeletion(job, urls, details) {
     // Record the worker's verified result once, even if its initiating view has closed.
     // A local statistics failure must not turn a completed deletion into a failed deletion.
     const retained = new Set(remaining);
-    await activityLog.record(urls.length - remaining.length, urls.filter(url => !retained.has(url)).map(url => ({ url, ...details.get(url) }))).catch(() => {});
+    if (!job.privateCleanup) await activityLog.record(urls.length - remaining.length, urls.filter(url => !retained.has(url)).map(url => ({ url, ...details.get(url) }))).catch(() => {});
     job.phase = remaining.length ? 'partial' : 'done';
   } catch { job.phase = 'verifyFailed'; }
   finally {
@@ -132,6 +141,14 @@ async function runDeletion(job, urls, details) {
 async function handleMessage(message, sender, owner) {
   if (message.type === 'get-activity') return activityLog.read();
   if (message.type === 'get-update-state') return withPolicyLock(readUpdateState);
+  if (message.type === 'check-for-update') {
+    // Never hold the deletion policy lock while waiting for the website or Chrome's downloader.
+    if (!(await withPolicyLock(readUpdateState)).update) {
+      const version = await checkForUpdate();
+      if (version) await recordAvailableUpdate(version);
+    }
+    return withPolicyLock(readUpdateState);
+  }
   if (message.type === 'apply-update') return withPolicyLock(async () => {
     if (applyingUpdate) throw new Error('UPDATE_RELOADING');
     const { update } = await readUpdateState();
@@ -141,6 +158,20 @@ async function handleMessage(message, sender, owner) {
     applyingUpdate = true;
     try { chrome.runtime.reload(); } catch (error) { applyingUpdate = false; throw error; }
     return {};
+  });
+  if (message.type === 'claim-activity-scroll-hint') return withPolicyLock(async () => {
+    const { activityScrollHint: hint } = await chrome.storage.local.get('activityScrollHint');
+    // Older installations have no reliable install date; updates must not restart onboarding.
+    if (!hint || !Number.isFinite(hint.installedAt) || hint.installedAt <= 0 ||
+        (hint.lastShownOn !== null && (typeof hint.lastShownOn !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(hint.lastShownOn)))) return { show: false };
+    const now = new Date(), installed = new Date(hint.installedAt);
+    const day = date => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+    const elapsed = (day(now) - day(installed)) / 86400000;
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 3 || (hint.lastShownOn !== null && hint.lastShownOn >= today)) return { show: false };
+    // The worker serializes claims across popup, full-page and modal surfaces.
+    await chrome.storage.local.set({ activityScrollHint: { installedAt: hint.installedAt, lastShownOn: today } });
+    return { show: true };
   });
   if (message.type === 'get-launch-preference') return { launchMode: await launcher.getMode() };
   if (message.type === 'set-launch-preference') return { launchMode: await launcher.setMode(message.launchMode) };
@@ -182,8 +213,11 @@ async function handleMessage(message, sender, owner) {
       if (applyingUpdate) throw new Error('UPDATE_RELOADING');
       const sites = await readProtectedSites();
       if (message.urls.some(url => isProtectedUrl(url, sites))) throw new Error('PROTECTED_URL');
+      // Capture privacy before deletion; a failed read must not risk logging a private cleanup.
+      const { privateCleanup = false } = await chrome.storage.local.get('privateCleanup');
+      if (typeof privateCleanup !== 'boolean') throw new Error('INVALID_CLEANUP_PREFERENCE');
       // The worker owns the operation, independent of the popup/message channel.
-      const job = { id: crypto.randomUUID(), owner, total: new Set(message.urls).size, completed: 0, phase: 'deleting', remaining: [] };
+      const job = { id: crypto.randomUUID(), owner, total: new Set(message.urls).size, completed: 0, phase: 'deleting', remaining: [], privateCleanup };
       jobs.set(job.id, job);
       // Notify every view without making history deletion depend on update UI storage.
       await publishUpdateState().catch(() => {});

@@ -121,6 +121,8 @@ try {
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
     await page.clock.setFixedTime(new Date('2026-10-17T12:00:00+08:00'));
     await installMock(page, records);
+    // This scenario exercises nested date headings regardless of browsing defaults.
+    await page.addInitScript(() => localStorage.setItem('fixture-browsing-preferences', JSON.stringify({ view: 'date', range: 'all' })));
     if (surface.name === 'modal') await page.route('**/extension/manager.html', async route => {
       const response = await route.fetch();
       await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
@@ -130,6 +132,24 @@ try {
     const selected = await page.locator('#selected').textContent();
     const collapsedHeight = await page.locator('#resultScroll').evaluate(node => node.clientHeight);
     await openActivity(page);
+    const activityLayout = await page.evaluate(() => {
+      const bounds = selector => document.querySelector(selector).getBoundingClientRect();
+      const panel = bounds('.results-panel'), header = bounds('.results-header');
+      return {
+        headerContained: header.bottom <= panel.bottom + 1,
+        listHeight: bounds('#resultScroll').height,
+        footerBelowResults: bounds('.actionbar').top >= panel.bottom - 1,
+      };
+    });
+    check(activityLayout.headerContained, `${surface.name}: expanded activity keeps the entire selection header inside its result card`);
+    check(activityLayout.listHeight >= 170, `${surface.name}: expanded activity preserves usable history space`);
+    if (surface.name !== 'popup') check(activityLayout.footerBelowResults, `${surface.name}: expanded activity does not overlap the footer`);
+    await page.locator('#selectAll').evaluate(node => node.scrollIntoView({ block: 'center' }));
+    check(await page.locator('#selectAll').evaluate(node => {
+      const rect = node.getBoundingClientRect();
+      return node.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+    }), `${surface.name}: select all remains reachable and unobscured with activity open`);
+    await page.locator('.app-shell').evaluate(node => { node.scrollTop = 0; });
     await page.locator('.activity-chart-scroll').dispatchEvent('wheel', { deltaX: 80, deltaY: 1 });
     check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'true', `${surface.name}: horizontal wheel keeps activity open`);
     await touchMove(page, 80, 1);

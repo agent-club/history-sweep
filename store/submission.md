@@ -1,12 +1,34 @@
-# Chrome Web Store submission pack — v0.4.0
+# Chrome Web Store submission pack
+
+## Current submission — v0.5.0
+
+Prepare the existing store item for v0.5.0: frequency browsing and defaults from [#8](https://github.com/agent-club/history-sweep/issues/8), completed local improvements, and WebDAV configuration sync plus encrypted disk recovery from [#14](https://github.com/agent-club/history-sweep/issues/14), explicitly included by the user on October 22, 2026. See [the candidate copy, privacy fields and package status](v0.5.0-candidate.md).
+
+The user authorized Chrome Web Store publication, followed by Git commit and push. The user also authorized website and privacy-page deployment before submission. GitHub planning updates remain outside this task. Do not advance public version metadata to v0.5.0 before the version is publicly downloadable.
+
+The owner submitted the update on October 22, 2026. The existing item's Status page was directly verified as **Pending review** (“This draft is pending review.”). Website/privacy deployment, package upload, bilingual listing/privacy fields and screenshots are complete. Approval, publication mode and public v0.5.0 availability remain unverified. The exact package checksum and validation are recorded in the linked v0.5.0 materials.
+
+v0.4.0 is already published: [release checklist #6](https://github.com/agent-club/history-sweep/issues/6) records public release verification on October 20, 2026, confirmed again by the user and the developer dashboard on October 22. Exact submission, approval and publication timestamps are not inferred from the store’s updated date.
+
+## Historical v0.4.0 preparation
+
+The package sizes, checksums and checks below describe the October 18 preparation. They are retained as historical evidence and do not describe the v0.5.0 package.
 
 ## Release scope and deferred development
 
-[Issue #14](https://github.com/agent-club/history-sweep/issues/14) adds WebDAV settings, manual configuration transfer and encrypted disk recovery to the local development source. It remains unassigned and is **excluded from v0.4.0**. `npm run build` stages the release without changing that source: it excludes the five sync/configuration files and the Preferences link, removes `options_ui` and optional HTTPS host permissions, and restores `connect-src 'none'`. Reserved, unused translation strings remain in the package. See [the deferred configuration-sync requirement](https://github.com/agent-club/history-sweep/issues/14) for the development feature's data scope and persistence limits.
+[Issue #14](https://github.com/agent-club/history-sweep/issues/14) adds WebDAV settings, manual configuration transfer and encrypted disk recovery to the local development source. It remains unassigned and is **excluded from v0.4.0**. `npm run build` stages the release without changing that source: it excludes the five sync/configuration files and the Preferences link, removes `options_ui` and optional HTTPS host permissions, and sets `connect-src` to `none` in the archived v0.4.0 package. The current v0.5.0 build includes sync and optional HTTPS permissions instead. Reserved, unused translation strings remain in the package. See [configuration sync and disk recovery](../docs/config-sync.md) for the development feature's data scope and persistence limits.
 
-The v0.4.0 candidate includes the current activity panel and daily website summaries, single-row and batch deletion feedback, deletion-successor expansion, date/website grouping, recent-history refresh, and light/dark/automatic appearance. The default browse window remains the last three local calendar days. The planned frequency view, one-week default and website classification are excluded. The user authorized the v0.4.0 commit and push on 2026-10-18. The same authorization includes submission to the Chrome Web Store and deployment of the official website, not a GitHub Release.
+The v0.4.0 candidate includes the current activity panel and daily website summaries, single-row and batch deletion feedback, deletion-successor expansion, date/website grouping, recent-history refresh, and light/dark/automatic appearance. The default browse window remains the last three local calendar days. The planned frequency view, one-week default and website classification are excluded. The October 18 preparation recorded authorization for the v0.4.0 commit/push, Chrome Web Store submission and website deployment, excluding a GitHub Release. Current v0.5.0 authorization is stated above.
 
-Prepared locally on 2026-10-16; UI and package refreshed on 2026-10-17 and release archives/screenshots refreshed on 2026-10-18. This record describes the locally verified candidate. Store submission, approval, website deployment and public availability must be verified separately. The live store version was not rechecked; the repository baseline before this work was 0.3.2.
+Prepared locally on 2026-10-16; UI and package refreshed on 2026-10-17 and release archives/screenshots refreshed on 2026-10-18. The pending-submission status recorded during that preparation is superseded by the published-release verification above; it is not the current store state.
+
+## Official update channel — v0.5.0 preparation
+
+The store-installed extension checks `https://sweep.agentclub.dev/extension-updates.json` when a popup, workspace or modal opens, with a shared 15-minute cooldown and a five-second website timeout. A newer version hint invokes `chrome.runtime.requestUpdateCheck()`; only Chrome-confirmed downloaded versions enable the existing Update button. Deletion and verification in any open view block reload. Chrome throttling, offline failures and missing metadata leave history operations available. No downloaded script or ZIP is executed by the extension.
+
+`site/extension-updates.json` is deliberately independent of the development manifest and build version. Its value is `0.4.0`, matching the confirmed published release. The deployed endpoint was verified with public CORS and no-store caching on October 22, 2026. v0.5.0 publication is still separate from local packaging. After each new version is actually published and downloadable for the existing store item, update this file to that version and deploy the website through the separately authorized release process. Do not advance it on a local build or review submission. Preserve `site/_headers`: the endpoint needs public CORS and no-store caching so the extension can read it without new host permissions. Verify those response headers on the deployed endpoint.
+
+Reproduce update-specific checks with `node --test tests/update-check.test.mjs tests/background.test.mjs` and `node scripts/verify-updates.mjs`. The latter uses disposable Chrome profiles and synthetic metadata/store responses to verify opening, task guards, native CORS and the release CSP. It does not prove a signed store upgrade; verify that separately with a previous store-installed build after publishing. Existing installed versions need to receive this implementation through Chrome’s normal update cycle once before they can use the faster check.
 
 ## Package and validation
 
@@ -14,7 +36,7 @@ Prepared locally on 2026-10-16; UI and package refreshed on 2026-10-17 and relea
 - SHA-256: `f22d5226fc0e0d09294ac684a02d127b2268501d022aeabda886ed6fe8d3dfa8`.
 - Website candidate: `dist/history-sweep-site-0.4.0.zip` (11792100 bytes; 61 files), SHA-256 `0ee255791b6559a132ed5b7214148c6d1bdf9d2e1376ce5deafaf37582801cd2`.
 - Both ZIPs open successfully. The extension manifest is at the root, version 0.4.0, with exactly history, activeTab, scripting, contextMenus, storage and favicon permissions. No host permissions or configuration-sync entry are shipped.
-- `npm test`: 67 release-source unit tests passed on 2026-10-18 in a clean staged snapshot. The 8 configuration-sync development tests remain outside the release commit.
+- `npm test`: 75 source unit tests passed on 2026-10-18, including the deferred development feature's tests. This does not put that feature in the release.
 - `npm run test:packages`: 120 packaged-file comparisons passed, including the two documented manifest/view transformations. The `dist` ZIP, website download and extension ZIP nested in the website archive are byte-identical. The complete website tree includes the current homepage modules, styles, fonts and media.
 - Tests ran against the extracted release archives: 101 release assertions, 355 website assertions, 68 deletion-expansion assertions, native history/background deletion, real modal/popup/manager theme switching, persisted activity summaries after browser restart, 5 native row-animation assertions and 13 native batch-animation assertions passed. Browser profiles and browsing data were synthetic and isolated. Minimum Chrome 110 and other operating systems were not tested in this refresh.
 - Three 1280×800 RGB PNG store screenshots were refreshed from the actual release ZIP on 2026-10-18 and visually checked: English date view, Chinese website view, and English popup. They use 12 synthetic pages served entirely in memory and show an unselected exception. No existing browser profile or real browsing data was used.
@@ -62,7 +84,7 @@ Appearance switching corrected on 2026-10-17: the real modal entry was missing t
 
 ## Store state and remaining actions
 
-The existing item is `bbccfejdhhcjmpfagjckiikgllpojhgm`; update that item rather than creating another listing. Listing copy is in `listing-en.md` and `listing-zh-CN.md`. Initial recent-history browsing uses the existing history permission and remains local; website group icons use the new favicon permission and Chrome’s extension-origin favicon endpoint. There are no third-party icon requests or new data transmissions.
+The existing item is `bbccfejdhhcjmpfagjckiikgllpojhgm`; update that item rather than creating another listing. Listing copy is in `listing-en.md` and `listing-zh-CN.md`. Initial recent-history browsing uses the existing history permission and remains local; website group icons use the new favicon permission and Chrome’s extension-origin favicon endpoint. There are no third-party icon requests. Version metadata requests are described below.
 
 Before submitting, check the live dashboard version and current listing/privacy fields. The prepared package and field values are reviewable locally. Actual submission time, review result and publication time remain unset. Use deferred/manual publication for the agreed weekly release cadence; approval and timing must be observed in the dashboard.
 
@@ -71,6 +93,8 @@ Official guidance rechecked on 2026-10-16: [publishing and deferred publication]
 ---
 
 # Historical submission record — v0.3.2
+
+Historical reference only. Use [the v0.5.0 candidate materials](v0.5.0-candidate.md) for current copy, permissions and data practices.
 
 The following is the prior record, not the current v0.4.0 dashboard state.
 
@@ -109,7 +133,7 @@ Help users search, review, select, and delete their Chrome browsing history in b
 History Sweep uses chrome.history.search to provide local search suggestions and display history matching the user's query, chrome.history.deleteUrl to remove only URLs explicitly selected and confirmed by the user, and chrome.history.getVisits in its service worker to verify deletion. The worker continues confirmed operations when the popup closes; it does not recover tasks after Chrome exits. Processing happens locally. Browsing history is not transmitted to the developer or any third party.
 
 ## Remote code justification
-No remotely hosted code. JavaScript, styles, translations, and icons are included in the extension package. The extension has no persistent host permissions, no analytics, and a connect-src 'none' policy.
+No remotely hosted code. JavaScript, styles, translations, and icons are included in the extension package. The extension has no persistent host permissions, no analytics, and a connect-src policy limited to https://sweep.agentclub.dev. That origin serves only JSON version metadata to this feature; all update code is downloaded and installed by Chrome from the Chrome Web Store.
 
 ## Additional permission justifications (paste-ready)
 - activeTab: Provides temporary access after the user invokes the extension, to read the current website URL for an exact-host search or display the user-selected in-page modal. No page content is collected.
@@ -121,7 +145,7 @@ No remotely hosted code. JavaScript, styles, translations, and icons are include
 - Accessed locally: browsing history URLs, titles, visit counts, last visit times, and the URL of the website for a user-invoked website search.
 - Local memory: current search results, local Worker suggestion indexes and selections, one-time search handoffs, and confirmed deletion queues. Completed queue results are released by the page or discarded within 60 seconds; worker termination discards them sooner. These queues do not persist complete URLs.
 - Persisted locally: language preference (localStorage), user-entered kept-domain rules, the opening preference, verified daily cleanup counts, and one hostname/latest-title/last-visit summary per website/day (chrome.storage.local). Complete deleted URLs are not saved. Search terms and date filters are not included in workspace URLs.
-- Transmitted by extension: none.
+- Update requests: the store-installed extension makes a cookieless, referrer-free GET to https://sweep.agentclub.dev/extension-updates.json when opened, at most once per 15 minutes. No history, search terms or configuration is sent. Standard connection metadata reaches the website host. Newer hints trigger Chrome’s official update check; unpacked, forked and managed installations skip this check.
 - Sale, advertising, profiling, credit decisions: none.
 - Passwords, cookies, authentication information, payments, page contents: not accessed.
 - Website: no added analytics or third-party resources. Hosted by Cloudflare; the privacy page links to Cloudflare's privacy policy and describes standard request processing.

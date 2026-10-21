@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createLauncher } from '../extension/launcher.mjs';
+
+test('manifest command suggestions cover every Chrome desktop platform', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../extension/manifest.json', import.meta.url), 'utf8'));
+  for (const [name, command] of Object.entries(manifest.commands)) {
+    const keys = command.suggested_key;
+    if (!keys || typeof keys === 'string') continue;
+    // Chromium rejects absent platform fallbacks and empty dictionary values.
+    for (const value of Object.values(keys)) assert.ok(typeof value === 'string' && value.length > 0);
+    for (const platform of ['windows', 'mac', 'linux', 'chromeos']) {
+      assert.equal(typeof (keys[platform] ?? keys.default), 'string', `${name}: ${platform} needs a suggestion or fallback`);
+    }
+  }
+  assert.equal(manifest.commands._execute_action.suggested_key.linux ?? manifest.commands._execute_action.suggested_key.default, 'Alt+H');
+});
 
 function event() {
   const listeners = [];
@@ -47,10 +62,10 @@ function fixture({ storedMode, scriptResult = { opened: true }, scriptError, loc
 
 const idle = () => new Promise(resolve => setImmediate(resolve));
 
-test('saved preference selects popup, modal or fullpage and invalid values use popup', async () => {
+test('saved preference selects popup, modal or fullpage and missing or invalid values use modal', async () => {
   for (const [storedMode, expected, popup] of [
     ['popup', 'popup', 'popup.html'], ['modal', 'modal', ''], ['fullpage', 'fullpage', ''],
-    ['invalid', 'popup', 'popup.html'],
+    [undefined, 'modal', ''], [null, 'modal', ''], ['invalid', 'modal', ''],
   ]) {
     const f = fixture({ storedMode });
     const launcher = f.make();
@@ -124,11 +139,10 @@ test('setMode persists only launchMode and toolbar action routes to full page', 
   assert.match(f.calls.opened[0], /manager\.html$/);
 });
 
-test('modal launch injects into the active tab and falls back when injection is rejected', async () => {
+test('default modal launch injects into the active tab and falls back when injection is rejected', async () => {
   const f = fixture();
   const launcher = f.make();
   await launcher.register();
-  await launcher.setMode('modal');
   f.chromeApi.action.onClicked.fire({ id: 7, url: 'https://example.test/page' });
   await idle();
   assert.equal(f.calls.scripts[0].target.tabId, 7);
@@ -139,7 +153,6 @@ test('modal launch injects into the active tab and falls back when injection is 
   const blocked = fixture({ scriptError: new Error('restricted') });
   const other = blocked.make();
   await other.register();
-  await other.setMode('modal');
   blocked.chromeApi.action.onClicked.fire({ id: 8, url: 'https://example.test/page' });
   await idle();
   assert.match(blocked.calls.opened[0], /manager\.html#modalUnavailable$/);

@@ -6,14 +6,15 @@ import { randomUUID } from 'node:crypto';
 import * as filters from '../extension/history-filters.mjs';
 import { createLauncher } from '../extension/launcher.mjs';
 import { createActivityLog } from '../extension/activity-log.mjs';
+import { createUpdateChecker, isNewerVersion } from '../extension/update-check.mjs';
 
 const source = (await readFile(new URL('../extension/background.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '');
 const sender = { id: 'fixture', frameId: 0, documentId: 'popup-document', url: 'chrome-extension://fixture/popup.html' };
-function worker(history, sessions = {}, currentVersion = '0.3.1') {
+function worker(history, sessions = {}, currentVersion = '0.3.1', updateOptions = {}) {
   let listener;
   const opened = [];
   const timers = [];
-  const saved = {};
+  const saved = updateOptions.localState || {};
   const menus = [];
   const installed = [];
   let menuClicked, actionClicked;
@@ -23,6 +24,7 @@ function worker(history, sessions = {}, currentVersion = '0.3.1') {
   let updateAvailable;
   let reloads = 0;
   const chrome = {
+    management: { getSelf: async () => ({ id: 'fixture', installType: 'development' }) },
     history, tabs: { create: async ({ url }) => { opened.push(url); }, query: async () => [{ url: activeUrl }], onRemoved: { addListener() {} } },
     action: { setPopup: async data => { popups.push(data.popup); }, onClicked: { addListener: callback => { actionClicked = callback; } } },
     scripting: { executeScript: async data => { injected.push(data); return [{ result: { opened: true } }]; } },
@@ -35,9 +37,9 @@ function worker(history, sessions = {}, currentVersion = '0.3.1') {
     contextMenus: { create: menu => { menus.push(menu); }, onClicked: { addListener: callback => { menuClicked = callback; } } },
     runtime: { id: 'fixture', getManifest: () => ({ version: currentVersion }), reload: () => { reloads++; }, onUpdateAvailable: { addListener: callback => { updateAvailable = callback; } }, getURL: path => 'chrome-extension://fixture/' + path, onMessage: { addListener: value => { listener = value; } }, onInstalled: { addListener: callback => { installed.push(callback); } }, onStartup: { addListener() {} } },
   };
-  runInNewContext(source, { ...filters, createLauncher, createActivityLog, chrome, URL, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date });
+  runInNewContext(source, { ...filters, createLauncher, createActivityLog, createUpdateChecker: api => createUpdateChecker({ ...api, ...updateOptions }, { fetchVersion: updateOptions.fetchVersion }), isNewerVersion, chrome, URL, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date: updateOptions.Date || Date });
   return {
-    opened, timers, saved, menus, injected, popups, sessions, updateAvailable: details => updateAvailable(details), get reloads() { return reloads; }, clickAction: tab => actionClicked(tab), install: () => installed.forEach(callback => callback()), clickMenu: info => menuClicked(info), setActiveUrl: url => { activeUrl = url; },
+    opened, timers, saved, menus, injected, popups, sessions, updateAvailable: details => updateAvailable(details), get reloads() { return reloads; }, clickAction: tab => actionClicked(tab), install: (reason = 'install') => installed.forEach(callback => callback({ reason })), clickMenu: info => menuClicked(info), setActiveUrl: url => { activeUrl = url; },
     send: (message, from = sender) => new Promise(resolve => {
       if (!listener(message, from, resolve)) resolve({ ok: false });
     }),
@@ -62,6 +64,36 @@ test('activity counts one verified task, excludes failed URLs, and status pollin
   assert.equal(Object.values(log.days)[0].pages, 1);
   assert.equal(JSON.stringify(w.saved).includes('https:'), false);
   assert.equal((await w.send({ type: 'get-activity' }, { ...sender, url: 'https://example.test/' })).ok, false);
+});
+
+test('private cleanup skips all activity writes, preserves old records, and can be disabled', async () => {
+  for (const existing of [false, true]) {
+    const w = worker({ deleteUrl: async () => {}, getVisits: async ({ url }) => url.endsWith('/keep') ? [{}] : [] });
+    w.saved.privateCleanup = true;
+    if (existing) w.saved.localActivity = { version: 1, startedOn: '2026-01-01', days: { '2026-01-01': { operations: 2, pages: 5 } } };
+    const before = structuredClone(w.saved);
+    const started = await w.send({ type: 'start-delete', urls: ['https://example.test/a', 'https://example.test/keep'], details: [{ url: 'https://example.test/a', title: 'Private page', lastVisitTime: 12345 }] });
+    assert.equal(started.data.privateCleanup, true);
+    // Changing preferences while running does not change this task's privacy policy.
+    w.saved.privateCleanup = false;
+    const result = await finished(w, started.data.id);
+    assert.equal(result.phase, 'partial');
+    assert.equal(result.privateCleanup, true);
+    assert.deepEqual(w.saved, { ...before, privateCleanup: false });
+    const next = await w.send({ type: 'start-delete', urls: ['https://example.test/b'] });
+    assert.equal((await finished(w, next.data.id)).privateCleanup, false);
+    assert.equal(Object.values(w.saved.localActivity.days).reduce((sum, day) => sum + day.operations, 0), existing ? 3 : 1);
+    assert.doesNotMatch(JSON.stringify(w.saved), /Private page|12345/);
+  }
+});
+
+test('an invalid privacy setting blocks cleanup before any history is deleted', async () => {
+  let deleted = 0;
+  const w = worker({ deleteUrl: async () => { deleted++; }, getVisits: async () => [] });
+  w.saved.privateCleanup = 'true';
+  const result = await w.send({ type: 'start-delete', urls: ['https://example.test/a'] });
+  assert.equal(result.ok, false);
+  assert.equal(deleted, 0);
 });
 
 test('unverified deletions never become confirmed removed-page statistics', async () => {
@@ -100,6 +132,43 @@ test('Chrome update metadata survives worker suspension and is ignored after ins
   const upgraded = worker({}, w.sessions, '0.3.2');
   assert.equal((await upgraded.send({ type: 'get-update-state' })).data.update, null);
   assert.equal((await upgraded.send({ type: 'apply-update' })).code, 'UPDATE_UNAVAILABLE');
+  assert.deepEqual(w.saved, {});
+});
+
+test('an opening update check never holds up deletion or permits reload during verification', async () => {
+  let finishFetch, finishDelete, finishVerify;
+  const fetching = new Promise(resolve => { finishFetch = resolve; });
+  const deleting = new Promise(resolve => { finishDelete = resolve; });
+  const verifying = new Promise(resolve => { finishVerify = resolve; });
+  const w = worker({ deleteUrl: () => deleting, getVisits: () => verifying }, {}, '0.3.1', {
+    management: { getSelf: async () => ({ id: 'bbccfejdhhcjmpfagjckiikgllpojhgm', installType: 'normal', updateUrl: 'https://clients2.google.com/service/update2/crx' }) },
+    runtime: { getManifest: () => ({ version: '0.3.1' }), requestUpdateCheck: async () => ({ status: 'update_available', version: '0.3.2' }) },
+    fetchVersion: () => fetching,
+  });
+  assert.equal((await w.send({ type: 'check-for-update' }, { ...sender, url: 'https://untrusted.test/' })).ok, false);
+  const checking = w.send({ type: 'check-for-update' });
+  const started = await w.send({ type: 'start-delete', urls: ['https://example.test/remove'] });
+  assert.equal(started.ok, true);
+  assert.equal((await w.send({ type: 'get-update-state' })).data.update, null);
+  finishFetch({ ok: true, json: async () => ({ extensionId: 'bbccfejdhhcjmpfagjckiikgllpojhgm', version: '0.3.2' }) });
+  const { update } = (await checking).data;
+  assert.equal(update.version, '0.3.2'); assert.equal(update.busy, true);
+  assert.equal((await w.send({ type: 'apply-update' })).code, 'UPDATE_BUSY');
+  finishDelete(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal((await w.send({ type: 'delete-status', id: started.data.id })).data.phase, 'verifying');
+  assert.equal((await w.send({ type: 'apply-update' })).code, 'UPDATE_BUSY');
+  assert.equal(w.reloads, 0);
+  finishVerify([]); await finished(w, started.data.id);
+  assert.equal((await w.send({ type: 'apply-update' })).ok, true);
+  assert.equal(w.reloads, 1);
+});
+
+test('a downloaded update skips further network checks and invalid update events stay hidden', async () => {
+  const w = worker({});
+  for (const version of ['0.3.0', '0.3.1.0', 'invalid']) w.updateAvailable({ version });
+  assert.equal((await w.send({ type: 'get-update-state' })).data.update, null);
+  w.updateAvailable({ version: '0.3.2' });
+  assert.equal((await w.send({ type: 'check-for-update' })).data.update.version, '0.3.2');
   assert.deepEqual(w.saved, {});
 });
 
@@ -143,7 +212,7 @@ test('a queued deletion is checked before update reload and untrusted pages cann
 test('launch preferences persist and only a claimed modal document may use history operations', async () => {
   const removed = [];
   const w = worker({ deleteUrl: async ({ url }) => { removed.push(url); }, getVisits: async () => [] });
-  assert.equal((await w.send({ type: 'get-launch-preference' })).data.launchMode, 'popup');
+  assert.equal((await w.send({ type: 'get-launch-preference' })).data.launchMode, 'modal');
   assert.equal((await w.send({ type: 'set-launch-preference', launchMode: 'modal' })).data.launchMode, 'modal');
   assert.equal(w.saved.launchMode, 'modal');
   assert.equal(w.popups.at(-1), '');
@@ -319,4 +388,69 @@ test('a 100,000-URL job completes without deleting an unselected URL', async () 
   assert.equal(result.phase, 'done');
   assert.equal(result.completed, 100000);
   assert.deepEqual([...remaining], ['https://example.test/keep']);
+});
+
+function hintWorker(initial, localState = {}) {
+  let now = initial.getTime();
+  class HintDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
+  return { ...worker({}, {}, '0.4.0', { Date: HintDate, localState }), setTime: date => { now = date.getTime(); } };
+}
+
+test('analytics hint is available once on each of the first three local calendar days, including across DST', async () => {
+  const installed = new Date(2026, 2, 7, 23, 59);
+  const w = hintWorker(installed);
+  w.install();
+  const claim = async () => (await w.send({ type: 'claim-activity-scroll-hint' })).data.show;
+  assert.equal(await claim(), true);
+  assert.equal(w.saved.activityScrollHint.installedAt, installed.getTime());
+  assert.equal(await claim(), false);
+  w.install('update');
+  assert.equal(await claim(), false, 'updating must not reset today or installation date');
+  w.setTime(new Date(2026, 2, 8, 0, 1));
+  assert.equal(await claim(), true, 'a local midnight begins day two, even minutes after installation');
+  assert.equal(await claim(), false);
+  w.setTime(new Date(2026, 2, 9, 0, 1));
+  assert.equal(await claim(), true);
+  w.setTime(new Date(2026, 2, 10, 0, 1));
+  assert.equal(await claim(), false, 'day four is outside the window even before 72 hours have elapsed');
+  w.install('update');
+  assert.equal(await claim(), false);
+  assert.equal(w.saved.activityScrollHint.installedAt, installed.getTime());
+});
+
+test('analytics hint claims are serialized across views and survive worker restarts', async () => {
+  const localState = {};
+  const day = new Date(2026, 9, 22, 12);
+  const w = hintWorker(day, localState);
+  w.install();
+  const claims = await Promise.all([w.send({ type: 'claim-activity-scroll-hint' }), w.send({ type: 'claim-activity-scroll-hint' }, { ...sender, documentId: 'manager', url: 'chrome-extension://fixture/manager.html' }), w.send({ type: 'claim-activity-scroll-hint' }, { ...sender, documentId: 'another-popup' })]);
+  assert.equal(claims.filter(result => result.data.show).length, 1);
+  const restarted = hintWorker(day, localState);
+  assert.equal((await restarted.send({ type: 'claim-activity-scroll-hint' })).data.show, false);
+  restarted.setTime(new Date(2026, 9, 24, 12));
+  assert.equal((await restarted.send({ type: 'claim-activity-scroll-hint' })).data.show, true);
+  restarted.setTime(new Date(2026, 9, 23, 12));
+  assert.equal((await restarted.send({ type: 'claim-activity-scroll-hint' })).data.show, false, 'clock rollback does not repeat an earlier day');
+  restarted.setTime(new Date(2026, 9, 25, 12));
+  assert.equal((await restarted.send({ type: 'claim-activity-scroll-hint' })).data.show, false, 'a skipped day does not extend onboarding');
+});
+
+test('analytics hints do not invent install dates for existing users and require a persisted daily claim', async () => {
+  const date = new Date(2026, 9, 22, 12);
+  const old = hintWorker(date);
+  old.install('update');
+  assert.equal((await old.send({ type: 'claim-activity-scroll-hint' })).data.show, false);
+  assert.equal(old.saved.activityScrollHint, undefined);
+  const state = { installedAt: date.getTime(), lastShownOn: null };
+  const localState = {};
+  Object.defineProperty(localState, 'activityScrollHint', { value: state, writable: false, enumerable: true, configurable: true });
+  const w = hintWorker(date, localState);
+  assert.equal((await w.send({ type: 'claim-activity-scroll-hint' })).ok, false);
+  assert.equal(state.lastShownOn, null);
+  Object.defineProperty(localState, 'activityScrollHint', { value: state, writable: true, enumerable: true, configurable: true });
+  assert.equal((await w.send({ type: 'claim-activity-scroll-hint' })).data.show, true);
+  assert.equal((await w.send({ type: 'claim-activity-scroll-hint' }, { ...sender, url: 'https://example.test/' })).ok, false);
 });

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 const backgroundSource = (await readFile(new URL('../extension/background.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '');
+const updateCheckSource = (await readFile(new URL('../extension/update-check.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
 const activityLogSource = (await readFile(new URL('../extension/activity-log.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
 const filterSource = (await readFile(new URL('../extension/history-filters.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
 const launcherSource = (await readFile(new URL('../extension/launcher.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '').replace(/\bexport /g, '');
@@ -21,10 +22,21 @@ export async function installMock(page, records = demoHistory) {
     window.addEventListener('storage', event => { if (event.key === 'fixture-kept-sites') changed({ protectedSites: {} }); });
     window.chrome = {
       history: {
-        search: async ({maxResults, startTime, endTime}) => { if(window.__failSearch) throw new Error('fixture'); return [...history.values()].filter(item => (startTime === 0 || item.lastVisitTime >= startTime) && (endTime === undefined || item.lastVisitTime <= endTime)).slice(0,maxResults); },
+        search: async ({maxResults, startTime, endTime}) => {
+          if(window.__failSearch) throw new Error('fixture');
+          return [...history.values()].filter(item => item.visits
+            ? item.visits.some(visit => visit.visitTime >= startTime && (endTime === undefined || visit.visitTime <= endTime))
+            : (startTime === 0 || item.lastVisitTime >= startTime) && (endTime === undefined || item.lastVisitTime <= endTime)).slice(0,maxResults);
+        },
         deleteUrl: async ({url}) => { if(window.__failDelete === url) throw new Error('fixture'); window.__deleted.push(url); history.delete(url); },
-        getVisits: async ({url}) => { if(window.__failVerify) throw new Error('fixture'); return history.has(url)?[{visitId:'1'}]:[]; },
+        getVisits: async ({url}) => {
+          if(window.__failVerify || window.__failVisits === url) throw new Error('fixture');
+          const item = history.get(url);
+          if (!item) return [];
+          return item.visits || Array.from({ length: item.visitCount || 1 }, (_, index) => ({ visitId: String(index), visitTime: item.lastVisitTime - index }));
+        },
       },
+      management: { getSelf: async () => ({ id: 'illustrative', installType: 'development' }) },
       runtime: {
         id: 'illustrative', getURL: (path) => 'chrome-extension://illustrative/' + path,
         getManifest: () => ({ version: '0.3.1' }),
@@ -54,18 +66,24 @@ export async function installMock(page, records = demoHistory) {
       storage: {
         local: {
           get: async key => {
+            if (key === 'activityScrollHint') { const value = localStorage.getItem('fixture-activity-scroll-hint'); return value === null ? {} : { activityScrollHint: JSON.parse(value) }; }
             if (key === 'localActivity') {
               if (window.__failActivityRead) throw new Error('fixture');
               const value = localStorage.getItem('fixture-activity'); return value === null ? {} : { localActivity: JSON.parse(value) };
             }
+            if (key === 'browsingPreferences') { const value = localStorage.getItem('fixture-browsing-preferences'); return value === null ? {} : { browsingPreferences: JSON.parse(value) }; }
+            if (key === 'privateCleanup') { if (window.__failPrivacyRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-private-cleanup'); return value === null ? {} : { privateCleanup: JSON.parse(value) }; }
             if (key === 'launchMode') { const launchMode = localStorage.getItem('fixture-launch-mode'); return launchMode === null ? {} : { launchMode }; }
             if (window.__failRulesRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-kept-sites'); return value === null ? {} : { protectedSites: JSON.parse(value) };
           },
           set: async data => {
+            if (Object.hasOwn(data, 'activityScrollHint')) { localStorage.setItem('fixture-activity-scroll-hint', JSON.stringify(data.activityScrollHint)); changed({ activityScrollHint: { newValue: data.activityScrollHint } }); }
             if (Object.hasOwn(data, 'localActivity')) {
               if (window.__failActivitySave) throw new Error('fixture');
               localStorage.setItem('fixture-activity', JSON.stringify(data.localActivity)); changed({ localActivity: { newValue: data.localActivity } });
             }
+            if (Object.hasOwn(data, 'browsingPreferences')) { if (window.__failBrowsingSave) throw new Error('fixture'); localStorage.setItem('fixture-browsing-preferences', JSON.stringify(data.browsingPreferences)); changed({ browsingPreferences: { newValue: data.browsingPreferences } }); }
+            if (Object.hasOwn(data, 'privateCleanup')) { if (window.__failPrivacySave) throw new Error('fixture'); localStorage.setItem('fixture-private-cleanup', JSON.stringify(data.privateCleanup)); changed({ privateCleanup: { newValue: data.privateCleanup } }); }
             if (Object.hasOwn(data, 'launchMode')) { localStorage.setItem('fixture-launch-mode', data.launchMode); changed({ launchMode: { newValue: data.launchMode } }); }
             if (Object.hasOwn(data, 'protectedSites')) {
               if (window.__failRulesSave) throw new Error('fixture'); localStorage.setItem('fixture-kept-sites', JSON.stringify(data.protectedSites)); changed({ protectedSites: { newValue: data.protectedSites } });
@@ -81,5 +99,5 @@ export async function installMock(page, records = demoHistory) {
     };
   }, records);
   // Exercise the production message handler rather than a second implementation.
-  await page.addInitScript(modalHostSource + '\n' + launcherSource + '\n' + filterSource + '\n' + activityLogSource + '\n' + backgroundSource);
+  await page.addInitScript(modalHostSource + '\n' + launcherSource + '\n' + filterSource + '\n' + activityLogSource + '\n' + updateCheckSource + '\n' + backgroundSource);
 }

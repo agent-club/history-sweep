@@ -47,6 +47,7 @@ try {
     });
     await page.goto(`${origin}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`); await ready(page);
     await page.locator('#toggleActivity').click();
+    await page.locator('[data-activity-mode=cleanup]').click();
     await page.waitForFunction(() => document.querySelectorAll('.activity-site img:not([hidden])').length === 40);
     check(await page.locator('.activity-day[aria-pressed=true]').count() === 1, `${layout}: opening activity selects exactly one available date`);
     check(await page.locator('.activity-day[data-today=true]').evaluate(node => getComputedStyle(node).outlineStyle === 'none'), `${layout}: today uses the normal idle appearance`);

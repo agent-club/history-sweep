@@ -6,9 +6,7 @@ try {
   const response = await chrome.runtime.sendMessage({ type: 'claim-modal', token });
   if (!response?.ok) throw new Error('Invalid modal launch');
   // Never initialize history access in an iframe that was embedded by an unrelated page.
-  await import('./theme.js');
   await import('./app.mjs');
-  document.getElementById('query').focus();
   document.addEventListener('keydown', event => {
     const selectOpen = CSS.supports('selector(select:open)') && document.querySelector('select:open');
     if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented || document.querySelector('dialog[open]') || selectOpen || document.getElementById('suggestionsPanel')?.dataset.open === 'true') return;
@@ -20,4 +18,5 @@ try {
   const message = document.createElement('p'); message.className = 'modal-unavailable';
   message.textContent = translate(readLanguage(), 'modalLaunchFailed');
   document.getElementById('app').replaceChildren(message);
+  document.dispatchEvent(new Event('history-sweep:startup-ready'));
 }

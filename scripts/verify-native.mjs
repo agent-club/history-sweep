@@ -66,6 +66,7 @@ try {
   const backgroundVisit = `${origin}/site/?background-test`;
   await page.goto(backgroundVisit);
   await page.goto(`chrome-extension://${id}/popup.html`);
+  await page.getByRole('combobox', { name: 'Find in your history', exact: true }).waitFor({ state: 'visible' });
   assert.equal(await page.getByRole('combobox', { name: 'Find in your history', exact: true }).count(), 1);
   await page.locator('#query').fill('127.0.0.1');
   await page.locator('#mode').selectOption('host-exact');

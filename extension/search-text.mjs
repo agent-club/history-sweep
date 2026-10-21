@@ -15,14 +15,18 @@ export function searchWords(text) {
 }
 
 export function highlightRanges(text, query) {
+  const terms = normalizeSearchText(query).split(/[\s,，;；]+/).filter(Boolean);
+  if (!terms.length) return [];
   // Keep offsets in the original text: case folding and compatibility characters can change length.
-  const normalized = normalizeSearchText(text); const offsets = [];
+  const normalized = normalizeSearchText(text);
+  if (!terms.some(term => normalized.includes(term))) return [];
+  const offsets = [];
   for (const { segment, index } of graphemes.segment(text)) {
     const folded = normalizeSearchText(segment);
     for (let i = 0; i < folded.length; i++) offsets.push([index, index + segment.length]);
   }
   const ranges = [];
-  for (const term of normalizeSearchText(query).split(/[\s,，;；]+/).filter(Boolean)) {
+  for (const term of terms) {
     let start = normalized.indexOf(term);
     while (start !== -1) {
       ranges.push([offsets[start][0], offsets[start + term.length - 1][1]]);

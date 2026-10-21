@@ -38,8 +38,11 @@ try {
     }, log);
     await page.goto(`http://127.0.0.1:${server.address().port}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`);
     await page.waitForFunction(() => document.querySelector('#search') && !document.querySelector('#search').disabled);
-    await page.evaluate(() => { window.__holdActivity = true; });
+    await page.evaluate(() => { window.__holdActivity = true; window.__holdBrowsing = true; });
     await page.locator('#toggleActivity').click();
+    await page.waitForFunction(() => window.__releaseBrowsing);
+    await page.locator('[data-activity-mode=cleanup]').click();
+    await page.evaluate(() => { window.__holdBrowsing = false; window.__releaseBrowsing(); window.__releaseBrowsing = null; });
     await page.waitForFunction(() => window.__releaseActivity);
     check(await page.locator('#activityContent').isVisible(), `${layout}: slow reads render content placeholders immediately`);
     check(await page.locator('#activityPanel').getAttribute('data-loading') === 'true', `${layout}: skeleton is identified as loading`);

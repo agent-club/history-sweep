@@ -21,8 +21,13 @@ export function injectModal(modalUrl) {
   sheet.replaceSync(`
     dialog { box-sizing: border-box; width: min(960px, calc(100vw - 40px)); height: min(760px, calc(100vh - 40px)); max-width: none; max-height: none; padding: 0; border: 1px solid #ffffff90; border-radius: 24px; background: #f2f2f2; box-shadow: 0 24px 100px #00000040; overflow: hidden; }
     dialog::backdrop { background: #18181870; backdrop-filter: blur(5px); }
+    /* Wait for the extension's saved theme before exposing the iframe surface. */
+    dialog { opacity: 0; transition: opacity 160ms ease; }
+    dialog[data-theme] { opacity: 1; }
+    @media (prefers-reduced-motion: reduce) { dialog { transition: none; } }
     iframe { display: block; width: 100%; height: 100%; border: 0; background: #f2f2f2; }
     button { position: absolute; top: 16px; right: 16px; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 9px; background: #e7e7e7; color: #333; cursor: pointer; font: 22px/1 -apple-system, sans-serif; }
+    button[hidden] { display: none; }
     button:hover { background: #dadada; }
     dialog[data-theme=dark] { background: #161616; border-color: #424242; }
     dialog[data-theme=dark] iframe { background: #161616; }
@@ -54,6 +59,7 @@ export function injectModal(modalUrl) {
     if (event.source !== frame.contentWindow || event.origin !== frameOrigin) return;
     if (event.data?.type === 'history-sweep:theme' && ['light', 'dark'].includes(event.data.theme)) dialog.dataset.theme = event.data.theme;
     if (event.data?.type === 'history-sweep:close-modal') close();
+    if (event.data?.type === 'history-sweep:preferences' && typeof event.data.open === 'boolean') closeButton.hidden = event.data.open;
     if (event.data?.type === 'history-sweep:layer-dismissed' && event.data.requestId === pendingDismiss && typeof event.data.handled === 'boolean') {
       pendingDismiss = null;
       if (!event.data.handled) close();
@@ -92,6 +98,9 @@ export function injectModal(modalUrl) {
   };
   // Events inside the iframe stay there; only host/backdrop gestures reach these listeners.
   for (const type of ['wheel', 'touchmove']) document.addEventListener(type, blockBackgroundScroll, { capture: true, passive: false, signal: scrollEvents.signal });
-  frame.addEventListener('load', () => frame.focus(), { once: true });
+  frame.addEventListener('load', () => {
+    if (!dialog.dataset.theme) dialog.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    frame.focus();
+  }, { once: true });
   return { opened: true };
 }

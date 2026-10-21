@@ -32,6 +32,7 @@ try {
   await page.goto(removedUrl);
   await page.goto(keptUrl);
   await page.goto(`chrome-extension://${id}/manager.html`);
+  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'set-launch-preference', launchMode: 'popup' }));
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'delete-status', id: 'missing-test-job' }));
   const worker = context.serviceWorkers().find(item => item.url().endsWith('/background.mjs'));
   await worker.evaluate(() => {

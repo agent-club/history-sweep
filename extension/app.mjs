@@ -1,6 +1,7 @@
-import { filterHistoryItems, sortByLastVisit, MAX_HISTORY_RESULTS, parseHostnames } from './history-utils.mjs';
+import { createHistoryMatcher, filterHistoryItems, sortByLastVisit, MAX_HISTORY_RESULTS, parseHostnames } from './history-utils.mjs';
 import { readLanguage, saveLanguage, translate } from './i18n.mjs';
 import { view } from './view.mjs';
+import { setupSettingsSelects } from './settings-select.mjs';
 import { groupHistoryItems, groupHistoryByDate } from './history-groups.mjs';
 import { setupSuggestions, appendHighlighted } from './suggestions-ui.mjs';
 import { defaultTimeFilter, resolveTimeRange, filterByTime, parseProtectedSites, isProtectedUrl } from './history-filters.mjs';
@@ -8,26 +9,37 @@ import { setupDatePicker } from './date-picker.mjs';
 import { createActivityPanel } from './activity-panel.mjs';
 import { animateRowRemoval } from './row-removal.mjs';
 import { animateBatchRemoval } from './batch-removal.mjs';
+import { readFrequencyHistory } from './history-frequency.mjs';
+import { browsingDefaults, readBrowsingPreferences, saveBrowsingPreferences } from './browsing-preferences.mjs';
 
 const compact = document.body.dataset.layout === 'popup';
 const modal = document.body.dataset.presentation === 'modal';
 const clientId = crypto.randomUUID();
 const pageSize = compact ? 40 : 100;
-const groupPreviewSize = 3;
+const groupPreviewSize = 5;
 let suggestions;
 let datePicker;
+let settingsSelects;
 let layerEvents;
 let queryPlaceholder;
 let searchMotion;
+let backToTop;
 let historyChanged = false;
 let historyRefreshTimer;
+let historyRefreshing = false;
+let historyDay;
 let completionTimer;
 let savingPreference = false;
+let defaultBrowsing = browsingDefaults();
 let updateState = null;
 let dismissedUpdate = null;
 let updateApplying = false;
 let updateError = false;
 let updateRequest = 0;
+let groupRender;
+let rowRender;
+let rowFormats;
+let mountFrame;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function dismissCompletion() {
   clearTimeout(completionTimer);
@@ -61,7 +73,7 @@ function showCompletion(count) {
     feedback.animate([{ opacity: 1, transform: 'translate(-50%, 0) scale(1)' }, { opacity: 0, transform: 'translate(-50%, 4px) scale(.98)' }], { duration: 160, fill: 'forwards' }).finished.then(dismissCompletion, () => {});
   }, 2200);
 }
-const state = { lang: readLanguage(), query: '', mode: 'smart', matches: [], groups: [], urlGroups: new Map(), grouping: 'date', dateGroups: [], expandedDates: new Set(), expanded: new Set(), groupShown: new Map(), groupLimit: pageSize, selected: new Set(), busy: false, scanned: false, status: ['rulesLoading', {}], pending: [], filters: { ...defaultTimeFilter(), range: '3days' }, dateExplicit: false, timeWindow: null, protectedSites: [], rulesReady: false, excluded: 0 };
+const state = { lang: readLanguage(), query: '', mode: 'smart', matches: [], groups: [], urlGroups: new Map(), grouping: 'website', dateGroups: [], expandedDates: new Set(), expanded: new Set(), groupShown: new Map(), groupLimit: pageSize, selected: new Set(), busy: false, scanned: false, status: ['rulesLoading', {}], pending: [], filters: { ...defaultTimeFilter(), range: '7days' }, dateExplicit: false, timeWindow: null, protectedSites: [], rulesReady: false, excluded: 0 };
 const $ = (id) => document.getElementById(id);
 const t = (key, args) => translate(state.lang, key, args);
 const num = (n) => n.toLocaleString(state.lang);
@@ -114,6 +126,28 @@ function setupQueryPlaceholder(input) {
   listen(window, 'pagehide', () => { pageActive = false; sync(); });
   listen(window, 'pageshow', () => { pageActive = true; sync(); });
   return { sync, destroy() { clearTimeout(timer); events.abort(); } };
+}
+function setupBackToTop() {
+  const scroll = $('resultScroll');
+  const button = $('backToTop');
+  const events = new AbortController();
+  let visible = false;
+  function sync() {
+    const next = scroll.scrollTop > Math.min(240, scroll.clientHeight / 2);
+    if (next === visible) return;
+    visible = next;
+    if (!visible && document.activeElement === button) scroll.focus({ preventScroll: true });
+    button.inert = !visible;
+    button.dataset.visible = String(visible);
+  }
+  // The browser animates scrolling; the passive handler only changes UI at the threshold.
+  scroll.addEventListener('scroll', sync, { passive: true, signal: events.signal });
+  button.addEventListener('click', () => {
+    scroll.scrollTo({ top: 0, behavior: reducedMotion() ? 'instant' : 'smooth' });
+  }, { signal: events.signal });
+  const sizes = new ResizeObserver(sync);
+  for (const node of [scroll, $('groups'), $('table')]) sizes.observe(node);
+  return { destroy() { events.abort(); sizes.disconnect(); } };
 }
 function status(key, args = {}) { state.status = [key, args]; $('status').dataset.kind = key; $('status').textContent = t(key, args); }
 function setupSearchMotion(button) {
@@ -218,11 +252,63 @@ function writeTimeDraft(filters) {
   $('timeRange').value = filters.range; $('startDate').value = filters.startDate; $('endDate').value = filters.endDate;
 }
 
+function positionTimeMenu() {
+  if (!$('filters')?.open) return;
+  const body = $('filters').querySelector('.filters-body');
+  const anchor = $('filterToggle').getBoundingClientRect();
+  const width = Math.min(288, innerWidth - 24);
+  body.style.width = `${width}px`;
+  body.style.left = `${Math.max(12, Math.min(anchor.right - width, innerWidth - width - 12))}px`;
+  const below = innerHeight - anchor.bottom - 12;
+  const above = anchor.top - 12;
+  const upward = below < 300 && above > below;
+  body.style.top = upward ? 'auto' : `${anchor.bottom + 8}px`;
+  body.style.bottom = upward ? `${innerHeight - anchor.top + 8}px` : '';
+  body.style.maxHeight = `${Math.max(80, Math.min(390, (upward ? above : below) - 7))}px`;
+}
+
 function matchesForScan(items) {
-  const matches = filterByTime(state.query ? filterHistoryItems(items, state.query, state.mode) : items, state.timeWindow).filter(item => item.url);
+  // Frequency candidates have already passed the same query before getVisits.
+  const queried = state.query && state.grouping !== 'frequency' ? filterHistoryItems(items, state.query, state.mode) : items;
+  const matches = (state.grouping === 'frequency' ? queried : filterByTime(queried, state.timeWindow)).filter(item => item.url);
   const visible = matches.filter(item => !isProtectedUrl(item.url, state.protectedSites));
   state.excluded = matches.length - visible.length;
-  return sortByLastVisit(visible);
+  return state.grouping === 'frequency' ? visible : sortByLastVisit(visible);
+}
+
+async function readScan(range, { background = false } = {}) {
+  if (state.grouping !== 'frequency') return readHistory(range);
+  return readFrequencyHistory(globalThis.chrome?.history, {
+    range,
+    include: state.query ? createHistoryMatcher(state.query, state.mode) : () => true,
+    onProgress: (done, total) => {
+      if (!background && (done === 0 || done === total || done % 50 === 0)) status('countingVisits', { done: num(done), total: num(total) });
+    },
+  });
+}
+
+const scanError = error => error.message === 'API_UNAVAILABLE' ? 'apiUnavailable' : error.message === 'FREQUENCY_LIMIT' ? 'frequencyLimit' : state.grouping === 'frequency' ? 'frequencyFailed' : 'scanFailed';
+
+async function changeGrouping(grouping) {
+  if (state.busy || state.grouping === grouping) return;
+  const needsVisits = grouping === 'frequency' || state.grouping === 'frequency';
+  state.grouping = grouping; state.groupLimit = pageSize;
+  if (needsVisits && state.scanned) {
+    state.busy = true;
+    // Clear the old rows while changing their count/range meaning. Preserve only
+    // explicit choices that are still present after the new view has loaded.
+    const selected = new Set(state.selected);
+    setMatches([], true); renderRows();
+    try {
+      const all = await readScan(state.timeWindow);
+      setMatches(matchesForScan(all), true);
+      state.selected = new Set(state.matches.filter(item => selected.has(item.url)).map(item => item.url));
+      status(all.length >= MAX_HISTORY_RESULTS ? 'limit' : 'scanned', { n: num(all.length), m: num(state.matches.length) });
+    } catch (error) {
+      state.selected.clear(); status(scanError(error));
+    } finally { state.busy = false; }
+  }
+  renderRows(); $('resultScroll').scrollTop = 0;
 }
 
 function applyProtectedSites(sites) {
@@ -301,6 +387,7 @@ function renderDeletionPreview() {
 }
 
 function setMatches(matches, resetGroups = false) {
+  historyDay = new Date().toDateString();
   state.matches = matches;
   state.groups = groupHistoryItems(matches);
   state.dateGroups = groupHistoryByDate(matches);
@@ -324,23 +411,60 @@ function allGroupsExpanded() {
     : state.groups.every(group => state.expanded.has(group.key));
 }
 
+function expansionControl() {
+  const button = $('expandGroups');
+  const expanded = String(allGroupsExpanded());
+  if (button.dataset.expanded === expanded) return;
+  const label = t(expanded === 'true' ? 'collapseAll' : 'expandAll');
+  button.querySelector('span').textContent = label;
+  button.setAttribute('aria-label', label);
+  button.dataset.expanded = expanded;
+}
+
+function resultControls(root) {
+  const blocked = state.busy || !state.rulesReady || updateApplying || draftChanged();
+  for (const check of root.querySelectorAll('input[type=checkbox]')) {
+    check.disabled = blocked;
+    if (check.classList.contains('row-select')) check.checked = state.selected.has(check.dataset.url);
+  }
+  const groups = [...root.querySelectorAll('.website-group, .date-group')];
+  if (root.matches?.('.website-group, .date-group')) groups.unshift(root);
+  for (const element of groups) {
+    const count = element.historyItems.filter(item => state.selected.has(item.url)).length;
+    const total = Number(element.dataset.total);
+    const check = element.querySelector(':scope > .group-header .group-select, :scope > .date-header .date-select');
+    check.checked = count === total;
+    check.indeterminate = count > 0 && count < total;
+    const selection = count === total ? 'all' : count ? 'partial' : 'none';
+    if (element.dataset.selection !== selection) element.dataset.selection = selection;
+    const selectedLabel = element.querySelector(':scope > .group-header .group-selected, :scope > .date-header .group-selected');
+    const label = t('siteSelected', { n: num(count) });
+    if (selectedLabel.textContent !== label) selectedLabel.textContent = label;
+    selectedLabel.hidden = !count;
+    for (const button of element.querySelectorAll('button')) button.disabled = state.busy;
+  }
+  for (const button of root.querySelectorAll('.row-delete')) button.disabled = blocked;
+}
+
 function controls() {
   renderUpdate();
   // Selection belongs to the last scan, so edited criteria must not delete those older results.
   // Default browsing is recent; keyword searches keep their existing all-time scope until a date is explicitly chosen.
-  if (!state.dateExplicit) $('timeRange').value = $('query').value.trim() ? 'all' : '3days';
+  if (!state.dateExplicit) $('timeRange').value = $('query').value.trim() ? 'all' : defaultBrowsing.range;
   const stale = draftChanged();
   if (state.busy) suggestions?.close();
   const blocked = state.busy || !state.rulesReady || updateApplying;
   for (const id of ['query', 'mode', 'search', 'clearQuery', 'openFull', 'openFullFooter', 'timeRange', 'startDate', 'endDate', 'editProtection', 'currentSite', 'saveProtection', 'closeProtection', 'protectionInput']) if ($(id)) $(id).disabled = blocked;
   queryPlaceholder?.sync();
   $('customDates').hidden = $('timeRange').value !== 'custom';
+  for (const choice of document.querySelectorAll('.time-range-radio')) { choice.checked = choice.value === $('timeRange').value; choice.disabled = blocked; }
   datePicker?.sync();
   $('query').required = false;
-  $('filterSummary').textContent = $('timeRange').value === 'all' ? '' : $('timeRange').selectedOptions[0].textContent;
+  $('filterSummary').textContent = $('timeRange').selectedOptions[0].textContent;
   const filterLabel = [t('filters'), $('filterSummary').textContent, state.protectedSites.length ? t('keptSites', { n: num(state.protectedSites.length) }) : ''].filter(Boolean).join(' · ');
   $('filterToggle').title = filterLabel;
   $('filterToggle').setAttribute('aria-label', filterLabel);
+  $('filterToggle').setAttribute('aria-expanded', String($('filters').open));
   $('filterToggle').dataset.active = String($('timeRange').value !== 'all' || state.protectedSites.length > 0);
   $('editProtection').textContent = t('keptSites', { n: num(state.protectedSites.length) });
   $('protectedCount').hidden = !state.excluded;
@@ -352,7 +476,7 @@ function controls() {
   $('search').querySelector('span').textContent = t(stale ? 'updateResults' : 'scan');
   $('count').textContent = state.busy && !state.scanned ? t('loadingTitle') : state.scanned ? t('resultCount', { n: num(state.matches.length) }) : t('results');
   $('resultScope').hidden = !state.scanned;
-  $('resultScope').textContent = t(state.filters.range === '3days' ? 'recentScope' : 'dateScope');
+  $('resultScope').textContent = state.grouping === 'frequency' ? t(state.timeWindow ? 'frequencyScope' : 'frequencyAllScope') : t(state.filters.range === '7days' ? 'weekScope' : state.filters.range === '3days' ? 'recentScope' : 'dateScope');
   $('selected').textContent = `${num(state.selected.size)} ${t('selected')}`;
   $('selected').hidden = compact && !state.selected.size;
   const allSelected = allMatchesSelected();
@@ -360,39 +484,19 @@ function controls() {
   $('selectAll').setAttribute('aria-pressed', String(allSelected));
   $('deleteLabel').textContent = state.selected.size ? t(compact ? 'deleteCountCompact' : 'deleteCount', { n: num(state.selected.size) }) : t('delete');
   $('clearQuery').hidden = !$('query').value;
-  for (const check of document.querySelectorAll('input[type=checkbox]')) {
-    check.disabled = blocked || stale;
-    if (check.classList.contains('row-select')) check.checked = state.selected.has(check.dataset.url);
-  }
+  resultControls(document);
   const selectedCounts = new Map();
   for (const url of state.selected) {
     const key = state.urlGroups.get(url);
     if (key !== undefined) selectedCounts.set(key, (selectedCounts.get(key) || 0) + 1);
   }
-  for (const element of $('groups').querySelectorAll('.website-group, .date-group')) {
-    const count = element.historyItems.filter(item => state.selected.has(item.url)).length;
-    const total = Number(element.dataset.total);
-    const check = element.querySelector(':scope > .group-header .group-select, :scope > .date-header .date-select');
-    check.checked = count === total;
-    check.indeterminate = count > 0 && count < total;
-    element.dataset.selection = count === total ? 'all' : count ? 'partial' : 'none';
-    const selectedLabel = element.querySelector(':scope > .group-header .group-selected, :scope > .date-header .group-selected');
-    selectedLabel.textContent = t('siteSelected', { n: num(count) });
-    selectedLabel.hidden = !count;
-    for (const button of element.querySelectorAll('button')) button.disabled = state.busy;
-  }
-  for (const button of document.querySelectorAll('.row-delete')) button.disabled = blocked || stale;
   $('siteCount').hidden = !state.matches.length;
   $('siteCount').textContent = t('siteCount', { n: num(state.groups.length) });
-  for (const [id, grouping] of [['groupByDate', 'date'], ['groupBySite', 'website']]) {
+  for (const [id, grouping] of [['groupByDate', 'date'], ['groupBySite', 'website'], ['groupByFrequency', 'frequency']]) {
     $(id).disabled = state.busy; $(id).setAttribute('aria-pressed', String(state.grouping === grouping));
   }
-  $('expandGroups').hidden = !state.matches.length; $('expandGroups').disabled = state.busy;
-  const allExpanded = allGroupsExpanded();
-  const expandLabel = t(allExpanded ? 'collapseAll' : 'expandAll');
-  $('expandGroups').querySelector('span').textContent = expandLabel;
-  $('expandGroups').setAttribute('aria-label', expandLabel);
-  $('expandGroups').dataset.expanded = String(allExpanded);
+  $('expandGroups').hidden = state.grouping === 'frequency' || !state.matches.length; $('expandGroups').disabled = state.busy;
+  expansionControl();
   $('loadMore').disabled = state.busy;
   if (!compact) {
     $('footerSelected').textContent = t('selectedCount', { n: num(state.selected.size) });
@@ -408,9 +512,17 @@ function controls() {
   }
   const [key, args] = stale ? [state.selected.size ? 'queryChangedSelected' : 'queryChanged', {}] : state.status;
   $('status').dataset.kind = key; $('status').textContent = t(key, args);
+  // Counts, notices and wrapped labels can move the trigger without a scroll or resize.
+  positionTimeMenu();
   scheduleHistoryRefresh();
 }
 function historyRow(item) {
+    // Intl formatters are expensive to construct; share them across one language's rows.
+    if (rowFormats?.lang !== state.lang) rowFormats = {
+      lang: state.lang,
+      day: new Intl.DateTimeFormat(state.lang, { month: 'short', day: 'numeric', ...(compact ? {} : { year: 'numeric' }) }),
+      time: compact ? new Intl.DateTimeFormat(state.lang, { hour: 'numeric', minute: '2-digit' }) : null,
+    };
     const row = document.createElement('tr'); row.className = 'history-row';
     const cell = document.createElement('td');
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'row-select'; checkbox.dataset.url = item.url; checkbox.checked = state.selected.has(item.url); checkbox.setAttribute('aria-label', t('selectRow', { url: item.url }));
@@ -422,11 +534,14 @@ function historyRow(item) {
     const title = document.createElement('span'); title.className = 'page-title'; if (item.title) { appendHighlighted(title, item.title, state.query); title.title = item.title; page.append(title); }
     const url = document.createElement('span'); url.className = 'page-url'; appendHighlighted(url, item.url, state.query); url.title = item.url; page.append(url);
     const date = document.createElement('td'); date.className = 'date-column';
-    if (item.lastVisitTime != null) {
-      const day = document.createElement('span'); day.className = 'date-day'; day.textContent = new Intl.DateTimeFormat(state.lang, { month: 'short', day: 'numeric', ...(compact ? {} : { year: 'numeric' }) }).format(item.lastVisitTime); date.append(day);
-      if (compact) { const time = document.createElement('span'); time.className = 'date-time'; time.textContent = new Intl.DateTimeFormat(state.lang, { hour: 'numeric', minute: '2-digit' }).format(item.lastVisitTime); date.append(time); }
+    const visitedAt = state.grouping === 'frequency' ? item.periodLastVisitTime : item.lastVisitTime;
+    if (visitedAt != null) {
+      const day = document.createElement('span'); day.className = 'date-day'; day.textContent = rowFormats.day.format(visitedAt); date.append(day);
+      if (compact) { const time = document.createElement('span'); time.className = 'date-time'; time.textContent = rowFormats.time.format(visitedAt); date.append(time); }
     }
-    const visits = document.createElement('td'); visits.className = 'visit-column'; if (item.visitCount != null) visits.textContent = num(item.visitCount);
+    const visits = document.createElement('td'); visits.className = 'visit-column';
+    const visitCount = state.grouping === 'frequency' ? item.periodVisitCount : item.visitCount;
+    if (visitCount != null) { visits.textContent = num(visitCount); visits.setAttribute('aria-label', t(state.grouping === 'frequency' ? 'periodVisitsLabel' : 'visitsLabel', { n: num(visitCount) })); }
     const actions = document.createElement('td'); actions.className = 'row-actions';
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'row-delete'; remove.title = t('deleteRow'); remove.setAttribute('aria-label', t('deleteRowLabel', { url: item.url }));
     const trash = document.createElement('img'); trash.className = 'ui-icon'; trash.src = 'icons/ui/trash.svg'; trash.alt = ''; trash.setAttribute('aria-hidden', 'true'); remove.append(trash);
@@ -457,36 +572,47 @@ function websiteGroup(group, index, dayKey = '') {
     const chevron = document.createElement('span'); chevron.className = 'group-chevron'; chevron.textContent = '⌄'; chevron.setAttribute('aria-hidden', 'true');
     toggle.append(host, count, selected, chevron);
     toggle.addEventListener('click', () => {
-      const previousHeight = section.getBoundingClientRect().height;
       state.expanded.has(expansionKey) ? state.expanded.delete(expansionKey) : state.expanded.add(expansionKey);
-      renderRows();
-      const current = document.getElementById(`group-results-${index}`)?.closest('.website-group');
-      if (current && !reducedMotion()) {
-        const height = current.getBoundingClientRect().height;
-        current.animate([{ height: `${previousHeight}px` }, { height: `${height + (height - previousHeight) * .018}px`, offset: .8 }, { height: `${height}px` }], { duration: 220, easing: 'cubic-bezier(.22,1,.36,1)' });
-        if (state.expanded.has(expansionKey)) current.querySelector('.group-results').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 130, delay: 35 });
-      }
-      current?.querySelector('.group-toggle')?.focus({ preventScroll: true });
+      // Expansion changes this group's rows, not the search or selection summary.
+      // Replacing those unchanged text nodes can visibly flash on the first paint.
+      section.syncExpanded(); resultControls(section); expansionControl();
     });
     header.append(checkbox, toggle);
     const results = document.createElement('div'); results.className = 'group-results'; results.id = `group-results-${index}`; results.hidden = !state.expanded.has(expansionKey);
-    if (!results.hidden) {
+    const populate = () => {
       const table = document.createElement('table'); table.className = 'group-table'; table.setAttribute('aria-label', group.label);
       const head = $('table').tHead.cloneNode(true); const body = document.createElement('tbody');
       // A short preview keeps other website categories within reach before expanding more rows.
-      const shown = state.groupShown.get(expansionKey) || groupPreviewSize;
-      for (const item of group.items.slice(0, shown)) body.append(historyRow(item));
+      let shown = state.groupShown.get(expansionKey) || groupPreviewSize;
+      const appendRows = (start, end) => {
+        const fragment = document.createDocumentFragment();
+        for (const item of group.items.slice(start, end)) fragment.append(historyRow(item));
+        body.append(fragment);
+      };
+      appendRows(0, shown);
       table.append(head, body); results.append(table);
       if (shown < group.items.length) {
         const more = document.createElement('button'); more.type = 'button'; more.className = 'quiet group-load-more';
         more.textContent = t('showMoreSiteItems', { n: num(Math.min(pageSize, group.items.length - shown)) });
         more.addEventListener('click', () => {
-          state.groupShown.set(expansionKey, shown + pageSize); renderRows();
-          const current = document.getElementById(`group-results-${index}`)?.closest('.website-group'); (current?.querySelector('.group-load-more') || current?.querySelector('.group-toggle'))?.focus({ preventScroll: true });
+          const next = Math.min(shown + pageSize, group.items.length);
+          appendRows(shown, next); shown = next; state.groupShown.set(expansionKey, shown);
+          if (shown === group.items.length) { more.remove(); toggle.focus({ preventScroll: true }); }
+          else more.textContent = t('showMoreSiteItems', { n: num(Math.min(pageSize, group.items.length - shown)) });
+          resultControls(section);
         });
         results.append(more);
       }
-    }
+    };
+    // Keep the header and unrelated groups mounted. A height spring would reflow
+    // the entire scroll area every frame and fight browser scroll anchoring.
+    section.syncExpanded = () => {
+      const open = state.expanded.has(expansionKey);
+      toggle.setAttribute('aria-expanded', String(open)); results.hidden = !open;
+      if (open && !results.firstChild) populate();
+      else if (!open) results.replaceChildren();
+    };
+    section.syncExpanded();
     section.append(header, results); return section;
 }
 function dateLabel(day) {
@@ -499,11 +625,20 @@ function dateLabel(day) {
   return new Intl.DateTimeFormat(state.lang, { year: 'numeric', month: 'short', day: 'numeric', weekday: 'short' }).format(day.date);
 }
 function renderGroups() {
+  const container = $('groups');
+  const reuse = groupRender?.container === container && groupRender.matches === state.matches && groupRender.grouping === state.grouping && groupRender.lang === state.lang;
+  if (!reuse) {
+    dateHeaderSizes.disconnect(); container.replaceChildren();
+    groupRender = { container, matches: state.matches, grouping: state.grouping, lang: state.lang };
+  }
+  const start = container.childElementCount;
   const fragment = document.createDocumentFragment();
+  if (state.grouping === 'frequency') return;
   if (state.grouping === 'website') {
-    state.groups.slice(0, state.groupLimit).forEach((group, index) => fragment.append(websiteGroup(group, index)));
+    state.groups.slice(start, state.groupLimit).forEach((group, index) => fragment.append(websiteGroup(group, start + index)));
   } else {
-    for (const [index, day] of state.dateGroups.slice(0, state.groupLimit).entries()) {
+    for (const [offset, day] of state.dateGroups.slice(start, state.groupLimit).entries()) {
+      const index = start + offset;
       const section = document.createElement('section'); section.className = 'date-group'; section.dataset.date = day.key; section.dataset.total = day.items.length; section.historyItems = day.items;
       const header = document.createElement('div'); header.className = 'date-header';
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'date-select'; checkbox.setAttribute('aria-label', t('selectDay', { day: dateLabel(day) }));
@@ -514,35 +649,65 @@ function renderGroups() {
       const selected = document.createElement('span'); selected.className = 'group-selected';
       const chevron = document.createElement('span'); chevron.className = 'group-chevron'; chevron.textContent = '⌄'; chevron.setAttribute('aria-hidden', 'true');
       toggle.append(label, count, selected, chevron);
-      toggle.addEventListener('click', () => { state.expandedDates.has(day.key) ? state.expandedDates.delete(day.key) : state.expandedDates.add(day.key); renderRows(); document.querySelector(`[data-date="${day.key}"] > .date-header .date-toggle`)?.focus({ preventScroll: true }); });
+      toggle.addEventListener('click', () => { state.expandedDates.has(day.key) ? state.expandedDates.delete(day.key) : state.expandedDates.add(day.key); section.syncExpanded(); resultControls(section); expansionControl(); });
       header.append(checkbox, toggle);
       const content = document.createElement('div'); content.className = 'date-results'; content.id = `date-results-${index}`; content.hidden = !state.expandedDates.has(day.key);
-      if (!content.hidden) {
-        const limit = state.groupShown.get(`date:${day.key}`) || pageSize;
-        day.groups.slice(0, limit).forEach((group, site) => content.append(websiteGroup(group, `${index}-${site}`, day.key)));
+      const populate = () => {
+        let limit = state.groupShown.get(`date:${day.key}`) || pageSize;
+        const appendSites = (start, end) => {
+          const fragment = document.createDocumentFragment();
+          day.groups.slice(start, end).forEach((group, site) => fragment.append(websiteGroup(group, `${index}-${start + site}`, day.key)));
+          content.append(fragment);
+        };
+        appendSites(0, limit);
         if (limit < day.groups.length) {
           const more = document.createElement('button'); more.type = 'button'; more.className = 'quiet group-load-more'; more.textContent = t('showMoreSites');
-          more.addEventListener('click', () => { state.groupShown.set(`date:${day.key}`, limit + pageSize); renderRows(); }); content.append(more);
+          more.addEventListener('click', () => {
+            const next = Math.min(limit + pageSize, day.groups.length);
+            more.remove(); appendSites(limit, next); limit = next; state.groupShown.set(`date:${day.key}`, limit);
+            if (limit < day.groups.length) { content.append(more); more.focus({ preventScroll: true }); }
+            else toggle.focus({ preventScroll: true });
+            resultControls(section);
+          }); content.append(more);
         }
-      }
+      };
+      section.syncExpanded = () => {
+        const open = state.expandedDates.has(day.key);
+        toggle.setAttribute('aria-expanded', String(open)); content.hidden = !open;
+        if (open && !content.firstChild) populate();
+        else if (!open) content.replaceChildren();
+      };
+      section.syncExpanded();
       section.append(header, content); fragment.append(section);
+      dateHeaderSizes.observe(header, { box: 'border-box' });
     }
   }
-  dateHeaderSizes.disconnect();
-  $('groups').replaceChildren(fragment);
-  for (const header of $('groups').querySelectorAll('.date-header')) dateHeaderSizes.observe(header, { box: 'border-box' });
+  container.append(fragment);
 }
 function renderRows() {
-  renderGroups(); $('rows').replaceChildren();
-  $('groups').hidden = !state.matches.length;
-  $('empty').hidden = !!state.matches.length; $('table').hidden = true;
-  const emptyKey = state.busy ? 'loading' : state.scanned ? state.filters.range === '3days' && !state.query ? 'recentNone' : 'none' : 'empty';
+  const frequency = state.grouping === 'frequency';
+  document.querySelector('.results-panel').dataset.view = state.grouping;
+  $('table').querySelector('[data-result-date-label]').textContent = t(frequency ? 'periodLastVisit' : 'lastVisit');
+  $('table').querySelector('[data-result-visit-label]').textContent = t(frequency ? 'periodVisits' : 'visits');
+  renderGroups();
+  const rows = $('rows');
+  if (rowRender?.container !== rows || rowRender.matches !== state.matches || rowRender.grouping !== state.grouping || rowRender.lang !== state.lang) {
+    rows.replaceChildren(); rowRender = { container: rows, matches: state.matches, grouping: state.grouping, lang: state.lang };
+  }
+  if (frequency) {
+    const fragment = document.createDocumentFragment();
+    for (const item of state.matches.slice(rows.childElementCount, state.groupLimit)) fragment.append(historyRow(item));
+    rows.append(fragment);
+  }
+  $('groups').hidden = frequency || !state.matches.length;
+  $('empty').hidden = !!state.matches.length; $('table').hidden = !frequency || !state.matches.length;
+  const emptyKey = state.busy ? 'loading' : frequency && ['frequencyFailed', 'frequencyLimit'].includes(state.status[0]) ? 'frequencyError' : state.scanned ? !state.query && state.filters.range === '7days' ? 'weekNone' : state.filters.range === '3days' && !state.query ? 'recentNone' : 'none' : 'empty';
   $('empty').querySelector('h3').textContent = t(`${emptyKey}Title`); $('empty').querySelector('p').textContent = t(`${emptyKey}Body`);
-  const total = state.grouping === 'date' ? state.dateGroups.length : state.groups.length;
+  const total = frequency ? state.matches.length : state.grouping === 'date' ? state.dateGroups.length : state.groups.length;
   $('loadMore').hidden = state.groupLimit >= total;
-  $('loadMore').textContent = t(state.grouping === 'date' ? 'showMoreDates' : 'showMoreSites');
+  $('loadMore').textContent = t(frequency ? 'loadMore' : state.grouping === 'date' ? 'showMoreDates' : 'showMoreSites');
   $('preview').hidden = total <= state.groupLimit;
-  $('preview').textContent = t(state.grouping === 'date' ? 'groupDatePreview' : 'groupPreview', { shown: num(Math.min(state.groupLimit, total)), total: num(total) });
+  $('preview').textContent = t(frequency ? 'preview' : state.grouping === 'date' ? 'groupDatePreview' : 'groupPreview', { shown: num(Math.min(state.groupLimit, total)), total: num(total) });
   controls();
 }
 async function readHistory(range = null) {
@@ -554,20 +719,37 @@ function canRefreshHistory() {
 }
 function scheduleHistoryRefresh() {
   clearTimeout(historyRefreshTimer);
-  if (!historyChanged || !canRefreshHistory()) return;
+  if (!historyChanged || historyRefreshing || !canRefreshHistory()) return;
   historyRefreshTimer = setTimeout(async () => {
-    if (!historyChanged || !canRefreshHistory()) return;
-    historyChanged = false; state.busy = true; controls();
+    if (!historyChanged || historyRefreshing || !canRefreshHistory()) return;
+    historyChanged = false; historyRefreshing = true;
+    const { matches, grouping, filters, protectedSites } = state;
+    const current = () => state.matches === matches && state.grouping === grouping && state.filters === filters && state.protectedSites === protectedSites;
+    let applied = false;
     try {
       // A view can stay open overnight: resolve relative days again before reading new visits.
       const range = resolveTimeRange(state.filters);
-      const all = await readHistory(range);
+      const all = await readScan(range, { background: true });
+      // An idle refresh must not disable controls or overwrite work started while reading.
+      if (!current() || !canRefreshHistory()) return;
       state.timeWindow = range;
-      if (range) suggestions.invalidate(); else suggestions.setHistory(all);
-      setMatches(matchesForScan(all));
+      if (range || state.grouping === 'frequency') suggestions.invalidate(); else suggestions.setHistory(all);
+      const next = matchesForScan(all);
+      const fields = ['url', 'title', 'lastVisitTime', 'visitCount', 'periodVisitCount', 'periodLastVisitTime'];
+      const changed = historyDay !== new Date().toDateString() || next.length !== matches.length || next.some((item, index) => fields.some(field => item[field] !== matches[index][field]));
+      if (changed) setMatches(next);
       status(all.length >= MAX_HISTORY_RESULTS ? 'limit' : 'scanned', { n: num(all.length), m: num(state.matches.length) });
-    } catch { status('scanFailed'); }
-    finally { state.busy = false; renderRows(); }
+      applied = true;
+      if (changed) renderRows(); else controls();
+    } catch (error) {
+      if (!current() || !canRefreshHistory()) return;
+      if (state.grouping === 'frequency') { setMatches([], true); state.selected.clear(); }
+      status(scanError(error)); applied = true; renderRows();
+    } finally {
+      historyRefreshing = false;
+      if (!applied && current()) historyChanged = true;
+      scheduleHistoryRefresh();
+    }
   }, 250);
 }
 function markHistoryChanged() {
@@ -584,7 +766,7 @@ async function search() {
   const query = $('query').value.trim(); const mode = $('mode').value;
   const filters = timeDraft();
   // An unbounded empty query means recent browsing; explicit date filters stay authoritative.
-  if (!state.dateExplicit) { filters.range = query ? 'all' : '3days'; writeTimeDraft(filters); }
+  if (!state.dateExplicit) { filters.range = query ? 'all' : defaultBrowsing.range; writeTimeDraft(filters); }
   let range;
   try { range = resolveTimeRange(filters); } catch { return status('invalidTimeRange'); }
   if (query && mode.startsWith('host') && !parseHostnames(query).length) return status('invalidDomain');
@@ -592,14 +774,14 @@ async function search() {
   historyChanged = false;
   state.busy = true; renderRows(); status('scanning');
   try {
-    const all = await readHistory(state.timeWindow);
-    if (state.timeWindow) suggestions.invalidate(); else suggestions.setHistory(all);
+    const all = await readScan(state.timeWindow);
+    if (state.timeWindow || state.grouping === 'frequency') suggestions.invalidate(); else suggestions.setHistory(all);
     setMatches(matchesForScan(all), true);
     state.selected.clear(); state.scanned = true;
     status(all.length >= MAX_HISTORY_RESULTS ? 'limit' : 'scanned', { n: num(all.length), m: num(state.matches.length) });
   } catch (error) {
     setMatches([], true); state.selected.clear(); state.scanned = true;
-    status(error.message === 'API_UNAVAILABLE' ? 'apiUnavailable' : 'scanFailed');
+    status(scanError(error));
   } finally { state.busy = false; renderRows(); }
 }
 async function request(message) {
@@ -640,9 +822,10 @@ async function deleteConfirmed() {
       job = await request({ type: 'delete-status', id: job.id });
     }
     if (job.phase === 'verifyFailed') return status('verifyFailed');
-    const activityRecorded = await activity.refreshCleanup();
-    const all = await readHistory(state.timeWindow);
-    if (state.timeWindow) suggestions.invalidate(); else suggestions.setHistory(all);
+    const activityRecorded = job.privateCleanup || await activity.refreshCleanup();
+    if (job.privateCleanup) activity.invalidate('browsing');
+    const all = await readScan(state.timeWindow);
+    if (state.timeWindow || state.grouping === 'frequency') suggestions.invalidate(); else suggestions.setHistory(all);
     const previousGroups = state.groups;
     const previousDates = state.dateGroups;
     setMatches(matchesForScan(all));
@@ -683,7 +866,10 @@ async function deleteConfirmed() {
       } else await animateBatchRemoval($('resultScroll'), urls, renderRows);
     }
     status(completionStatus, { n: num(job.remaining.length || urls.length) });
-  } catch (error) { status(error.message === 'PROTECTED_URL' ? 'protectedChanged' : error.message === 'BACKGROUND_UNAVAILABLE' ? 'reloadExtension' : 'deletionStatusFailed'); }
+  } catch (error) {
+    if (state.grouping === 'frequency' && job && !['deleting', 'verifying'].includes(job.phase)) { setMatches([], true); state.selected.clear(); }
+    status(error.message === 'PROTECTED_URL' ? 'protectedChanged' : error.message === 'BACKGROUND_UNAVAILABLE' ? 'reloadExtension' : 'deletionStatusFailed');
+  }
   finally {
     if (job && !['deleting', 'verifying'].includes(job.phase)) request({ type: 'release-delete', id: job.id }).catch(() => {});
     state.busy = false; $('progress').hidden = true; renderRows();
@@ -702,39 +888,74 @@ function openFull() {
   if (state.selected.size) $('openFullDialog').showModal();
   else launchFull();
 }
+async function refreshShortcut() {
+  const dialog = $('preferencesDialog');
+  const output = $('launchShortcut');
+  if (!dialog?.open) return;
+  try {
+    const commands = await chrome.commands.getAll();
+    if ($('launchShortcut') !== output || !dialog.open) return;
+    const command = commands.find(item => item.name === '_execute_action');
+    output.textContent = command?.shortcut || t('shortcutUnassigned');
+    output.dataset.state = command?.shortcut ? 'assigned' : 'unassigned';
+  } catch {
+    if ($('launchShortcut') === output && dialog.open) { output.textContent = t('shortcutUnavailable'); output.dataset.state = 'unavailable'; }
+  }
+}
+async function configureShortcut(event) {
+  event.preventDefault();
+  const status = $('shortcutSettingsStatus');
+  status.hidden = true;
+  try { await chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }); }
+  catch {
+    if ($('shortcutSettingsStatus') === status) { status.textContent = t('shortcutSettingsFailed'); status.hidden = false; }
+  }
+}
 async function openPreferences() {
   const dialog = $('preferencesDialog');
-  $('launchChoices').disabled = true; $('savePreferences').disabled = true;
+  settingsSelects.close();
+  $('launchChoices').disabled = true; $('browsingDefaultChoices').disabled = true; $('cleanupPrivacyChoices').disabled = true; $('savePreferences').disabled = true;
   $('preferencesStatus').textContent = t('preferencesLoading'); dialog.showModal();
+  if (modal) window.parent.postMessage({ type: 'history-sweep:preferences', open: true }, '*');
+  $('launchShortcut').textContent = t('shortcutLoading'); $('launchShortcut').dataset.state = 'loading';
+  $('shortcutSettingsStatus').hidden = true;
+  void refreshShortcut();
   try {
-    const { launchMode } = await request({ type: 'get-launch-preference' });
+    const [{ launchMode }, browsing, { privateCleanup = false }] = await Promise.all([request({ type: 'get-launch-preference' }), readBrowsingPreferences(chrome.storage.local), chrome.storage.local.get('privateCleanup')]);
     if ($('preferencesDialog') !== dialog || !dialog.open) return;
-    if (!['popup', 'modal', 'fullpage'].includes(launchMode)) throw new Error('Invalid preference');
+    if (typeof privateCleanup !== 'boolean' || !['popup', 'modal', 'fullpage'].includes(launchMode)) throw new Error('Invalid preference');
     dialog.querySelector(`input[value="${launchMode}"]`).checked = true;
-    $('launchChoices').disabled = false; $('savePreferences').disabled = false;
+    $('privateCleanup').checked = privateCleanup;
+    $('defaultView').value = browsing.view; $('defaultRange').value = browsing.range; settingsSelects.sync();
+    $('launchChoices').disabled = false; $('browsingDefaultChoices').disabled = false; $('cleanupPrivacyChoices').disabled = false; $('savePreferences').disabled = false;
     $('preferencesStatus').textContent = t('preferencesNextLaunch');
   } catch { if ($('preferencesDialog') === dialog && dialog.open) $('preferencesStatus').textContent = t('preferencesLoadFailed'); }
 }
 async function savePreferences(event) {
   event.preventDefault();
   if (savingPreference) return;
-  const launchMode = $('preferencesForm').querySelector('input:checked')?.value;
+  const launchMode = $('preferencesForm').querySelector('input[name=launchMode]:checked')?.value;
   if (!launchMode) return;
-  savingPreference = true; $('launchChoices').disabled = true;
+  savingPreference = true; $('launchChoices').disabled = true; $('browsingDefaultChoices').disabled = true; $('cleanupPrivacyChoices').disabled = true;
   renderUpdate();
-  $('savePreferences').disabled = true; $('closePreferences').disabled = true;
+  $('savePreferences').disabled = true; $('closePreferences').disabled = true; $('dismissPreferences').disabled = true;
   $('preferencesStatus').textContent = t('preferencesSaving');
   try {
     await request({ type: 'set-launch-preference', launchMode });
+    await saveBrowsingPreferences(chrome.storage.local, { view: $('defaultView').value, range: $('defaultRange').value });
+    await chrome.storage.local.set({ privateCleanup: $('privateCleanup').checked });
+    // Defaults take effect on reopening; preserve the current query, view and time range.
     $('preferencesDialog').close();
   } catch { $('preferencesStatus').textContent = t('preferencesSaveFailed'); }
   finally {
-    savingPreference = false; $('launchChoices').disabled = false;
+    savingPreference = false; $('launchChoices').disabled = false; $('browsingDefaultChoices').disabled = false; $('cleanupPrivacyChoices').disabled = false;
     renderUpdate();
-    $('savePreferences').disabled = false; $('closePreferences').disabled = false;
+    $('savePreferences').disabled = false; $('closePreferences').disabled = false; $('dismissPreferences').disabled = false;
   }
 }
+
 function topLayer() {
+  if (settingsSelects?.isOpen()) return { consume: true, contains: target => settingsSelects.contains(target), close: () => settingsSelects.close(true) };
   if (datePicker?.isOpen()) return { consume: true, contains: target => datePicker.contains(target), close: () => datePicker.close(true) };
   if ($('themeMenu')?.open) return { consume: true, contains: target => $('themeMenu').contains(target), close: () => { $('themeMenu').open = false; $('themeToggle').setAttribute('aria-expanded', 'false'); $('themeToggle').focus({ preventScroll: true }); } };
   const dialogs = [...document.querySelectorAll('dialog[open]')].filter(node => node.id !== 'datePicker');
@@ -749,12 +970,14 @@ function topLayer() {
   const help = document.querySelector('.search-help[open]');
   if (help) return { contains: target => help.contains(target), close: () => { help.open = false; } };
   if ($('suggestionsPanel')?.dataset.open === 'true') return { contains: target => $('query').closest('.input-wrap').contains(target), close: () => suggestions.close() };
-  if ($('filters')?.open) return { contains: target => $('filters').contains(target), close: () => { $('filters').open = false; } };
+  if ($('filters')?.open) return { contains: target => $('filters').contains(target), close: () => { $('filters').open = false; $('filterToggle').focus({ preventScroll: true }); } };
   return null;
 }
 function setupLayerDismissal() {
   layerEvents = new AbortController();
   const listen = (target, name, fn) => target.addEventListener(name, fn, { capture: true, signal: layerEvents.signal });
+  listen(window, 'resize', positionTimeMenu);
+  listen(document, 'scroll', positionTimeMenu);
   let dismissedPointer = false;
   listen(document, 'pointerdown', event => {
     dismissedPointer = false;
@@ -778,15 +1001,20 @@ function setupLayerDismissal() {
   });
 }
 function mount() {
+  cancelAnimationFrame(mountFrame);
   dismissCompletion();
   suggestions?.destroy();
   datePicker?.destroy();
+  settingsSelects?.destroy();
   layerEvents?.abort();
   queryPlaceholder?.destroy();
   searchMotion?.destroy();
+  backToTop?.destroy();
   document.documentElement.lang = state.lang; document.title = 'History Sweep';
+  $('app').dataset.mounting = 'true';
   document.getElementById('app').innerHTML = view(t, compact, modal);
   activity.mount();
+  backToTop = setupBackToTop();
   $('themeMenu').addEventListener('toggle', syncThemeControl);
   for (const choice of $('themeChoices').querySelectorAll('[data-theme-choice]')) choice.addEventListener('click', () => {
     document.dispatchEvent(new CustomEvent('history-sweep:set-theme', { detail: choice.dataset.themeChoice }));
@@ -807,21 +1035,47 @@ function mount() {
   searchMotion = setupSearchMotion($('search'));
   writeTimeDraft(state.filters);
   setupLayerDismissal();
+  settingsSelects = setupSettingsSelects($('preferencesDialog'));
   datePicker = setupDatePicker({ lang: state.lang, t });
   suggestions = setupSuggestions({ input: $('query'), mode: $('mode'), panel: $('suggestionsPanel'), list: $('suggestionsList'), readHistory, onChoose: controls });
+  for (const choice of document.querySelectorAll('.time-range-radio')) choice.addEventListener('click', () => {
+    if (!choice.checked) return;
+    $('timeRange').value = choice.value;
+    $('timeRange').dispatchEvent(new Event('change', { bubbles: true }));
+    if (choice.value !== 'custom') {
+      $('filters').open = false;
+      $('filterToggle').focus({ preventScroll: true });
+      void search();
+    }
+  });
   $('query').addEventListener('input', () => { dismissCompletion(); controls(); });
   $('mode').addEventListener('change', () => { dismissCompletion(); controls(); });
   for (const id of ['timeRange', 'startDate', 'endDate']) $(id).addEventListener('change', () => { state.dateExplicit = true; dismissCompletion(); suggestions.invalidate(); controls(); });
   for (const id of ['startDate', 'endDate']) $(id).addEventListener('input', () => { state.dateExplicit = true; dismissCompletion(); suggestions.invalidate(); controls(); });
+  for (const id of ['startDate', 'endDate']) $(id).addEventListener('change', () => {
+    if ($('timeRange').value !== 'custom') return;
+    try { resolveTimeRange(timeDraft()); } catch { return; }
+    void search();
+  });
   $('editProtection').addEventListener('click', () => { $('protectionInput').value = state.protectedSites.join('\n'); $('protectionStatus').textContent = ''; $('protectionDialog').showModal(); $('protectionInput').focus(); });
   $('closeProtection').addEventListener('click', () => $('protectionDialog').close());
   $('protectionForm').addEventListener('submit', saveProtection);
   $('protectionDialog').addEventListener('cancel', event => { if (state.busy) event.preventDefault(); });
   $('currentSite')?.addEventListener('click', currentSite);
   $('openPreferences').addEventListener('click', openPreferences);
-  $('closePreferences').addEventListener('click', () => $('preferencesDialog').close());
+  for (const id of ['closePreferences', 'dismissPreferences']) $(id).addEventListener('click', () => $('preferencesDialog').close());
   $('preferencesForm').addEventListener('submit', savePreferences);
+  $('configureShortcut').addEventListener('click', configureShortcut);
   $('preferencesDialog').addEventListener('cancel', event => { if (savingPreference) event.preventDefault(); });
+  $('preferencesDialog').addEventListener('close', async event => {
+    settingsSelects.close();
+    if (!modal) return;
+    const dialog = event.target;
+    // Keep the outer window close control hidden until this drawer has slid out.
+    await Promise.allSettled(dialog.getAnimations().map(animation => animation.finished));
+    if (!dialog.open) window.parent.postMessage({ type: 'history-sweep:preferences', open: false }, '*');
+  });
+  $('filters').addEventListener('toggle', () => { $('filterToggle').setAttribute('aria-expanded', String($('filters').open)); positionTimeMenu(); });
   $('clearQuery').addEventListener('click', () => {
     dismissCompletion(); suggestions.close();
     state.query = ''; setMatches([], true); state.selected.clear(); state.scanned = false; state.excluded = 0;
@@ -841,12 +1095,10 @@ function mount() {
     });
   }
   $('searchForm').addEventListener('submit', event => { event.preventDefault(); search(); });
-  $('selectAll').addEventListener('click', () => { state.selected = allMatchesSelected() ? new Set() : new Set(state.matches.map(item => item.url)); renderRows(); });
-  $('clear').addEventListener('click', () => { state.selected.clear(); renderRows(); });
-  for (const [id, grouping] of [['groupByDate', 'date'], ['groupBySite', 'website']]) $(id).addEventListener('click', () => {
-    if (state.grouping === grouping) return;
-    state.grouping = grouping; state.groupLimit = pageSize; renderRows();
-    $('resultScroll').scrollTop = 0;
+  $('selectAll').addEventListener('click', () => { state.selected = allMatchesSelected() ? new Set() : new Set(state.matches.map(item => item.url)); controls(); });
+  $('clear').addEventListener('click', () => { state.selected.clear(); controls(); });
+  for (const [id, grouping] of [['groupByDate', 'date'], ['groupBySite', 'website'], ['groupByFrequency', 'frequency']]) $(id).addEventListener('click', () => {
+    void changeGrouping(grouping);
   });
   $('expandGroups').addEventListener('click', () => {
     const collapse = allGroupsExpanded();
@@ -857,7 +1109,9 @@ function mount() {
         collapse ? state.expanded.delete(key) : state.expanded.add(key);
       }
     } else state.expanded = collapse ? new Set() : new Set(state.groups.map(group => group.key));
-    renderRows();
+    for (const day of $('groups').querySelectorAll('.date-group')) day.syncExpanded();
+    for (const group of $('groups').querySelectorAll('.website-group')) group.syncExpanded();
+    resultControls($('groups')); expansionControl();
   });
   $('loadMore').addEventListener('click', () => { state.groupLimit += pageSize; renderRows(); });
   $('delete').addEventListener('click', () => openDeletionConfirm([...state.selected]));
@@ -865,6 +1119,11 @@ function mount() {
   $('openFullDialog').addEventListener('close', () => { if ($('openFullDialog').returnValue === 'confirm') launchFull(); });
   for (const id of ['openFull', 'openFullFooter']) $(id)?.addEventListener('click', openFull);
   renderRows();
+  mountFrame = requestAnimationFrame(() => {
+    // Let restored state and pointer hit testing settle before enabling transitions.
+    void $('app').offsetHeight;
+    mountFrame = requestAnimationFrame(() => { delete $('app').dataset.mounting; });
+  });
 }
 const handoffId = new URLSearchParams(location.hash.slice(1)).get('handoff');
 const modalUnavailable = location.hash === '#modalUnavailable';
@@ -874,6 +1133,8 @@ if (!modal && (location.search || location.hash)) history.replaceState(null, '',
 mount();
 document.addEventListener('history-sweep:theme-changed', syncThemeControl);
 void refreshUpdate();
+// Check once per opened view; storage notifications only refresh the downloaded-update state.
+void request({ type: 'check-for-update' }).then(refreshUpdate).catch(() => {});
 globalThis.chrome?.storage?.onChanged?.addListener((changes, area) => {
   if (area === 'session' && Object.hasOwn(changes, 'extensionUpdate')) void refreshUpdate();
   if (area === 'local' && Object.hasOwn(changes, 'localActivity')) activity.invalidate('cleanup');
@@ -885,12 +1146,19 @@ globalThis.chrome?.history?.onVisited?.addListener(() => activity.invalidate('br
 globalThis.chrome?.history?.onVisitRemoved?.addListener(() => activity.invalidate('browsing'));
 window.addEventListener('focus', markHistoryChanged);
 window.addEventListener('focus', () => activity.invalidate());
+window.addEventListener('focus', refreshShortcut);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) void refreshShortcut(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) markHistoryChanged(); });
 document.addEventListener('close', () => queueMicrotask(scheduleHistoryRefresh), true);
 watchNextDay();
 // Extension-local rules load before any selection or deletion becomes available.
 request({ type: 'get-protection' }).then(async data => {
-  state.protectedSites = data.sites; state.rulesReady = true; status(modalUnavailable ? 'modalUnavailable' : 'ready'); controls();
+  state.protectedSites = data.sites;
+  try { defaultBrowsing = await readBrowsingPreferences(chrome.storage.local); }
+  catch { status('preferencesLoadFailed'); controls(); return; }
+  state.grouping = defaultBrowsing.view; state.filters.range = defaultBrowsing.range;
+  writeTimeDraft(state.filters);
+  state.rulesReady = true; status(modalUnavailable ? 'modalUnavailable' : 'ready'); controls();
   if (handoffId && !compact) {
     state.busy = true; controls();
     try {
@@ -900,7 +1168,8 @@ request({ type: 'get-protection' }).then(async data => {
       await search();
     } catch { state.busy = false; status('handoffFailed'); controls(); }
   } else { await search(); if (modalUnavailable) status('modalUnavailable'); }
-}).catch(error => { status(error.message === 'BACKGROUND_UNAVAILABLE' ? 'reloadExtension' : 'rulesUnavailable'); controls(); });
+}).catch(error => { status(error.message === 'BACKGROUND_UNAVAILABLE' ? 'reloadExtension' : 'rulesUnavailable'); controls(); })
+  .finally(() => document.dispatchEvent(new Event('history-sweep:startup-ready')));
 globalThis.chrome?.storage?.onChanged?.addListener((changes, area) => {
   if (area !== 'local' || !Object.hasOwn(changes, 'protectedSites')) return;
   // Re-read and validate the authoritative rules rather than trusting an event payload.

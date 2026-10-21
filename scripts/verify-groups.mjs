@@ -33,11 +33,11 @@ try {
     const x = page.locator('.website-group[data-hostname="x.com"]');
     const github = page.locator('.website-group[data-hostname="github.com"]');
     check(await page.locator('#groupBySite').getAttribute('aria-pressed') === 'true', 'website view is selected');
-    check(await x.locator('.history-row').count() === 3, 'short preview keeps other categories within reach');
+    check(await x.locator('.history-row').count() === 5, 'short preview shows the first five rows');
     check(await github.locator('.history-row').count() === 0, 'collapsed groups render no rows');
     await x.locator('.group-select').check();
     check((await page.locator('#selected').textContent()).startsWith('124'), 'group selection covers non-rendered rows');
-    check(await x.locator('.row-select:checked').count() === 3, 'visible row checkboxes follow group selection');
+    check(await x.locator('.row-select:checked').count() === 5, 'visible row checkboxes follow group selection');
     await github.locator('.group-select').check();
     check((await page.locator('#selected').textContent()).startsWith('127'), 'multiple groups can be selected');
     await x.locator('.group-toggle').click();
@@ -50,7 +50,7 @@ try {
     check((await page.locator('#selected').textContent()).startsWith('126'), 'individual exclusion updates total');
     await page.screenshot({ path: `${root}test-results/grouped-${layout}.png` });
     await x.locator('.group-load-more').click();
-    check(await x.locator('.history-row').count() === (layout === 'popup' ? 43 : 103), 'load more grows only its group');
+    check(await x.locator('.history-row').count() === (layout === 'popup' ? 45 : 105), 'load more grows only its group');
     check(await x.locator('.row-select').last().isChecked(), 'newly shown rows retain group selection');
     await github.locator('.group-toggle').click();
     check(await github.locator('.row-select:checked').count() === 3, 'selecting collapsed group persists on expansion');

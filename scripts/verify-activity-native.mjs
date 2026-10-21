@@ -46,6 +46,7 @@ try {
   assert.equal(Object.values(log.days)[0].websites[0].domain, 'activity-fixture.example.test');
   assert.doesNotMatch(JSON.stringify(log), /https:|page-[123]/);
   await page.locator('#toggleActivity').click();
+  await page.locator('[data-activity-mode=cleanup]').click();
   await page.waitForFunction(() => document.querySelector('#activityStats').textContent.includes('1 cleanups'));
   await page.locator('.activity-site img').waitFor({ state: 'visible' });
   const favicon = await page.locator('.activity-site img').evaluate(img => ({ source: img.src, width: img.naturalWidth }));
@@ -60,11 +61,17 @@ try {
   assert.match(await page.locator('#activityStats').textContent(), /2 cleanups/, 'the initiating UI reads the new persisted total before reporting cleanup complete, without a storage event');
   assert.match(await page.locator('#activityDetail').textContent(), /4 pages · 1 websites/);
   await page.reload();
+  await page.locator('#toggleActivity').waitFor({ state: 'visible' });
+  if (await page.locator('#toggleActivity').getAttribute('aria-expanded') !== 'true') await page.locator('#toggleActivity').click();
+  await page.locator('[data-activity-mode=cleanup]').click();
   await page.waitForFunction(() => document.querySelector('#activityStats')?.textContent.includes('2 cleanups'));
   await context.close();
   context = await chromium.launchPersistentContext(profile, browserOptions);
   const reopened = await context.newPage(); reopened.on('pageerror', error => errors.push(error.message));
   await reopened.goto(`chrome-extension://${id}/manager.html`);
+  await reopened.locator('#toggleActivity').waitFor({ state: 'visible' });
+  if (await reopened.locator('#toggleActivity').getAttribute('aria-expanded') !== 'true') await reopened.locator('#toggleActivity').click();
+  await reopened.locator('[data-activity-mode=cleanup]').click();
   await reopened.waitForFunction(() => document.querySelector('#activityStats')?.textContent.includes('2 cleanups'));
   const restored = await reopened.evaluate(async () => (await chrome.storage.local.get('localActivity')).localActivity);
   assert.deepEqual(restored, persisted, 'a new browser process and service worker read the same durable activity log');

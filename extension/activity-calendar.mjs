@@ -18,10 +18,13 @@ export function activityCalendar(year, range, now = new Date()) {
   return { cells, months, weeks: cells.length / 7, start: formatDate(start), end: formatDate(end), today };
 }
 
-export function browsingActivity(items) {
+function* browsingActivitySteps(items) {
   const days = {};
   const seen = new Set();
+  let processed = 0;
   for (const item of items) {
+    // Yield even for invalid or duplicate records, which can dominate a snapshot.
+    if (++processed % 512 === 0) yield;
     if (!item.url || seen.has(item.url) || !Number.isFinite(item.lastVisitTime) || item.lastVisitTime <= 0) continue;
     const date = new Date(item.lastVisitTime);
     if (!Number.isFinite(date.getTime()) || date.getFullYear() < 100 || date.getFullYear() > 9999) continue;
@@ -41,8 +44,33 @@ export function browsingActivity(items) {
       }
     } catch {}
   }
-  for (const day of Object.values(days)) day.websites = [...day.websites.values()].sort((a, b) => b.lastVisitTime - a.lastVisitTime || a.domain.localeCompare(b.domain));
+  for (const day of Object.values(days)) {
+    day.websites = [...day.websites.values()].sort((a, b) => b.lastVisitTime - a.lastVisitTime || a.domain.localeCompare(b.domain));
+    yield;
+  }
   return days;
+}
+
+export function browsingActivity(items) {
+  const steps = browsingActivitySteps(items);
+  let result;
+  do { result = steps.next(); } while (!result.done);
+  return result.value;
+}
+
+export async function browsingActivityAsync(items, isCurrent = () => true) {
+  const steps = browsingActivitySteps(items);
+  let result;
+  do {
+    if (!isCurrent()) return null;
+    result = steps.next();
+    // Give input and rendering a turn instead of blocking on a full history snapshot.
+    if (!result.done) {
+      if (globalThis.scheduler?.yield) await scheduler.yield();
+      else await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  } while (!result.done);
+  return result.value;
 }
 
 export function activitySummary(days, start, end, today) {

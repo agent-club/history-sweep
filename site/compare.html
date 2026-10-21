@@ -1,0 +1,256 @@
+<!doctype html><html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Compare History Sweep with five widely used Chrome history and cleanup extensions. Explore workflows, tradeoffs and dated evidence.">
+<link rel="canonical" href="https://sweep.agentclub.dev/compare.html"><title>History Sweep · Compare Chrome history tools</title>
+<link rel="icon" href="assets/mark.svg">
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="display-type.css">
+<link rel="stylesheet" href="comparison-detail.css">
+</head>
+<body class="comparison-detail">
+<header class="nav wrap"><a class="brand" href="./#compare"><img src="assets/product-mark.png" width="34" height="34" alt="">History Sweep</a>
+<nav class="nav-links" aria-label="Main navigation"><a href="./#features" data-zh="功能与玩法">Explore</a><a class="compare-nav-active" href="./#compare" data-zh="工具对比">Compare</a><a href="privacy.html" data-zh="隐私">Privacy</a><a href="https://github.com/agent-club/history-sweep">GitHub</a>
+</nav>
+<div class="nav-actions">
+<div id="language" class="language-switch" role="group" aria-label="Language"><button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="true">EN</button><button type="button" data-language="zh-CN" lang="zh-CN" aria-label="简体中文" aria-pressed="false">中文</button>
+</div><a class="button nav-cta" href="https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm"><span data-zh="添加至 Chrome">Add to Chrome</span><span aria-hidden="true">↗</span></a>
+</div>
+</header>
+<main class="detail-main wrap">
+<div class="breadcrumb"><a href="./#compare"><span  data-zh="← 返回主页概览">← Back to overview</span></a><span>/</span><span  data-zh="工具对比">Tool comparison</span>
+</div><p class="cmp-kicker" data-zh="对比明细 / A CLOSER LOOK">THE COMPARISON / A CLOSER LOOK</p>
+<div class="detail-hero">
+<h1 class="detail-title" data-zh="把差异，&lt;br&gt;放进同一个任务里。">Put the differences<br>in the same context.</h1><p class="detail-description" data-zh="从你要完成的清理任务出发。&lt;br&gt;比较流程、范围和取舍，让选择有据可循。">Start with what you need to clean. Compare the workflow, the scope, and the tradeoffs—not an arbitrary score.</p>
+</div>
+<div class="evidence-note"><span class="evidence-label" data-zh="资料核对">SOURCE CHECK</span><span  data-zh="核对于 2026.10.22。本轮查阅官方条目与截图，尚未重新执行竞品删除测试。&lt;a href=&quot;#method&quot;&gt;查看核对方法 ↓&lt;/a&gt;">Checked Oct 22, 2026. This round verifies official listings and screenshots; no new competitor deletion tests. <a href="#method">Read the method ↓</a></span>
+</div>
+<div class="detail-controls"><label for="compare-picker"><span  data-zh="选择与 History Sweep 对比的工具">History Sweep, compared with</span></label>
+<div class="select-wrap"><select id="compare-picker"><option value="clickclean">Click&amp;Clean · 1,000,000 users</option><option value="clearcache">Clear Cache · 1,000,000 users</option><option value="betterhistory" selected>Better History · 100,000 users</option><option value="oneclick">OneClick Cleaner · 100,000 users</option><option value="clickandclean">Click and Clean · 100,000 users</option></select>
+</div>
+</div>
+<article data-tool-panel="clickclean" hidden aria-label="History Sweep vs Click&amp;Clean">
+<table class="pair-table"><colgroup><col><col><col></colgroup>
+<thead>
+<tr><th scope="col"><span  data-zh="任务与范围">TASK & SCOPE</span></th><th scope="col" class="our-col">
+<div class="pair-brand"><img src="assets/product-mark.png" alt=""><strong>History Sweep</strong>
+</div><span class="pair-meta" data-zh="仓库 0.4.0 · 项目说明">Repository 0.4.0 · project documentation</span><span class="pair-tag" data-zh="有选择地清理历史">Focused history cleanup</span></th><th scope="col">
+<div class="pair-brand"><span class="cmp-monogram" aria-hidden="true">C&amp;C</span><strong>Click&amp;Clean</strong>
+</div><span class="pair-meta">v9.8.2.0 · 1,000,000 users</span><span class="pair-tag">Hotcleaner / Mixesoft</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><th scope="row"><span  data-zh="找到记录">Finding the right records</span></th><td class="our-col"><span  data-zh="按域名、子域名或标题／网址文字查找，可叠加日期。">A domain, subdomains or title/URL text; add a date range.</span><small  data-zh="日期依据每个网址的最后访问时间。">The date filter uses each URL’s last visit.</small></td><td><span  data-zh="提供历史查看与当前页清理入口。">A history viewer and a current-page action.</span><small  data-zh="搜索与选择能细分到什么程度，仍需安装核对。">How granular its search and selection are needs a hands-on check.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="删除前核对">Before you delete</span></th><td class="our-col"><span  data-zh="整组或逐条选择，取消勾选例外，再核对确认。">Select a group or individual URLs, uncheck exceptions, then review the confirmation.</span><small  data-zh="项目说明包含删除后复查；删除会移除该网址的全部访问记录。">Project docs describe a post-deletion check. Deletion removes all visits to the URL.</small></td><td><span  data-zh="清理选项覆盖多种浏览数据。">Cleaning options cover multiple browser data types.</span><small  data-zh="逐网址确认的具体流程尚未实测。">The exact per-URL confirmation flow is untested.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="历史之外">Beyond history</span></th><td class="our-col"><span  data-zh="聚焦选中的浏览历史清理。">Focused on selected browsing-history cleanup.</span><small  data-zh="当前产品不以缓存、Cookie 清理或历史导出为目标。">The current product does not target cache, cookies or history export.</small></td><td><span  data-zh="覆盖历史、缓存、Cookie 与下载记录。">A broad toolkit for history, cache, cookies and downloads.</span><small  data-zh="如果想一次整理多类数据，覆盖面更广。">A stronger fit when you want several data types cleaned together.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="自动清理">Automatic cleanup</span></th><td class="our-col"><span  data-zh="以用户主动发起、逐步核对的清理流程为主。">A deliberate, user-triggered cleanup workflow.</span><small  data-zh="希望无人值守自动清理时，应了解自动化工具。">For unattended cleanup, consider the automation-focused alternatives.</small></td><td><span  data-zh="官方资料介绍了关闭 Chrome 时的清理。">Official materials describe cleanup when Chrome closes.</span><small  data-zh="执行、例外规则与中断行为尚未实测。">Execution, exceptions and interruption behavior were not tested.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="隐私证据">Privacy evidence</span></th><td class="our-col"><span  data-zh="项目说明：本机处理、无需账号、没有统计追踪。">Project docs: on-device processing, no account and no analytics.</span><small  data-zh="此处对应仓库 0.4.0；商店版本可能不同，也未经独立审计。">Repository build 0.4.0; the store build may differ. Not an independent audit.</small></td><td><span  data-zh="商店隐私声明：不收集或使用数据。">Store disclosure: no data collection or use.</span><small  data-zh="这是开发者声明，不等于独立安全审计。">A developer declaration, not an independent security audit.</small></td>
+</tr>
+</tbody>
+</table>
+<div class="verdict">
+<div>
+<h3  data-zh="什么时候选 Click&amp;Clean">When Click&amp;Clean fits</h3><p  data-zh="需要同时整理历史、缓存、Cookie 等多类数据，也希望有快捷清理入口时，可以优先了解它。">Choose it when you want a browser-cleaning toolkit with several data categories and quick page-level actions.</p>
+</div>
+<div>
+<h3  data-zh="哪些还需要核实">What still needs checking</h3><p  data-zh="商店介绍混有旧平台及历史功能描述。应以实际安装版本核对控件，不能把历史文案全部当作当前可用功能。">The listing contains older platform and feature descriptions. Verify the controls in the installed build; do not treat every historical claim as current functionality.</p>
+</div>
+</div>
+<div class="sources"><span><span  data-zh="证据：官方说明；不代表本轮已经完成实测。">Evidence: official description; not a new hands-on test.</span></span>
+<div><a href="https://chromewebstore.google.com/detail/clickclean/ghgabhipcejejjmhhchfonmamedcbeod?hl=en" target="_blank" rel="noreferrer"><span  data-zh="查看官方商店条目 ↗">Official store listing ↗</span></a> · <a href="https://github.com/agent-club/history-sweep/blob/main/README.md"><span  data-zh="项目说明 ↗">Project docs ↗</span></a>
+</div>
+</div>
+</article>
+<article data-tool-panel="clearcache" hidden aria-label="History Sweep vs Clear Cache">
+<table class="pair-table"><colgroup><col><col><col></colgroup>
+<thead>
+<tr><th scope="col"><span  data-zh="任务与范围">TASK & SCOPE</span></th><th scope="col" class="our-col">
+<div class="pair-brand"><img src="assets/product-mark.png" alt=""><strong>History Sweep</strong>
+</div><span class="pair-meta" data-zh="仓库 0.4.0 · 项目说明">Repository 0.4.0 · project documentation</span><span class="pair-tag" data-zh="有选择地清理历史">Focused history cleanup</span></th><th scope="col">
+<div class="pair-brand"><span class="cmp-monogram" aria-hidden="true">CC</span><strong>Clear Cache</strong>
+</div><span class="pair-meta">v2.5.1-build.1 · 1,000,000 users</span><span class="pair-tag">Little Void LLC</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><th scope="row"><span  data-zh="找到记录">Finding the right records</span></th><td class="our-col"><span  data-zh="按域名、子域名或标题／网址文字查找，可叠加日期。">A domain, subdomains or title/URL text; add a date range.</span><small  data-zh="日期依据每个网址的最后访问时间。">The date filter uses each URL’s last visit.</small></td><td><span  data-zh="支持按域名、当前标签页和时间段控制。">Domain, active-tab and time-period controls.</span><small  data-zh="清理预览不等于可搜索、逐条勾选的历史列表。">The preview is not evidence of a searchable per-URL history list.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="删除前核对">Before you delete</span></th><td class="our-col"><span  data-zh="整组或逐条选择，取消勾选例外，再核对确认。">Select a group or individual URLs, uncheck exceptions, then review the confirmation.</span><small  data-zh="项目说明包含删除后复查；删除会移除该网址的全部访问记录。">Project docs describe a post-deletion check. Deletion removes all visits to the URL.</small></td><td><span  data-zh="商店明确介绍了清理前预览。">The listing explicitly advertises a clearing preview.</span><small  data-zh="预览粒度与清理后的复查机制仍待实测。">Preview granularity and result checking need testing.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="历史之外">Beyond history</span></th><td class="our-col"><span  data-zh="聚焦选中的浏览历史清理。">Focused on selected browsing-history cleanup.</span><small  data-zh="当前产品不以缓存、Cookie 清理或历史导出为目标。">The current product does not target cache, cookies or history export.</small></td><td><span  data-zh="重点覆盖缓存、站点数据与浏览数据。">Cache, site data and browser-data controls.</span><small  data-zh="对站点数据清理的覆盖面更广。">More relevant for site-data cleanup than a history-only tool.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="自动清理">Automatic cleanup</span></th><td class="our-col"><span  data-zh="以用户主动发起、逐步核对的清理流程为主。">A deliberate, user-triggered cleanup workflow.</span><small  data-zh="希望无人值守自动清理时，应了解自动化工具。">For unattended cleanup, consider the automation-focused alternatives.</small></td><td><span  data-zh="自动排程列在 Clear Cache Plus 功能中。">Automated scheduling is listed under Clear Cache Plus.</span><small  data-zh="自定义预设、按数据类型配置域名也属于 Plus。">Custom presets and per-data-type domain rules are also Plus features.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="隐私证据">Privacy evidence</span></th><td class="our-col"><span  data-zh="项目说明：本机处理、无需账号、没有统计追踪。">Project docs: on-device processing, no account and no analytics.</span><small  data-zh="此处对应仓库 0.4.0；商店版本可能不同，也未经独立审计。">Repository build 0.4.0; the store build may differ. Not an independent audit.</small></td><td><span  data-zh="商店披露涉及个人身份信息与支付信息。">Store disclosure lists personal and payment information.</span><small  data-zh="不能据此推断它会上传浏览历史。">That disclosure alone does not show that browsing history is uploaded.</small></td>
+</tr>
+</tbody>
+</table>
+<div class="verdict">
+<div>
+<h3  data-zh="什么时候选 Clear Cache">When Clear Cache fits</h3><p  data-zh="主要想清缓存或站点数据，重视预览、当前标签页范围或自动排程时，可以优先了解它；先确认免费版与 Plus 的边界。">Choose it for cache or site-data cleanup, especially when preview, active-tab scope or advanced scheduled presets matter. Check the free/Plus boundary first.</p>
+</div>
+<div>
+<h3  data-zh="哪些还需要核实">What still needs checking</h3><p  data-zh="公开说明还不能证明“只删两页、留下一页”的历史任务如何完成。实测前，不应把它的预览判定为与逐条历史核对等价或更差。">The public description does not establish how a history-only, select-two-pages-and-keep-one task behaves. A preview should not be scored as either equivalent or inferior without testing.</p>
+</div>
+</div>
+<div class="sources"><span><span  data-zh="证据：官方说明；不代表本轮已经完成实测。">Evidence: official description; not a new hands-on test.</span></span>
+<div><a href="https://chromewebstore.google.com/detail/clear-cache/cppjkneekbjaeellbfkmgnhonkkjfpdn?hl=en" target="_blank" rel="noreferrer"><span  data-zh="查看官方商店条目 ↗">Official store listing ↗</span></a> · <a href="https://github.com/agent-club/history-sweep/blob/main/README.md"><span  data-zh="项目说明 ↗">Project docs ↗</span></a>
+</div>
+</div>
+</article>
+<article data-tool-panel="betterhistory" aria-label="History Sweep vs Better History">
+<table class="pair-table"><colgroup><col><col><col></colgroup>
+<thead>
+<tr><th scope="col"><span  data-zh="任务与范围">TASK & SCOPE</span></th><th scope="col" class="our-col">
+<div class="pair-brand"><img src="assets/product-mark.png" alt=""><strong>History Sweep</strong>
+</div><span class="pair-meta" data-zh="仓库 0.4.0 · 项目说明">Repository 0.4.0 · project documentation</span><span class="pair-tag" data-zh="有选择地清理历史">Focused history cleanup</span></th><th scope="col">
+<div class="pair-brand"><span class="cmp-monogram" aria-hidden="true">BH</span><strong>Better History</strong>
+</div><span class="pair-meta">v7.0.0 · 100,000 users</span><span class="pair-tag">betterhistory.io</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><th scope="row"><span  data-zh="找到记录">Finding the right records</span></th><td class="our-col"><span  data-zh="按域名、子域名或标题／网址文字查找，可叠加日期。">A domain, subdomains or title/URL text; add a date range.</span><small  data-zh="日期依据每个网址的最后访问时间。">The date filter uses each URL’s last visit.</small></td><td><span  data-zh="关键词、正则搜索，以及日期／小时导航。">Keywords, RegEx and day/hour navigation.</span><small  data-zh="官方也介绍了自选记录删除。">Selected deletion is also documented.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="删除前核对">Before you delete</span></th><td class="our-col"><span  data-zh="整组或逐条选择，取消勾选例外，再核对确认。">Select a group or individual URLs, uncheck exceptions, then review the confirmation.</span><small  data-zh="项目说明包含删除后复查；删除会移除该网址的全部访问记录。">Project docs describe a post-deletion check. Deletion removes all visits to the URL.</small></td><td><span  data-zh="旧版对比记录观察到了选择和删除控件。">Selection and deletion controls were observed in an earlier comparison.</span><small  data-zh="10 月 1 日有旧实测；10 月 2 日仅复查界面，本轮未重测删除。">Earlier test: Oct 1; UI recheck: Oct 2. Not a fresh deletion test.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="历史之外">Beyond history</span></th><td class="our-col"><span  data-zh="聚焦选中的浏览历史清理。">Focused on selected browsing-history cleanup.</span><small  data-zh="当前产品不以缓存、Cookie 清理或历史导出为目标。">The current product does not target cache, cookies or history export.</small></td><td><span  data-zh="支持 CSV／HTML 导出，合并浏览与下载记录视图。">CSV/HTML export; combined browsing and download view.</span><small  data-zh="适合需要更全面历史管理的用户。">A broader history-management workspace.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="自动清理">Automatic cleanup</span></th><td class="our-col"><span  data-zh="以用户主动发起、逐步核对的清理流程为主。">A deliberate, user-triggered cleanup workflow.</span><small  data-zh="希望无人值守自动清理时，应了解自动化工具。">For unattended cleanup, consider the automation-focused alternatives.</small></td><td><span  data-zh="提供智能自动清理，以及自动清理的域名白名单。">Smart Auto Cleanup and an automatic-cleanup domain whitelist.</span><small  data-zh="排程与白名单实际执行尚未测试。">Scheduling and whitelist execution were not tested.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="隐私证据">Privacy evidence</span></th><td class="our-col"><span  data-zh="项目说明：本机处理、无需账号、没有统计追踪。">Project docs: on-device processing, no account and no analytics.</span><small  data-zh="此处对应仓库 0.4.0；商店版本可能不同，也未经独立审计。">Repository build 0.4.0; the store build may differ. Not an independent audit.</small></td><td><span  data-zh="商店隐私声明：不收集或使用数据。">Store disclosure: no data collection or use.</span><small  data-zh="尚未核对实际网络行为，不作独立隐私审计结论。">Network behavior was not verified; no independent privacy-audit conclusion is made.</small></td>
+</tr>
+</tbody>
+</table>
+<div class="verdict">
+<div>
+<h3  data-zh="什么时候选 Better History">When Better History fits</h3><p  data-zh="需要按日／小时回溯、正则搜索、导出或自动保留规则时，可以优先了解它。它同样支持选中删除，不能把这项能力写成 History Sweep 独有。">Choose it when date/hour navigation, RegEx, exports or automated retention rules matter. It also supports selected deletion, so History Sweep is not the only option for that task.</p>
+</div>
+<div>
+<h3  data-zh="哪些还需要核实">What still needs checking</h3><p  data-zh="过去的小样本实测不能证明当前版本的稳定性或性能；商店当前介绍的部分能力也未在旧测试中完整执行。">An old, small fixture test is not evidence of current reliability or performance. The current store text also adds context beyond what was exercised in that test.</p>
+</div>
+</div>
+<div class="sources"><span><span  data-zh="证据：官方说明；不代表本轮已经完成实测。">Evidence: official description; not a new hands-on test.</span></span>
+<div><a href="https://chromewebstore.google.com/detail/better-history-manage-exp/egehpkpgpgooebopjihjmnpejnjafefi?hl=en" target="_blank" rel="noreferrer"><span  data-zh="查看官方商店条目 ↗">Official store listing ↗</span></a> · <a href="https://github.com/agent-club/history-sweep/blob/main/README.md"><span  data-zh="项目说明 ↗">Project docs ↗</span></a> · <a href="https://github.com/agent-club/history-sweep/blob/main/docs/comparison-2026-10.md"><span  data-zh="旧实测与边界 ↗">Dated earlier test ↗</span></a>
+</div>
+</div>
+</article>
+<article data-tool-panel="oneclick" hidden aria-label="History Sweep vs OneClick Cleaner">
+<table class="pair-table"><colgroup><col><col><col></colgroup>
+<thead>
+<tr><th scope="col"><span  data-zh="任务与范围">TASK & SCOPE</span></th><th scope="col" class="our-col">
+<div class="pair-brand"><img src="assets/product-mark.png" alt=""><strong>History Sweep</strong>
+</div><span class="pair-meta" data-zh="仓库 0.4.0 · 项目说明">Repository 0.4.0 · project documentation</span><span class="pair-tag" data-zh="有选择地清理历史">Focused history cleanup</span></th><th scope="col">
+<div class="pair-brand"><span class="cmp-monogram" aria-hidden="true">1C</span><strong>OneClick Cleaner</strong>
+</div><span class="pair-meta">v0.9.1.6 · 100,000 users</span><span class="pair-tag">Smart Software</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><th scope="row"><span  data-zh="找到记录">Finding the right records</span></th><td class="our-col"><span  data-zh="按域名、子域名或标题／网址文字查找，可叠加日期。">A domain, subdomains or title/URL text; add a date range.</span><small  data-zh="日期依据每个网址的最后访问时间。">The date filter uses each URL’s last visit.</small></td><td><span  data-zh="官方说明以数据类别清理为主。">Data-category cleanup is documented.</span><small  data-zh="关键词、域名与逐网址选择行为尚未实测。">Keyword, domain and per-URL selection behavior is untested.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="删除前核对">Before you delete</span></th><td class="our-col"><span  data-zh="整组或逐条选择，取消勾选例外，再核对确认。">Select a group or individual URLs, uncheck exceptions, then review the confirmation.</span><small  data-zh="项目说明包含删除后复查；删除会移除该网址的全部访问记录。">Project docs describe a post-deletion check. Deletion removes all visits to the URL.</small></td><td><span  data-zh="官方材料展示按数据类别配置清理。">A category-based cleaning interface is shown in official materials.</span><small  data-zh="介绍没写确认流程，不能据此判定没有确认。">Do not assume no confirmation just because the listing does not describe one.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="历史之外">Beyond history</span></th><td class="our-col"><span  data-zh="聚焦选中的浏览历史清理。">Focused on selected browsing-history cleanup.</span><small  data-zh="当前产品不以缓存、Cookie 清理或历史导出为目标。">The current product does not target cache, cookies or history export.</small></td><td><span  data-zh="覆盖历史、缓存、Cookie、下载记录与表单数据。">History, cache, cookies, downloads and form data.</span><small  data-zh="清下载记录与删除下载文件不是同一件事。">Download history is distinct from downloaded files.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="自动清理">Automatic cleanup</span></th><td class="our-col"><span  data-zh="以用户主动发起、逐步核对的清理流程为主。">A deliberate, user-triggered cleanup workflow.</span><small  data-zh="希望无人值守自动清理时，应了解自动化工具。">For unattended cleanup, consider the automation-focused alternatives.</small></td><td><span  data-zh="本轮尚未核实自动清理行为。">Automatic-cleanup behavior was not established in this review.</span><small  data-zh="不据此判定不支持。">No absence claim is made.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="隐私证据">Privacy evidence</span></th><td class="our-col"><span  data-zh="项目说明：本机处理、无需账号、没有统计追踪。">Project docs: on-device processing, no account and no analytics.</span><small  data-zh="此处对应仓库 0.4.0；商店版本可能不同，也未经独立审计。">Repository build 0.4.0; the store build may differ. Not an independent audit.</small></td><td><span  data-zh="商店隐私声明：不收集或使用数据。">Store disclosure: no data collection or use.</span><small  data-zh="安装包体积小，不等于速度或安全性更优。">The small package size is not a speed or safety benchmark.</small></td>
+</tr>
+</tbody>
+</table>
+<div class="verdict">
+<div>
+<h3  data-zh="什么时候选 OneClick Cleaner">When OneClick Cleaner fits</h3><p  data-zh="任务是集中整理多种浏览数据时，可以把它列入候选。执行大范围清理前，先核对当前版本的控件与清理范围。">Choose it when the task is a straightforward cleanup of several browser-data categories. Confirm the current controls and scope before using a broad clean.</p>
+</div>
+<div>
+<h3  data-zh="哪些还需要核实">What still needs checking</h3><p  data-zh="介绍中仍有较旧的 Chrome 数据类型，需要通过当前安装版本核对兼容性；更新时间较早，本身不能证明功能失效。">The listing still references older Chrome data types. The installed build needs a fresh compatibility check; a long time since the listed update is not proof of failure.</p>
+</div>
+</div>
+<div class="sources"><span><span  data-zh="证据：官方说明；不代表本轮已经完成实测。">Evidence: official description; not a new hands-on test.</span></span>
+<div><a href="https://chromewebstore.google.com/detail/oneclick-cleaner-for-chro/oncckmaelaecccmaniihojgeopkcajfh?hl=en" target="_blank" rel="noreferrer"><span  data-zh="查看官方商店条目 ↗">Official store listing ↗</span></a> · <a href="https://github.com/agent-club/history-sweep/blob/main/README.md"><span  data-zh="项目说明 ↗">Project docs ↗</span></a>
+</div>
+</div>
+</article>
+<article data-tool-panel="clickandclean" hidden aria-label="History Sweep vs Click and Clean">
+<table class="pair-table"><colgroup><col><col><col></colgroup>
+<thead>
+<tr><th scope="col"><span  data-zh="任务与范围">TASK & SCOPE</span></th><th scope="col" class="our-col">
+<div class="pair-brand"><img src="assets/product-mark.png" alt=""><strong>History Sweep</strong>
+</div><span class="pair-meta" data-zh="仓库 0.4.0 · 项目说明">Repository 0.4.0 · project documentation</span><span class="pair-tag" data-zh="有选择地清理历史">Focused history cleanup</span></th><th scope="col">
+<div class="pair-brand"><span class="cmp-monogram" aria-hidden="true">CN</span><strong>Click and Clean</strong>
+</div><span class="pair-meta">v0.4.0 · 100,000 users</span><span class="pair-tag">BrowserNative</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><th scope="row"><span  data-zh="找到记录">Finding the right records</span></th><td class="our-col"><span  data-zh="按域名、子域名或标题／网址文字查找，可叠加日期。">A domain, subdomains or title/URL text; add a date range.</span><small  data-zh="日期依据每个网址的最后访问时间。">The date filter uses each URL’s last visit.</small></td><td><span  data-zh="支持一键清理与键盘快捷键。">One-click and keyboard-shortcut cleanup.</span><small  data-zh="逐网址历史搜索与选择尚未实测。">Per-URL history search and selection were not tested.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="删除前核对">Before you delete</span></th><td class="our-col"><span  data-zh="整组或逐条选择，取消勾选例外，再核对确认。">Select a group or individual URLs, uncheck exceptions, then review the confirmation.</span><small  data-zh="项目说明包含删除后复查；删除会移除该网址的全部访问记录。">Project docs describe a post-deletion check. Deletion removes all visits to the URL.</small></td><td><span  data-zh="白名单保护 Cookie、缓存与站点存储，不保护浏览历史。">The whitelist protects cookies, cache and site storage, not history.</span><small  data-zh="官方指南说明历史、下载与表单数据仍会被删除；本轮未重放执行。">The official guide says history, downloads and form data are still deleted. Execution was not replayed.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="历史之外">Beyond history</span></th><td class="our-col"><span  data-zh="聚焦选中的浏览历史清理。">Focused on selected browsing-history cleanup.</span><small  data-zh="当前产品不以缓存、Cookie 清理或历史导出为目标。">The current product does not target cache, cookies or history export.</small></td><td><span  data-zh="覆盖历史、Cookie、缓存等多类数据。">Multiple categories including history, cookies and cache.</span><small  data-zh="官方介绍还提到处理打开的窗口。">The official description also mentions open windows.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="自动清理">Automatic cleanup</span></th><td class="our-col"><span  data-zh="以用户主动发起、逐步核对的清理流程为主。">A deliberate, user-triggered cleanup workflow.</span><small  data-zh="希望无人值守自动清理时，应了解自动化工具。">For unattended cleanup, consider the automation-focused alternatives.</small></td><td><span  data-zh="提供可配置的键盘快捷键。">A configurable keyboard shortcut is documented.</span><small  data-zh="快捷键能力不等于定时清理。">This is not evidence of scheduled cleanup.</small></td>
+</tr>
+<tr><th scope="row"><span  data-zh="隐私证据">Privacy evidence</span></th><td class="our-col"><span  data-zh="项目说明：本机处理、无需账号、没有统计追踪。">Project docs: on-device processing, no account and no analytics.</span><small  data-zh="此处对应仓库 0.4.0；商店版本可能不同，也未经独立审计。">Repository build 0.4.0; the store build may differ. Not an independent audit.</small></td><td><span  data-zh="商店隐私声明：不收集或使用数据。">Store disclosure: no data collection or use.</span><small  data-zh="这是开发者声明，不等于独立安全审计。">A developer declaration, not an independent security audit.</small></td>
+</tr>
+</tbody>
+</table>
+<div class="verdict">
+<div>
+<h3  data-zh="什么时候选 Click and Clean">When Click and Clean fits</h3><p  data-zh="适合用快捷键整理多类数据并保留指定站点数据；不能依靠其白名单保留历史。它与 Hotcleaner 的 Click&amp;Clean 是两款产品。">Choose it for keyboard-triggered multi-category cleanup while preserving selected site data, not protected history. It is distinct from Hotcleaner’s Click&Clean.</p>
+</div>
+<div>
+<h3  data-zh="哪些还需要核实">What still needs checking</h3><p  data-zh="官方指南明确排除浏览历史的白名单保护；逐网址核对与实际执行仍待实测。">The official guide excludes browsing history from whitelist protection. Per-URL review and actual execution remain untested.</p>
+</div>
+</div>
+<div class="sources"><span><span  data-zh="证据：官方说明；不代表本轮已经完成实测。">Evidence: official description; not a new hands-on test.</span></span>
+<div><a href="https://chromewebstore.google.com/detail/click-and-clean/mgngmngjioknlgjjaiiamcdbahombpfb?hl=en" target="_blank" rel="noreferrer"><span  data-zh="查看官方商店条目 ↗">Official store listing ↗</span></a> · <a href="https://github.com/agent-club/history-sweep/blob/main/README.md"><span  data-zh="项目说明 ↗">Project docs ↗</span></a>
+</div>
+</div>
+</article>
+<section class="evidence-note" id="visual-evidence" style="display:block;line-height:1.9;margin:32px 0">
+<h2 style="font-size:20px;margin-bottom:14px" data-zh="本轮差异与界面判断的依据">Evidence for the current differences and visual assessments</h2><p data-zh="BrowserNative 官方指南明确：白名单仅保留 Cookie、缓存和站点存储，历史、下载和表单数据仍删除。其设置图展示数据类型复选框，操作指南要求在设置页保存选择后回弹窗执行。">BrowserNative's guide explicitly excludes history, downloads and form data from its whitelist. Its settings image shows data-type checkboxes; the guide saves settings before returning to the popup to clean.</p><p><a href="https://browsernative.com/click-and-clean-chrome-extension/" target="_blank" rel="noreferrer">BrowserNative · guide / interface</a> · <a href="https://betterhistory.io/" target="_blank" rel="noreferrer">Better History · interface</a> · <a href="https://www.hotcleaner.com/clickclean_chrome.html" target="_blank" rel="noreferrer">Click&amp;Clean · menu image</a></p><p data-zh="另核对 Clear Cache 与 OneClick Cleaner 的商店展示图。视觉判断只针对公开展示布局：层级、密度、配置与执行的位置；不是最新安装版本验收，也不是量化舒适度测试。Better History 支持选中删除与浅／深色，Clear Cache 已有现代主题与清理预览，均未记为缺失。">Clear Cache and OneClick Cleaner store images were also inspected. Visual judgments address displayed hierarchy, density and action placement, not a current installed-build replay or measured comfort. Better History selection and themes, and Clear Cache modern themes and preview, are retained as capabilities.</p>
+</section>
+<details class="method" id="method">
+<summary><span  data-zh="样本怎么选，信息怎么核对">How we chose and checked these tools</span>
+</summary>
+<div class="method-content">
+<h3  data-zh="样本口径">Selection scope</h3><p  data-zh="核对常见的 Chrome 历史管理与浏览数据清理工具；排除只打开原生历史页的快捷按钮、仅管理书签及仅清理第三方账号历史的工具。这里是本轮核对候选中的前五，不是应用商店全量官方榜单。同档用户数不能确定真实先后。">We checked widely surfaced Chrome history managers and browser-data cleaners. Pure shortcuts, bookmarks-only tools and service-account history cleaners were excluded. These are the five largest in this checked candidate set, not an exhaustive Chrome Web Store ranking. Equal rounded counts do not establish a true order.</p>
+<h3  data-zh="来源与时效">Sources and freshness</h3><p  data-zh="五款入选工具的用户数均于 2026 年 10 月 22 日在浏览器中直读商店页面。部分搜索缓存与页面不一致，以当次可见页面为准；数值后续可能变化。功能以官方说明为主，开发者隐私声明不等于独立审计。">All five displayed counts were read directly in the browser on Oct 22, 2026. Cached search results disagreed for some candidates, so the visible store page took precedence. Figures may change. Capability claims come from official descriptions; developer privacy disclosures are not independent audits.</p>
+<table class="candidate-table">
+<thead>
+<tr><th  data-zh="已核对候选">Checked candidate</th><th  data-zh="商店用户数">Store users</th><th  data-zh="样本说明">Scope</th>
+</tr>
+</thead>
+<tbody>
+<tr><td><a href="https://chromewebstore.google.com/detail/clickclean/ghgabhipcejejjmhhchfonmamedcbeod?hl=en">Click&amp;Clean</a></td><td>1,000,000</td><td><span  data-zh="入选 · 浏览器直读">Selected · browser read</span></td>
+</tr>
+<tr><td><a href="https://chromewebstore.google.com/detail/clear-cache/cppjkneekbjaeellbfkmgnhonkkjfpdn?hl=en">Clear Cache</a></td><td>1,000,000</td><td><span  data-zh="入选 · 浏览器直读">Selected · browser read</span></td>
+</tr>
+<tr><td><a href="https://chromewebstore.google.com/detail/better-history-manage-exp/egehpkpgpgooebopjihjmnpejnjafefi?hl=en">Better History</a></td><td>100,000</td><td><span  data-zh="入选 · 浏览器直读">Selected · browser read</span></td>
+</tr>
+<tr><td><a href="https://chromewebstore.google.com/detail/oneclick-cleaner-for-chro/oncckmaelaecccmaniihojgeopkcajfh?hl=en">OneClick Cleaner for Chrome</a></td><td>100,000</td><td><span  data-zh="入选 · 浏览器直读">Selected · browser read</span></td>
+</tr>
+<tr><td><a href="https://chromewebstore.google.com/detail/click-and-clean/mgngmngjioknlgjjaiiamcdbahombpfb?hl=en">Click and Clean</a></td><td>100,000</td><td><span  data-zh="入选 · 浏览器直读">Selected · browser read</span></td>
+</tr>
+<tr><td><a href="https://chromewebstore.google.com/detail/history-trends-unlimited/pnmchffiealhkdloeffcdnbgdnedheme?hl=en">History Trends Unlimited</a></td><td>70,000</td><td><span  data-zh="浏览器直读 · 低于入选档位；偏归档与分析">Browser read · below cutoff; local archive/analysis</span></td>
+</tr>
+<tr><td><a href="https://chromewebstore.google.com/detail/cleaner-history-cache-cle/pooaemmkohlphkekccfajnbcokjlbehk?hl=en">Cleaner - history &amp; cache clean</a></td><td>60,000</td><td><span  data-zh="浏览器直读 · 低于入选档位">Browser read · below cutoff</span></td>
+</tr>
+</tbody>
+</table>
+<h3  data-zh="其他筛选结果">Additional screening</h3><p  data-zh="搜索索引另查到 Recent History（4 万）、Auto History Wipe（2 万）、Chrome History Cleaner（1 万）、History &amp; Cache Cleaner（1 万）与 History Cleaner（2 千）；这些缓存数值不是本轮浏览器直读普查。Hotcleaner 官网说明旧版 History Eraser 已隐藏商店条目，不使用它的历史用户数参与排序。History Shortcut 仅打开 Chrome 原生历史页，未纳入同类功能样本。">Search-index checks also found Recent History (40,000), Auto History Wipe (20,000), Chrome History Cleaner (10,000), History & Cache Cleaner (10,000), and History Cleaner (2,000). These cached figures were not a fresh browser census. Hotcleaner says its older History Eraser was hidden from store listings; its historical user count was not used. History Shortcut was excluded because it only opens Chrome’s native history page.</p>
+<h3  data-zh="实测边界">What was actually tested</h3><p data-zh="本轮核对官方商店条目、操作指南与公开截图，未重新执行竞品安装及删除测试。Better History 的 10 月 1—2 日笔记仅作为历史证据；其余四款入选工具未执行删除实测。测评未读取或删除个人浏览历史。">This review checks official listings, guides and public screenshots, without fresh competitor installation or deletion tests. The Better History notes from Oct 1–2 are historical evidence; deletion was not tested for the other four tools. No personal browsing history was read or deleted.</p>
+<h3  data-zh="后续可复现的测评任务">A repeatable next test</h3><ol><li  data-zh="使用退出账号、关闭同步的独立测试资料；每款工具开始前重建相同的 example.com／example.org 演示网址。">Use a signed-out disposable profile with sync off; seed the same example.com / example.org URLs before each tool.</li><li  data-zh="查找真实域名，区分仅在网址中提及该域名的记录；选两页，并保留一条例外。">Find the real domain, distinguish a URL that merely mentions it, and select two pages while keeping an exception.</li><li data-zh="记录确认流程并取消一次；仅在独立测试配置中删除明确可丢弃的演示记录，再独立查询剩余记录。">Record the review flow and cancel once. Delete only disposable fixture records in the isolated test profile, then independently query the remaining records.</li><li  data-zh="另测自动排程、保留域名与付费功能；区分不支持、执行失败与尚未测试。">Test scheduling, protected domains and paid features separately; report unsupported, failed and untested states distinctly.</li></ol>
+</div>
+</details>
+</main>
+<footer class="detail-footer wrap"><span>History Sweep · <span  data-zh="按你的任务，选合适的工具。">Choose the tool that fits your task.</span></span>
+</footer>
+<script type="module" src="site.mjs">
+</script>
+<script type="module" src="comparison-detail.mjs">
+</script>
+</body></html>

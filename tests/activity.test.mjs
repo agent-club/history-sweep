@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activityCalendar, browsingActivity, activitySummary } from '../extension/activity-calendar.mjs';
+import { activityCalendar, browsingActivity, browsingActivityAsync, activitySummary } from '../extension/activity-calendar.mjs';
 import { createActivityLog } from '../extension/activity-log.mjs';
 
 test('annual grids contain each real date once, align weeks on Monday, and mark future dates', () => {
@@ -35,6 +35,29 @@ test('browsing counts distinct retained URLs on their last local visit date, not
   ]);
   assert.equal(days['2026-10-17'].pages, 3);
   assert.deepEqual(activitySummary(days, '2026-10-01', '2026-10-31', '2026-10-17'), { operations: 0, pages: 3, activeDays: 1, sites: 2 });
+});
+
+test('chunked activity yields to input and deduplicates records across batches', async () => {
+  const time = new Date(2026, 9, 17, 12).getTime();
+  const items = Array.from({ length: 1500 }, (_, index) => ({
+    url: `https://example.org/page-${index % 600}`, title: `Page ${index}`, lastVisitTime: time - index,
+  }));
+  let heartbeat = false;
+  const timer = setTimeout(() => { heartbeat = true; }, 0);
+  try {
+    const days = await browsingActivityAsync(items);
+    assert.equal(heartbeat, true);
+    assert.equal(days['2026-10-17'].pages, 600);
+    assert.deepEqual(days['2026-10-17'].websites, [{ domain: 'example.org', title: 'Page 0', lastVisitTime: time }]);
+  } finally { clearTimeout(timer); }
+});
+
+test('obsolete activity loads stop at the next batch without returning partial data', async () => {
+  const items = Array.from({ length: 1500 }, (_, index) => ({ url: `https://example.org/${index}`, lastVisitTime: 1 }));
+  let current = true;
+  const timer = setTimeout(() => { current = false; }, 0);
+  try { assert.equal(await browsingActivityAsync(items, () => current), null); }
+  finally { clearTimeout(timer); }
 });
 
 function fixture() {

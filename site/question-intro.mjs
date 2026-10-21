@@ -572,4 +572,7 @@ document.fonts.load('400 48px "Sweep Display SC"', '记录').then(settleDisplayF
 if (homeRibbon.complete && homeRibbon.naturalWidth) readRibbon();
 else homeRibbon.addEventListener('load', readRibbon, {once: true});
 // Anchor visits go straight to their section. The opening uses no persisted preference.
-if (!location.hash && !reducedMotion.matches) openIntro();
+// If initialization timed out, keep the revealed homepage instead of interrupting it later.
+const autoOpen = document.documentElement.dataset.introPending !== 'expired' && !location.hash && !reducedMotion.matches;
+delete document.documentElement.dataset.introPending;
+if (autoOpen) openIntro();

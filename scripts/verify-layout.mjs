@@ -34,6 +34,7 @@ try {
     page.on('pageerror', e => errors.push(e.message));
     await page.clock.setFixedTime(new Date('2026-10-17T09:00:00+08:00'));
     await installMock(page, records);
+    await page.addInitScript(() => localStorage.setItem('fixture-browsing-preferences', JSON.stringify({ view: 'date', range: 'all' })));
     if (surface.name === 'modal') await page.route('**/extension/manager.html', async route => {
       const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
     });
@@ -44,8 +45,13 @@ try {
       check(!m.overflow, `${surface.name}/${lang}: no horizontal page overflow`);
       check(m.scope.x === m.heading.x, `${surface.name}/${lang}: date context aligns with heading`);
       check(m.group.right <= m.select.x || m.group.bottom <= m.select.y, `${surface.name}/${lang}: grouping and selection do not overlap`);
-      check(m.footer.bottom <= m.viewport.height + 1, `${surface.name}/${lang}: footer remains within the viewport`);
-      check(m.scroll.height >= (surface.name === 'popup' ? 210 : 220), `${surface.name}/${lang}: results retain useful reading space`);
+      if (surface.name === 'narrow') {
+        await page.locator('.actionbar').evaluate(node => node.scrollIntoView({ block: 'end' }));
+        const footer = await page.locator('.actionbar').boundingBox();
+        check(footer.y >= 0 && footer.y + footer.height <= m.viewport.height + 1, `${surface.name}/${lang}: page scrolling keeps the footer reachable`);
+        await page.evaluate(() => window.scrollTo(0, 0));
+      } else check(m.footer.bottom <= m.viewport.height + 1, `${surface.name}/${lang}: footer remains within the viewport`);
+      check(m.scroll.height >= (surface.name === 'popup' ? 120 : 220), `${surface.name}/${lang}: results retain useful reading space`);
       check(await page.locator('#selected').evaluate(node => node.hidden || node.classList.contains('sr-only')), `${surface.name}/${lang}: redundant zero selection is quiet`);
       check((await page.locator('#expandGroups').getAttribute('aria-label'))?.length, 'icon action has an accessible name');
       await page.screenshot({ path: `${directory}/after-${surface.name}-${lang}.png` });

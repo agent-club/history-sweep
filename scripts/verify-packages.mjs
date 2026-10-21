@@ -17,22 +17,21 @@ try {
     execFileSync('unzip', ['-q', zip, '-d', join(temporary, target)]);
   }
   const released = JSON.parse(await readFile(join(temporary, 'extension/manifest.json'), 'utf8'));
-  const expected = structuredClone(manifest);
-  delete expected.options_ui; delete expected.optional_host_permissions;
-  expected.content_security_policy.extension_pages = "script-src 'self'; object-src 'none'; connect-src 'none'";
-  assert.deepEqual(released, expected, 'the v0.4.0 manifest excludes deferred sync permissions');
+  assert.deepEqual(released, manifest, 'the v0.5.0 manifest includes the source sync entry and optional permissions');
+  assert.ok((await readdir(join(temporary, 'extension'))).includes('update-check.mjs'), 'official update checker is packaged');
+  assert.match(await readFile(join(temporary, 'site/_headers'), 'utf8'), /Access-Control-Allow-Origin: \*/);
+  assert.deepEqual(JSON.parse(await readFile(join(temporary, 'site/extension-updates.json'), 'utf8')),
+    JSON.parse(await readFile(root + 'site/extension-updates.json', 'utf8')), 'published version metadata is packaged independently of the development version');
   for (const file of ['sync.html', 'sync.css', 'sync-page.mjs', 'config-sync.mjs', 'config-store.mjs']) {
-    assert.equal((await readdir(join(temporary, 'extension'))).includes(file), false, `${file} remains deferred`);
+    assert.equal((await readdir(join(temporary, 'extension'))).includes(file), true, `${file} ships with configuration sync`);
   }
-  const syncEntry = '<p><a href="sync.html" target="_blank" rel="noopener">${t(\'syncSettings\')}</a></p>';
   let compared = 0;
   async function compareTree(packed, source, extension = false) {
     for (const entry of await readdir(packed, { withFileTypes: true })) {
       const file = join(packed, entry.name), original = join(source, entry.name);
       if (entry.isDirectory()) { await compareTree(file, original, extension); continue; }
       if (extension && entry.name === 'manifest.json') continue;
-      const wanted = extension && entry.name === 'view.mjs'
-        ? Buffer.from((await readFile(original, 'utf8')).replace(syncEntry, '')) : await readFile(original);
+      const wanted = await readFile(original);
       assert.deepEqual(await readFile(file), wanted, `${file}: packaged content matches its release source`);
       compared++;
     }
@@ -46,7 +45,7 @@ try {
   await cp(root + 'scripts', join(temporary, 'scripts'), { recursive: true });
   await symlink(root + 'node_modules', join(temporary, 'node_modules'), 'dir');
   for (const [script, ...args] of [
-    ['verify-release.mjs'], ['verify-native.mjs'], ['verify-theme-native.mjs'],
+    ['verify-release.mjs'], ['verify-frequency.mjs'], ['verify-back-to-top.mjs'], ['verify-config-sync.mjs'], ['verify-updates.mjs'], ['verify-native.mjs'], ['verify-theme-native.mjs'],
     ['verify-activity-native.mjs'], ['verify-row-removal.mjs', '--native'],
     ['verify-batch-removal.mjs', '--native'], ['verify-deletion-expansion.mjs'], ['verify-site.mjs'],
   ]) execFileSync(process.execPath, [join(temporary, 'scripts', script), ...args], {

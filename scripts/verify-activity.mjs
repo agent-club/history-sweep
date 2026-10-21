@@ -27,6 +27,7 @@ async function ready(page) {
 }
 async function openActivity(page) {
   await page.locator('#toggleActivity').click();
+  await page.locator('[data-activity-mode=cleanup]').click();
   await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false' && !document.querySelector('#activityContent').hidden);
 }
 try {
@@ -100,6 +101,7 @@ try {
   await page.reload(); await ready(page);
   await page.evaluate(() => { window.__failActivityRead = true; });
   await page.locator('#toggleActivity').click();
+  await page.locator('[data-activity-mode=cleanup]').click();
   await page.waitForFunction(() => !document.querySelector('#activityRetry').hidden);
   check(await page.locator('#search').isEnabled(), 'statistics read failure leaves search available');
   await page.evaluate(() => { window.__failActivityRead = false; }); await page.locator('#activityRetry').click();
@@ -134,6 +136,52 @@ try {
       await page.waitForFunction(() => document.querySelector('#activityStats').textContent.includes('1 cleanups'));
       check(await page.locator('#activityRetry').isHidden(), 'retry reads the persisted cleanup without another deletion');
     }
+    await context.close();
+  }
+  for (const [layout, viewport] of [['manager', { width: 1280, height: 850 }], ['popup', { width: 440, height: 590 }]]) {
+    const context = await browser.newContext({ viewport, timezoneId: 'Asia/Shanghai', reducedMotion: 'reduce' });
+    const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
+    page.setDefaultTimeout(10000);
+    await installMock(page, items.slice(0, 1));
+    await page.clock.install({ time: new Date('2026-10-17T12:00:00+08:00') });
+    await page.goto(`${origin}/extension/${layout}.html`); await ready(page);
+    await page.locator('#toggleActivity').click();
+    await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
+    check(await page.locator('[data-activity-mode]').first().getAttribute('data-activity-mode') === 'browsing', 'browsing tab is first');
+    check(await page.locator('[data-activity-mode=browsing]').getAttribute('aria-pressed') === 'true', 'activity defaults to browsing');
+    check(await page.evaluate(() => !window.__messages.some(message => message.type === 'get-activity')), 'browsing does not initialize a cleanup log');
+    await page.locator('#openPreferences').click();
+    await page.locator('#savePreferences').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => !document.querySelector('#savePreferences').disabled);
+    check(!await page.locator('#privateCleanup').isChecked(), 'private cleanup is opt-in');
+    await page.locator('#privateCleanup').check();
+    await page.locator('#closePreferences').click();
+    await page.locator('#openPreferences').click();
+    await page.waitForFunction(() => !document.querySelector('#savePreferences').disabled);
+    check(!await page.locator('#privateCleanup').isChecked(), 'cancel does not save privacy changes');
+    await page.locator('#privateCleanup').check();
+    await page.evaluate(() => { window.__failPrivacySave = true; });
+    await page.locator('#savePreferences').click();
+    await page.waitForFunction(() => !document.querySelector('#savePreferences').disabled);
+    check(await page.locator('#preferencesDialog').isVisible(), 'failed privacy save keeps settings open');
+    check(await page.evaluate(() => localStorage.getItem('fixture-private-cleanup') === null), 'failed privacy save leaves the stored choice unchanged');
+    await page.evaluate(() => { window.__failPrivacySave = false; });
+    await page.locator('#savePreferences').click();
+    await page.waitForFunction(() => !document.querySelector('#preferencesDialog').open);
+    await page.reload(); await ready(page);
+    await page.locator('#openPreferences').click();
+    await page.waitForFunction(() => !document.querySelector('#savePreferences').disabled);
+    check(await page.locator('#privateCleanup').isChecked(), 'private cleanup survives reopening');
+    check(await page.locator('#launchChoices input:checked').count() === 1, 'privacy checkbox preserves the launch mode choice');
+    await page.screenshot({ path: new URL(`private-cleanup-${layout}.png`, results).pathname });
+    await page.locator('#closePreferences').click();
+    await page.evaluate(() => { window.__failActivityRead = true; window.__failActivitySave = true; });
+    await page.locator('#selectAll').click(); await page.locator('#delete').click();
+    await page.locator('#confirmDialog [value=confirm]').click();
+    await page.waitForFunction(() => document.querySelector('#status').dataset.kind === 'done');
+    check(await page.evaluate(() => window.__deleted.length === 1), 'private cleanup still deletes history');
+    check(await page.evaluate(() => localStorage.getItem('fixture-activity') === null), 'private cleanup leaves no local activity record');
+    check(await page.evaluate(() => !window.__messages.some(message => message.type === 'get-activity')), 'private cleanup never reads activity or reports a logging failure');
     await context.close();
   }
   assert.deepEqual(errors, []);

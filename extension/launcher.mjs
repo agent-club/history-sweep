@@ -3,7 +3,7 @@ const MODES = new Set(['popup', 'modal', 'fullpage']);
 const KEY = 'modalLaunchSessions';
 const TTL = 60_000;
 export function createLauncher(chromeApi) {
-  let mode = 'popup';
+  let mode = 'modal';
   let registered = false;
   let queue = Promise.resolve();
   let ready = Promise.resolve();
@@ -23,7 +23,7 @@ export function createLauncher(chromeApi) {
     else await chromeApi.storage.session.remove(KEY);
   }
   async function applyMode(value) {
-    mode = MODES.has(value) ? value : 'popup';
+    mode = MODES.has(value) ? value : 'modal';
     await chromeApi.action.setPopup({ popup: mode === 'popup' ? 'popup.html' : '' });
     return mode;
   }

@@ -35,53 +35,43 @@ export function parseSmartTerms(value) {
   ];
 }
 
-function matchesSmartTerm(item, term) {
-  if (!item.url) return false;
-
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(item.url);
-  } catch {
-    return false;
-  }
-
-  const hostname = parsedUrl.hostname.toLowerCase().replace(/\.$/, "");
-  const looksLikeDomain = term.includes(".") || term.includes("://");
-
-  if (looksLikeDomain) {
-    const domain = normalizeHostname(term);
-    return Boolean(domain) && (hostname === domain || hostname.endsWith(`.${domain}`));
-  }
-
-  if (/^[a-z0-9-]+$/i.test(term)) {
-    return hostname.split(".").includes(term);
-  }
-
-  const title = normalizeSearchText(item.title || "");
-  return title.includes(term) || normalizeSearchText(item.url).includes(term);
-}
-
-export function filterHistoryItems(items, query, mode) {
+export function createHistoryMatcher(query, mode) {
   const normalizedQuery = normalizeSearchText(query.trim());
-  if (!normalizedQuery) return [];
+  if (!normalizedQuery) return () => false;
 
   if (mode === "smart") {
-    const terms = parseSmartTerms(normalizedQuery);
-    return items.filter((item) => terms.some((term) => matchesSmartTerm(item, term)));
+    // Compile query terms once per scan, and parse each candidate URL only once.
+    const terms = parseSmartTerms(normalizedQuery).map(term => ({
+      term,
+      domain: term.includes('.') || term.includes('://') ? normalizeHostname(term) : undefined,
+      label: /^[a-z0-9-]+$/i.test(term),
+    }));
+    return item => {
+      if (!item.url) return false;
+      let hostname;
+      try { hostname = new URL(item.url).hostname.toLowerCase().replace(/\.$/, ''); }
+      catch { return false; }
+      let labels, title, url;
+      return terms.some(({ term, domain, label }) => {
+        if (domain !== undefined) return Boolean(domain) && (hostname === domain || hostname.endsWith(`.${domain}`));
+        if (label) return (labels ??= hostname.split('.')).includes(term);
+        return (title ??= normalizeSearchText(item.title || '')).includes(term) || (url ??= normalizeSearchText(item.url)).includes(term);
+      });
+    };
   }
 
   if (mode === "contains") {
-    return items.filter((item) => {
+    return item => {
       const url = normalizeSearchText(item.url || "");
       const title = normalizeSearchText(item.title || "");
       return url.includes(normalizedQuery) || title.includes(normalizedQuery);
-    });
+    };
   }
 
   const hostnames = parseHostnames(query);
-  if (hostnames.length === 0) return [];
+  if (hostnames.length === 0) return () => false;
 
-  return items.filter((item) => {
+  return item => {
     if (!item.url) return false;
 
     let hostname;
@@ -98,7 +88,11 @@ export function filterHistoryItems(items, query, mode) {
     return hostnames.some(
       (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
     );
-  });
+  };
+}
+
+export function filterHistoryItems(items, query, mode) {
+  return items.filter(createHistoryMatcher(query, mode));
 }
 
 export function sortByLastVisit(items) {

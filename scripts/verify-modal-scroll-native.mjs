@@ -26,6 +26,17 @@ try {
     headless: true, viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce',
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
   });
+  await context.addInitScript(() => {
+    window.startupQueryFocuses = 0;
+    window.startupDisabledControls = [];
+    document.addEventListener('focusin', event => { if (event.target.id === 'query') window.startupQueryFocuses++; });
+    document.addEventListener('history-sweep:startup-dismissed', () => {
+      // A startup focus used to schedule a second scan after the workspace was visible.
+      new MutationObserver(changes => {
+        for (const { target } of changes) if (target.matches('#search, #language button, .group-view') && target.disabled) window.startupDisabledControls.push(target.id || target.dataset.language);
+      }).observe(document.getElementById('app'), { subtree: true, attributes: true, attributeFilter: ['disabled'] });
+    }, { once: true });
+  });
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   const id = new URL(worker.url()).hostname;
   const control = await context.newPage();
@@ -44,6 +55,7 @@ try {
     await host.mouse.move(x, y); await host.mouse.wheel(0, dy); await host.waitForTimeout(180);
   }
   for (const nested of [false, true]) {
+    await host.emulateMedia({ reducedMotion: nested ? 'reduce' : 'no-preference' });
     await host.goto(`${origin}/native-scroll-host${nested ? '?nested' : ''}`);
     await host.evaluate(nested => { if (nested) document.getElementById('content').scrollTop = 700; else window.scrollTo(0, 700); }, nested);
     const before = await position();
@@ -58,7 +70,18 @@ try {
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'ISOLATED', func: injectModal, args: [url.href] });
     });
     const frame = await navigation;
-    await frame.waitForSelector('.date-header');
+    await frame.waitForSelector('.date-header, .group-header');
+    await frame.waitForFunction(() => !document.getElementById('startup'));
+    await host.waitForTimeout(400);
+    check(await frame.evaluate(() => window.startupQueryFocuses === 0), 'modal startup never focuses the search input');
+    check(await frame.evaluate(() => window.startupDisabledControls.length === 0), 'revealed startup controls stay enabled without a redundant focus refresh');
+    // The native dialog's close button participates in the same tab order as the iframe.
+    for (let tab = 0; tab < 4 && await frame.evaluate(() => !document.hasFocus() || document.activeElement === document.body); tab++) await host.keyboard.press('Tab');
+    check(await frame.evaluate(() => document.hasFocus() && document.activeElement !== document.body), 'modal controls remain reachable by keyboard');
+    await frame.locator('#query').fill('native-scroll.example.test');
+    await frame.locator('#query').press('Enter');
+    await frame.waitForFunction(() => document.getElementById('status').dataset.kind === 'scanned' && !document.getElementById('search').disabled);
+    check(await frame.locator('.date-header, .group-header').count() > 0, 'manual input and keyboard search still find history');
     await wheel(20, 450, 400);
     check(JSON.stringify(await position()) === JSON.stringify(before), `${nested ? 'nested' : 'root'} host: backdrop wheel stays isolated`);
     const list = frame.locator('#resultScroll'), box = await list.boundingBox();
