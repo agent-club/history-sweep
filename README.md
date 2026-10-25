@@ -24,22 +24,22 @@ History Sweep is a Chrome extension that helps you search, review, and delete br
 - **Search the current website.** Use the popup's current-website button or the page's right-click menu to find that site's history.
 - **Use English or Simplified Chinese.** Switch languages in the extension; your choice is remembered.
 
-These instructions describe the published **v0.4.0** package. The repository also contains the following unreleased work.
+The overview above illustrates v0.4.0. The current Chrome Web Store release is **v0.5.0**, verified on October 25, 2026. Its additions are described below; later development work is marked separately.
 
-## Next release preview — v0.5.0 candidate
+## Current release — v0.5.0
 
-The candidate follows [frequency browsing and defaults #8](https://github.com/agent-club/history-sweep/issues/8), plus the completed local changes included by the user for this release. GitHub's [release plan](https://github.com/orgs/agent-club/projects/1) still lists this work as Unscheduled; this local content preparation does not change that status or announce availability.
+v0.5.0 includes [frequency browsing and defaults #8](https://github.com/agent-club/history-sweep/issues/8), navigation and privacy improvements, and [configuration sync #14](https://github.com/agent-club/history-sweep/issues/14). Public availability is verified from the [Chrome Web Store listing](https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm). GitHub planning status is managed separately.
 
 - **Browse by frequency.** Choose **By frequency** to rank pages by visits within the selected period. Ties use the last visit within that period. A page remains eligible if it was also visited later. Date and website views continue to filter by each URL’s last visit. Incomplete counts are reported as an error rather than shown as a partial ranking.
 - **Set your browsing defaults.** First use opens **By website** for today and the previous six local calendar days. Save the default view and relative range in **Preferences → Default browsing settings**. Temporary filters leave those defaults unchanged; fixed custom dates cannot be saved as defaults. Keyword searches still use all time unless you explicitly choose a range.
 - **Private cleanup.** Save **Preferences → Private cleanup** to stop new cleanups from saving counts or website details in Local activity. Existing activity stays on this device. The activity panel opens with Browsing history first; scrolling up can collapse it, and group headings stay visible as you browse.
 - **Return and reopen quickly.** A lower-right **Back to top** button returns to the beginning of a long list and respects reduced motion. With no saved opening preference, the extension opens over the current webpage; existing opening choices are preserved. **Preferences → Change keyboard shortcut** shows Chrome’s current binding and opens its shortcut settings; Chrome must be focused.
 - **Sync configuration and keep a recovery file.** Use **Preferences → Sync & disk backup** to manually transfer language, appearance and opening preferences to your own HTTPS WebDAV file. Export a password-encrypted disk backup outside the extension folder for recovery after uninstall. Host access is requested only when you initiate a connection test or transfer; browsing history is excluded. The provider can read the remote JSON.
-- **Check for store updates.** The development implementation checks public version metadata at most once per 15 minutes when the official store installation opens, then asks Chrome to check for an update when appropriate. Only a Chrome-confirmed download enables Update, and deletion or verification blocks reload. Unpacked installations skip this request. No browsing history, search terms or configuration is sent; the website host receives standard connection metadata.
+- **Check for store updates.** The store installation checks public version metadata at most once per 15 minutes when the official store installation opens, then asks Chrome to check for an update when appropriate. Only a Chrome-confirmed download enables Update, and deletion or verification blocks reload. Unpacked installations skip this request. No browsing history, search terms or configuration is sent; the website host receives standard connection metadata.
 
-![v0.5.0 candidate frequency browsing, captured from the packaged extension with synthetic history](site/assets/candidate-manager-frequency-en.png)
+![v0.5.0 frequency browsing, captured from the packaged extension with synthetic history](site/assets/candidate-manager-frequency-en.png)
 
-This preview is captured from the actual v0.5.0 ZIP in an isolated browser with synthetic native history. The candidate is not yet publicly available. [Candidate store copy and media](store/v0.5.0-candidate.md) are prepared separately from the v0.4.0 materials. WebDAV sync and encrypted disk backup are included in this candidate. Website classification, history tags and tracking-parameter cleanup are not included.
+These screenshots were captured from the original v0.5.0 ZIP in an isolated browser with synthetic native history. v0.5.0 is publicly available on the Chrome Web Store; the listing shows an October 23, 2026 update date, not an exact publication timestamp. [Store copy and package evidence](store/v0.5.0-candidate.md) retain the submission history. WebDAV sync and encrypted disk backup are included. Website classification, history tags and tracking-parameter cleanup are not included.
 
 ## When History Sweep fits
 
@@ -53,13 +53,13 @@ Different workflows call for different tools. In our hands-on comparison, **Bett
 
 See the [test setup, observations, and limits](docs/comparison-2026-10.md). The comparison uses the **0.3.2 repository build**, with an October 1, 2026 comparison and a limited competitor UI recheck on October 2. No competitor deletion was executed in the October 2 recheck. It is a small, single-environment task comparison, not a speed benchmark or a claim of overall superiority. The Chrome Web Store may serve a different version; check your installed version before comparing features.
 
-The local website source now includes a [five-tool comparison](site/compare.html), with the homepage card deck, bilingual task differences, source dates and testing limits. The website and updated privacy policy were deployed on October 22, 2026; v0.5.0 remains a release candidate. The October 22 source review is separate from the earlier hands-on comparison above.
+The local website source now includes a [five-tool comparison](site/compare.html), with the homepage card deck, bilingual task differences, source dates and testing limits. The website and updated privacy policy were deployed on October 22, 2026; v0.5.0 public availability was verified on October 25, 2026. The October 22 source review is separate from the earlier hands-on comparison above.
 
 ## Get started
 
 Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm), pin History Sweep to your toolbar, and click its icon. Requires Chrome 110 or later.
 
-1. Browse the last three days immediately, or enter a website or keyword and search. Choose a date range to narrow results; empty searches respect explicit dates.
+1. Browse the last week by website immediately, or enter a website or keyword and search. Choose a date range to narrow results; empty searches respect explicit dates.
 2. Review the results and select the pages you want to remove. Website selection and Select all include matching pages beyond those currently visible.
 3. Click **Delete selected**, review the confirmation, and confirm. You can cancel without removing anything.
 
@@ -71,7 +71,7 @@ The current repository source defaults to a modal over the current webpage when 
 
 ## Your history stays on your device
 
-Configuration sync is included in the **v0.5.0 candidate** and is absent from v0.4.0. It is available under **Preferences → Sync & disk backup**. Configure a WebDAV endpoint, save the connection locally, and upload or download lightweight preferences manually. Browsing history, cleanup activity, kept websites, browsing defaults and Private cleanup preferences are excluded. Future tag and domain-label configuration fields are reserved. See [configuration sync and recovery](docs/config-sync.md).
+Configuration sync is included in **v0.5.0** and is absent from v0.4.0. It is available under **Preferences → Sync & disk backup**. Configure a WebDAV endpoint, save the connection locally, and upload or download lightweight preferences manually. Browsing history, cleanup activity, kept websites, browsing defaults and Private cleanup preferences are excluded. Future tag and domain-label configuration fields are reserved. See [configuration sync and recovery](docs/config-sync.md).
 
 Export a password-encrypted backup outside the extension folder to keep connection settings after uninstalling. Chrome removes extension-owned storage on uninstall; reinstall recovery requires importing that file and entering its password. Backups are manual snapshots.
 

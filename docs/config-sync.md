@@ -1,6 +1,6 @@
 # Configuration sync and disk recovery
 
-Implementation scope: [Issue #14](https://github.com/agent-club/history-sweep/issues/14). Included in the **v0.5.0 candidate** by the user’s release-scope instruction on October 22, 2026. GitHub’s Project assignment remains Unscheduled until separately updated. This document describes the implementation, not store availability or provider certification.
+Implementation scope: [Issue #14](https://github.com/agent-club/history-sweep/issues/14). Included in **v0.5.0**, publicly available on the Chrome Web Store as verified on October 25, 2026. GitHub planning status is managed separately. This document describes the implementation, not provider certification.
 
 ## Persistence
 

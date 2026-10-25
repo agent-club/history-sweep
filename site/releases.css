@@ -1,0 +1,27 @@
+.release-page-main { max-width: 860px; padding-top: 64px; padding-bottom: 80px; }
+.release-back { color: var(--muted, #6b6d70); font-size: 13px; text-underline-offset: 4px; }
+.release-eyebrow { margin: 48px 0 18px; color: var(--muted, #6b6d70); font-size: 11px; letter-spacing: .12em; }
+.release-page-main > h1 { margin: 0; font-size: clamp(38px, 6vw, 68px); line-height: 1.12; letter-spacing: -.04em; font-weight: 500; }
+.release-page-intro { max-width: 540px; margin: 24px 0 44px; color: var(--muted, #6b6d70); font-size: 16px; line-height: 1.8; }
+.release-page .release-history-title { font-size: 22px; font-weight: 500; margin: 0 0 12px; }
+.release-page .release-scope { margin: 0 0 28px; color: var(--muted, #6b6d70); font-size: 13px; line-height: 1.8; }
+.release-page .release-record { border-top: 1px solid var(--line); padding: 0 0 4px; }
+.release-page .release-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 24px 0; cursor: pointer; list-style: none; }
+.release-page .release-summary::-webkit-details-marker { display: none; }
+.release-page .release-summary::after { content: '+'; margin-left: auto; font-size: 22px; color: var(--muted, #6b6d70); }
+.release-page .release-record[open] > .release-summary::after { content: '−'; }
+.release-page .release-summary:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; border-radius: 4px; }
+.release-page .release-version { font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.release-page .release-badge { font-size: 11px; line-height: 1.6; padding: 4px 8px; border: 1px solid var(--line); border-radius: 5px; }
+.release-page .release-title { margin: 0 0 14px; font-size: 19px; font-weight: 500; line-height: 1.5; }
+.release-page .release-note { max-width: 600px; margin: 0 0 18px; color: var(--muted, #6b6d70); font-size: 13px; line-height: 1.8; }
+.release-page .release-changes { max-width: 650px; margin: 0 0 28px; padding-left: 20px; font-size: 14px; line-height: 1.9; }
+.release-page .release-changes > li + li { margin-top: 10px; }
+.release-page-footnote { border-top: 1px solid var(--line); padding-top: 28px; margin-top: 32px; color: var(--muted, #6b6d70); font-size: 13px; line-height: 1.8; }
+@media (max-width: 600px) {
+  .release-page-main { padding-top: 36px; padding-bottom: 48px; }
+  .release-eyebrow { margin-top: 36px; }
+  .release-page .release-summary { gap: 8px; }
+  .release-page .release-version { font-size: 18px; }
+  .release-page .release-badge { max-width: 210px; }
+}
