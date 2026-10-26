@@ -45,8 +45,8 @@ try {
     await choose(page, 'dark', true);
     check(await theme(page) === 'dark', 'keyboard toggle switches immediately');
     check(JSON.stringify(before) === JSON.stringify(await state()), 'theme change preserves query, selection, result count and scroll');
-    await page.locator('#themeToggle img').evaluate(node => node.decode());
-    check(await page.locator('#themeToggle img').evaluate(node => node.src.endsWith('/moon.svg') && node.complete && node.naturalWidth > 0), 'current dark mode moon icon is loaded');
+    await page.locator('#themeToggle img').first().evaluate(node => node.decode());
+    check(await page.locator('#themeToggle img').first().evaluate(node => node.src.endsWith('/appearance.svg') && node.complete && node.naturalWidth > 0), 'appearance icon stays recognizable in dark mode');
     check(await page.locator('[data-theme-choice=dark]').getAttribute('aria-pressed') === 'true', 'dark choice is accessible');
     check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'theme causes no horizontal overflow');
     check(await page.locator('.brand').evaluate(node => node.getBoundingClientRect().right <= document.querySelector('.top-actions').getBoundingClientRect().left), 'header controls do not overlap brand');
@@ -78,12 +78,12 @@ try {
     check(await theme(other) === 'dark', 'new view inherits choice');
     await choose(page, 'light');
     await other.waitForFunction(() => document.documentElement.dataset.theme === 'light');
-    check(await other.locator('#themeToggle img').getAttribute('src') === 'icons/ui/sun.svg', 'existing view updates icon through storage event');
+    check(await other.locator('[data-theme-choice=light]').getAttribute('aria-pressed') === 'true', 'existing view updates selection through storage event');
     await choose(page, 'system');
     check(await page.locator('html').getAttribute('data-theme-preference') === 'system', 'manual selection can return to automatic');
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
-    check(await page.locator('#themeToggle img').getAttribute('src') === 'icons/ui/monitor.svg', 'automatic uses a distinct monitor icon');
+    check(await page.locator('#themeToggle img').first().getAttribute('src') === 'icons/ui/appearance.svg', 'automatic keeps the appearance entry icon');
     await page.reload(); await ready(page);
     check(await theme(page) === 'dark' && await page.locator('html').getAttribute('data-theme-preference') === 'system', 'reopening automatic follows dark system');
     await page.emulateMedia({ colorScheme: 'light' });

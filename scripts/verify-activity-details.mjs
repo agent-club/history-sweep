@@ -46,7 +46,7 @@ try {
       const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
     });
     await page.goto(`${origin}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`); await ready(page);
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await page.locator('[data-activity-mode=cleanup]').click();
     await page.waitForFunction(() => document.querySelectorAll('.activity-site img:not([hidden])').length === 40);
     check(await page.locator('.activity-day[aria-pressed=true]').count() === 1, `${layout}: opening activity selects exactly one available date`);
@@ -93,7 +93,7 @@ try {
       check(last.y + last.height <= footer.y, 'popup: the final website row can be reached above the fixed action bar');
       await page.locator('#activityPanel').dispatchEvent('wheel', { deltaY: 100 });
       check(await page.locator('#activityPanel').isHidden(), 'popup: scrolling outside website rows still collapses activity');
-      await page.locator('#toggleActivity').click();
+      await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
       await page.locator('#activitySites').evaluate(strip => {
         const touch = y => new Touch({ identifier: 1, target: strip, clientX: 100, clientY: y });
         strip.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [touch(200)] }));

@@ -2,17 +2,17 @@ import { readLanguage, translate } from './i18n.mjs';
 import { validateConnection, permissionOrigin, createRemote, encryptBackup, decryptBackup, MAX_CONFIG_BYTES } from './config-sync.mjs';
 import { createConfigStore } from './config-store.mjs';
 
-const lang = readLanguage();
+export function mountSyncSettings(root, { lang = readLanguage() } = {}) {
+const embedded = root.dataset.embedded === 'true';
+root.classList.add('sync-root');
 const t = (key, values) => translate(lang, key, values);
-const $ = id => document.getElementById(id);
-document.documentElement.lang = lang;
-document.title = `${t('syncTitle')} — History Sweep`;
+const $ = id => root.querySelector(`#${id}`);
 const field = (id, label, type = 'text', placeholder = '') => `<label for="${id}">${label}<input id="${id}" type="${type}" ${placeholder ? `placeholder="${placeholder}"` : ''} autocomplete="off" spellcheck="false" maxlength="4096"></label>`;
-$('syncApp').innerHTML = `<header><img src="icons/mark.svg" alt=""><div><h1>${t('syncTitle')}</h1><p>History Sweep</p></div></header>
+root.innerHTML = `<header class="sync-heading">${embedded ? '' : '<img src="icons/mark.svg" alt="">'}<div><h1 tabindex="-1">${t('syncTitle')}</h1>${embedded ? '' : '<p>History Sweep</p>'}</div></header>
   <p class="sync-note">${t('syncPersistence')}</p>
   <section aria-labelledby="connectionTitle"><h2 id="connectionTitle">${t('syncConnection')}</h2><p>${t('syncConnectionHint')}</p>
     <form id="connectionForm"><fieldset id="connectionFields" disabled>
-      <fieldset id="webdavFields">${field('davUrl', t('syncFileUrl'), 'url', 'https://dav.example.com/folder/history-sweep.json')}${field('davUser', t('syncUsername'))}${field('davPassword', t('syncAuthLabel'), 'password')}</fieldset>
+      <fieldset id="webdavFields">${field('davUrl', t('syncFileUrl'), 'url', 'https://dav.example.com/folder/history-sweep.json')}${field('davUser', t('syncUsername'), 'text', t('syncUsernamePlaceholder'))}${field('davPassword', t('syncAuthLabel'), 'password', t('syncPasswordPlaceholder'))}</fieldset>
       <button class="primary" type="submit">${t('syncSave')}</button>
     </fieldset></form><p id="connectionState" role="status"></p>
   </section>
@@ -20,7 +20,7 @@ $('syncApp').innerHTML = `<header><img src="icons/mark.svg" alt=""><div><h1>${t(
     <div class="sync-actions"><button id="testConnection" disabled>${t('syncTest')}</button><button id="uploadConfig" disabled>${t('syncUpload')}</button><button id="downloadConfig" disabled>${t('syncDownload')}</button></div>
   </section>
   <section aria-labelledby="backupTitle"><h2 id="backupTitle">${t('syncBackup')}</h2><p>${t('syncBackupHint')}</p>
-    ${field('backupPassword', t('syncPassphraseLabel'), 'password')}
+    ${field('backupPassword', t('syncPassphraseLabel'), 'password', t('syncPassphrasePlaceholder'))}
     <div class="sync-file-field"><label for="backupFile">${t('syncBackupFile')}</label>
       <div id="backupFilePicker" class="sync-file-picker">
         <svg class="sync-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
@@ -131,6 +131,7 @@ $('backupFile').addEventListener('change', () => {
   $('backupFilePicker').querySelector('.sync-file-action').textContent = t(file ? 'syncFileChange' : 'syncFileChoose');
 });
 
+async function initialize() {
 try {
   if (!globalThis.chrome?.storage?.local || !globalThis.chrome?.permissions) throw new Error('EXTENSION_REQUIRED');
   store = createConfigStore(chrome.storage.local, localStorage);
@@ -140,3 +141,16 @@ try {
   $('connectionState').textContent = t(savedConnection ? 'syncSaved' : 'syncNotConfigured');
 } catch (error) { status(error.message === 'EXTENSION_REQUIRED' ? 'syncError_EXTENSION_REQUIRED' : 'syncError_GENERIC', true); }
 controls();
+
+}
+void initialize();
+return { isBusy: () => busy };
+}
+
+const standalone = document.getElementById('syncApp');
+if (standalone) {
+  const lang = readLanguage();
+  document.documentElement.lang = lang;
+  document.title = `${translate(lang, 'syncTitle')} — History Sweep`;
+  mountSyncSettings(standalone, { lang });
+}

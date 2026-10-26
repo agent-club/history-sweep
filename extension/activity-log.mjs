@@ -19,6 +19,7 @@ export function createActivityLog(storage, now = () => new Date()) {
         !localActivity.days || typeof localActivity.days !== 'object' || Array.isArray(localActivity.days) ||
         !Object.entries(localActivity.days).every(([date, day]) => /^\d{4}-\d{2}-\d{2}$/.test(date) &&
           Number.isSafeInteger(day?.operations) && day.operations >= 0 && Number.isSafeInteger(day.pages) && day.pages >= 0 &&
+          (day.automaticOperations === undefined || (Number.isSafeInteger(day.automaticOperations) && day.automaticOperations >= 0 && day.automaticOperations <= day.operations)) &&
           (day.websites === undefined || (Array.isArray(day.websites) && typeof day.websitesComplete === 'boolean' && day.websites.every(site =>
             typeof site?.domain === 'string' && site.domain.length > 0 &&
             (site.title === undefined || typeof site.title === 'string') &&
@@ -29,13 +30,17 @@ export function createActivityLog(storage, now = () => new Date()) {
   }
   return {
     read: () => serial(async () => ({ log: await readLog(), recordingFailed })),
-    record: (pages, items = []) => serial(async () => {
+    record: (pages, items = [], source = 'manual', canRecord = () => true) => serial(async () => {
       try {
         if (!Number.isSafeInteger(pages) || pages < 0) throw new Error('INVALID_ACTIVITY_COUNT');
+        if (!['manual', 'automatic'].includes(source)) throw new Error('INVALID_ACTIVITY_SOURCE');
+        if (source === 'automatic' && (pages === 0 || !await canRecord())) return;
         const log = await readLog();
         const date = dateKey(now());
         const previous = log.days[date];
         const day = { operations: previous ? previous.operations + 1 : 1, pages: previous ? previous.pages + pages : pages };
+        const automaticOperations = (previous?.automaticOperations ?? 0) + (source === 'automatic' ? 1 : 0);
+        if (automaticOperations) day.automaticOperations = automaticOperations;
         const websites = new Map((previous?.websites || []).map(site => [site.domain, site]));
         let identified = 0;
         for (const item of items) {
@@ -54,6 +59,7 @@ export function createActivityLog(storage, now = () => new Date()) {
           // Legacy totals cannot be reconstructed after deletion, including on a mixed old/new day.
           day.websitesComplete = (!previous || previous.pages === 0 || previous.websitesComplete === true) && identified === pages;
         }
+        if (source === 'automatic' && !await canRecord()) return;
         await storage.set({ localActivity: { ...log, days: { ...log.days, [date]: day } } });
         recordingFailed = false;
       } catch (error) { recordingFailed = true; throw error; }

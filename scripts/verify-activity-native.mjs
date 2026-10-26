@@ -1,3 +1,4 @@
+import { enterWorkspace } from './native-workspace.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -29,7 +30,7 @@ try {
       listener(changes, area);
     });
   });
-  await page.goto(`chrome-extension://${id}/manager.html`);
+  await page.goto(`chrome-extension://${id}/manager.html`); await enterWorkspace(page);
   await page.waitForFunction(() => document.querySelector('#search') && !document.querySelector('#search').disabled);
   const urls = [1, 2, 3].map(index => `https://activity-fixture.example.test/page-${index}`);
   await page.evaluate(async urls => { for (const url of urls) await chrome.history.addUrl({ url }); }, urls);
@@ -45,7 +46,7 @@ try {
   assert.equal(Object.values(log.days)[0].websites.length, 1);
   assert.equal(Object.values(log.days)[0].websites[0].domain, 'activity-fixture.example.test');
   assert.doesNotMatch(JSON.stringify(log), /https:|page-[123]/);
-  await page.locator('#toggleActivity').click();
+  await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
   await page.locator('[data-activity-mode=cleanup]').click();
   await page.waitForFunction(() => document.querySelector('#activityStats').textContent.includes('1 cleanups'));
   await page.locator('.activity-site img').waitFor({ state: 'visible' });
@@ -61,16 +62,18 @@ try {
   assert.match(await page.locator('#activityStats').textContent(), /2 cleanups/, 'the initiating UI reads the new persisted total before reporting cleanup complete, without a storage event');
   assert.match(await page.locator('#activityDetail').textContent(), /4 pages · 1 websites/);
   await page.reload();
-  await page.locator('#toggleActivity').waitFor({ state: 'visible' });
-  if (await page.locator('#toggleActivity').getAttribute('aria-expanded') !== 'true') await page.locator('#toggleActivity').click();
+  await enterWorkspace(page);
+  await page.locator('#activityDock').waitFor({ state: 'visible' });
+  if (await page.locator('#activityEntry').getAttribute('aria-expanded') !== 'true') await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
   await page.locator('[data-activity-mode=cleanup]').click();
   await page.waitForFunction(() => document.querySelector('#activityStats')?.textContent.includes('2 cleanups'));
   await context.close();
   context = await chromium.launchPersistentContext(profile, browserOptions);
   const reopened = await context.newPage(); reopened.on('pageerror', error => errors.push(error.message));
   await reopened.goto(`chrome-extension://${id}/manager.html`);
-  await reopened.locator('#toggleActivity').waitFor({ state: 'visible' });
-  if (await reopened.locator('#toggleActivity').getAttribute('aria-expanded') !== 'true') await reopened.locator('#toggleActivity').click();
+  await enterWorkspace(reopened);
+  await reopened.locator('#activityDock').waitFor({ state: 'visible' });
+  if (await reopened.locator('#activityEntry').getAttribute('aria-expanded') !== 'true') await reopened.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
   await reopened.locator('[data-activity-mode=cleanup]').click();
   await reopened.waitForFunction(() => document.querySelector('#activityStats')?.textContent.includes('2 cleanups'));
   const restored = await reopened.evaluate(async () => (await chrome.storage.local.get('localActivity')).localActivity);

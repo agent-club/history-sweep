@@ -90,7 +90,7 @@ try {
       await wheel(box.x + box.width / 2, box.y + box.height / 2, delta);
       check(JSON.stringify(await position()) === JSON.stringify(before), `${nested ? 'nested' : 'root'} host: iframe ${edge} boundary stays isolated`);
     }
-    await frame.locator('#toggleActivity').click();
+    await frame.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await frame.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
     await frame.locator('#activityTitle').hover(); await host.mouse.wheel(0, 800);
     await frame.waitForFunction(() => document.querySelector('#activityPanel').hidden);

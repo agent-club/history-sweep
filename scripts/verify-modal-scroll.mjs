@@ -19,6 +19,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
   const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
   await installMock(page, records);
+  await page.addInitScript(() => localStorage.setItem('fixture-browsing-preferences', JSON.stringify({ view: 'date', range: 'all' })));
   await page.route(`${origin}/extension/modal-host.mjs`, async route => {
     const response = await route.fetch();
     await route.fulfill({ response, body: (await response.text()).replace("if (!hadInlineStyle && page.style.length === 0) page.removeAttribute('style');", "globalThis.__scrollDebug = { hadInlineStyle, length: page.style.length }; if (!hadInlineStyle && page.style.length === 0) page.removeAttribute('style'); globalThis.__scrollDebug.after = page.getAttribute('style');") });
@@ -63,11 +64,14 @@ try {
   await wheelStable(box.x + box.width / 2, box.y + box.height / 2, 600, 'iframe lower boundary cannot chain scroll to the background');
   await list.evaluate(node => { node.scrollTop = 0; });
   await wheelStable(box.x + box.width / 2, box.y + box.height / 2, -600, 'iframe upper boundary cannot chain scroll to the background');
-  await frame.locator('#toggleActivity').click();
+  check(await frame.locator('#activityPanel').isHidden(), 'top-boundary wheel does not open analysis');
+  await frame.locator('#activityEntry').click();
   await frame.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
   await frame.locator('#activityTitle').hover(); await page.mouse.wheel(0, 200);
+  check(await frame.locator('#activityPanel').isVisible(), 'wheel keeps explicitly opened analysis open');
+  await frame.locator('#activityCollapse').click();
   await frame.waitForFunction(() => document.querySelector('#activityPanel').hidden);
-  check(await page.evaluate(() => scrollY) === before.y, 'collapsing activity on wheel does not move the background');
+  check(await page.evaluate(() => scrollY) === before.y, 'collapsing activity by button does not move the background');
   const prevented = await page.evaluate(() => {
     const event = new Event('touchmove', { bubbles: true, cancelable: true });
     document.documentElement.dispatchEvent(event); return event.defaultPrevented;

@@ -37,8 +37,9 @@ export function setupSettingsSelects(dialog) {
     const width = Math.min(anchor.width, origin.width - 16);
     menu.style.width = `${width}px`;
     const naturalHeight = menu.scrollHeight + menu.offsetHeight - menu.clientHeight;
-    const above = Math.max(0, anchor.top - viewport.top - gap);
-    const below = Math.max(0, viewport.bottom - anchor.bottom - gap);
+    // The menu may cover settings chrome when a short window leaves little content space.
+    const above = Math.max(0, anchor.top - origin.top - 8 - gap);
+    const below = Math.max(0, origin.bottom - 8 - anchor.bottom - gap);
     const upward = below < Math.min(naturalHeight, 260) && above > below;
     menu.style.maxHeight = `${Math.min(260, upward ? above : below)}px`;
     const left = Math.max(origin.left + 8, Math.min(anchor.left, origin.right - width - 8));

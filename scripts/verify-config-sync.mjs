@@ -1,3 +1,4 @@
+import { enterWorkspace } from './native-workspace.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,6 +14,12 @@ const profile = join(temporary, 'profile');
 let context; let checks = 0;
 const check = (value, message) => { assert.ok(value, message); checks++; };
 const ready = page => page.waitForFunction(() => document.querySelector('#connectionFields') && !document.querySelector('#connectionFields').disabled);
+const openEmbedded = async page => {
+  await page.waitForFunction(() => document.querySelector('#search') && !document.querySelector('#search').disabled);
+  await page.locator('#openPreferences').click();
+  await page.locator('[data-settings-section=sync]').click();
+  await ready(page);
+};
 const idle = page => page.waitForFunction(() => !document.querySelector('#exportBackup').disabled);
 const expected = { format: 'history-sweep-config', version: 1,
   preferences: { language: 'zh-CN', theme: 'dark', launchMode: 'fullpage' },
@@ -52,14 +59,14 @@ try {
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
   const manager = await context.newPage(); manager.on('pageerror', error => errors.push(error.message));
-  await manager.goto(`${origin}/manager.html`);
-  await manager.waitForFunction(() => document.querySelector('#search') && !document.querySelector('#search').disabled);
-  await manager.locator('#openPreferences').click();
-  const link = manager.getByRole('link', { name: 'Sync & disk backup' });
-  check(await link.getAttribute('href') === 'sync.html', 'settings entry exists inside Preferences');
-  const [page] = await Promise.all([context.waitForEvent('page'), link.click()]);
-  page.on('pageerror', error => errors.push(error.message)); await ready(page);
-  check(await page.locator('h1').textContent() === 'Configuration sync', 'native options page renders localized title');
+  await manager.goto(`${origin}/manager.html`); await enterWorkspace(manager);
+  const page = manager;
+  const pageCount = context.pages().length;
+  await openEmbedded(page);
+  check(context.pages().length === pageCount, 'WebDAV opens inside Preferences without creating a tab');
+  check(await page.locator('#syncSettingsContent').isVisible(), 'sync surface is embedded in the settings window');
+  check(await page.locator('#syncSettingsContent').evaluate(node => node.closest('dialog')?.id) === 'preferencesDialog', 'WebDAV shares the settings dialog');
+  check(await page.locator('.sync-root h1').textContent() === 'Configuration sync', 'embedded settings render localized title');
   check(await page.locator('#uploadConfig').isDisabled(), 'remote controls disabled until a connection is saved');
   check(requests.length === 0, 'opening settings makes no remote requests');
   await page.locator('#davUrl').fill('https://dav.example.test/backup/config.json');
@@ -67,7 +74,7 @@ try {
   await page.locator('#connectionForm button[type=submit]').click(); await idle(page);
   check(!(await page.locator('#uploadConfig').isDisabled()), 'save enables transfer controls');
   check(requests.length === 0, 'saving credentials makes no remote requests');
-  await page.reload(); await ready(page);
+  await page.reload(); await openEmbedded(page);
   check(await page.locator('#davPassword').inputValue() === fixtureValue, 'saved credentials survive page reopening');
   await page.evaluate(() => { window.__allowSyncHost = false; });
   await page.locator('#testConnection').click(); await idle(page);
@@ -100,7 +107,7 @@ try {
   check(!backup.includes(fixtureValue) && !backup.includes('dav.example.test'), 'disk backup encrypts connection data');
   // Clear only this disposable profile's settings to model reinstall recovery.
   await page.evaluate(async () => { await chrome.storage.local.remove(['syncConnection', 'syncMetadata', 'launchMode']); localStorage.clear(); });
-  await page.reload(); await ready(page);
+  await page.reload(); await openEmbedded(page);
   await page.locator('#backupFile').setInputFiles(backupPath);
   check(await page.locator('#backupFileName').textContent() === 'backup.json', 'custom picker displays the selected filename');
   check(await page.locator('#backupFilePicker').getAttribute('data-selected') === 'true', 'selected file receives a visible state');
@@ -115,10 +122,11 @@ try {
   check(await page.locator('#davPassword').inputValue() === fixtureValue, 'disk import restores credentials');
   check(await page.evaluate(() => localStorage.getItem('language')) === 'zh-CN', 'disk import restores preferences after data removal');
   permissionRequests.push(...await page.evaluate(() => window.__permissionRequests));
-  await page.reload(); await ready(page);
-  check(await page.locator('h1').textContent() === '配置同步', 'Chinese locale applies on reopening');
+  await page.reload(); await openEmbedded(page);
+  check(await page.locator('.sync-root h1').textContent() === '配置同步', 'Chinese locale applies on reopening');
   await page.setViewportSize({ width: 390, height: 844 });
   check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'narrow settings have no horizontal overflow');
+  check(await page.locator('#syncSettingsContent').evaluate(node => node.scrollWidth <= node.clientWidth), 'embedded content has no horizontal overflow');
   check(await page.locator('html').getAttribute('data-theme') === 'dark', 'settings honor restored dark mode');
   await page.locator('#davPassword').fill(''); await page.locator('#davUser').fill(''); await page.locator('#davUrl').fill('');
   await page.screenshot({ path: join(temporary, 'settings-preview.png'), fullPage: true });

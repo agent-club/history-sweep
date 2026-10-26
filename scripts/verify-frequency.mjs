@@ -27,7 +27,7 @@ const errors = [];
 let checks = 0;
 const check = (value, message) => { assert.ok(value, message); checks++; };
 const idle = page => page.waitForFunction(() => !document.querySelector('#search')?.disabled && document.querySelector('#status').dataset.kind !== 'rulesLoading');
-const scan = async page => { await page.locator('#search').click(); await idle(page); };
+const scan = async page => { await page.locator('#query').press('Enter'); await idle(page); };
 // Measure the rendered custom list itself, including its clipped scroll viewport.
 const pickerBounds = (page, id) => page.locator(`#${id}Toggle`).evaluate(trigger => {
   const rect = trigger.getBoundingClientRect();
@@ -83,7 +83,11 @@ try {
       await page.screenshot({ path: join(output, `${layout}-${language}-${theme}-range.png`) });
       const menuBounds = await page.locator('.filters-body').evaluate(node => { const rect = node.getBoundingClientRect(); return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, width: innerWidth, height: innerHeight }; });
       check(menuBounds.top >= 0 && menuBounds.bottom <= menuBounds.height && menuBounds.left >= 0 && menuBounds.right <= menuBounds.width, `${layout}/${language}/${theme}: time menu fits ${JSON.stringify(menuBounds)}`);
-      check(await page.locator('.filters-body').evaluate(node => { const rect = node.getBoundingClientRect(); return node.contains(document.elementFromPoint(rect.left + 24, rect.bottom - 24)); }), 'time menu lower edge is not clipped or covered by another surface');
+      const menuHit = await page.locator('.filters-body').evaluate(node => {
+        const rect = node.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + 24, rect.bottom - 24);
+        return { inside: node.contains(hit), covering: hit?.outerHTML.slice(0, 240) };
+      });
+      check(menuHit.inside, `${layout}/${language}/${theme}: time menu lower edge is not clipped or covered: ${JSON.stringify(menuHit)}`);
       check(await page.locator('.time-range-radio').count() === 6, 'all six time choices are available');
       check(await page.locator('.results-browse-controls #filters').count() === 1 && await page.locator('.results-overview #filters').count() === 0, 'time and view controls share their own group outside result metadata');
       if (layout === 'manager' && language === 'en' && theme === 'light') {
@@ -134,12 +138,12 @@ try {
 
       const drawer = await page.locator('#preferencesDialog').evaluate(node => {
         const box = node.getBoundingClientRect(); const content = node.querySelector('.preferences-content');
-        const header = node.querySelector('.preferences-heading').getBoundingClientRect(); const footer = node.querySelector('.preferences-actions').getBoundingClientRect();
+        const header = node.querySelector('.settings-window-header').getBoundingClientRect(); const footer = node.querySelector('.preferences-actions').getBoundingClientRect();
         content.scrollTop = content.scrollHeight;
-        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, viewportWidth: innerWidth, viewportHeight: innerHeight, headerTop: header.top, footerBottom: footer.bottom, headerAfter: node.querySelector('.preferences-heading').getBoundingClientRect().top, footerAfter: node.querySelector('.preferences-actions').getBoundingClientRect().bottom, scrollTop: content.scrollTop };
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, viewportWidth: innerWidth, viewportHeight: innerHeight, headerTop: header.top, footerBottom: footer.bottom, headerAfter: node.querySelector('.settings-window-header').getBoundingClientRect().top, footerAfter: node.querySelector('.preferences-actions').getBoundingClientRect().bottom, scrollTop: content.scrollTop };
       });
-      check(Math.abs(drawer.right - drawer.viewportWidth) < 1 && Math.abs(drawer.top) < 1 && Math.abs(drawer.bottom - drawer.viewportHeight) < 1, 'drawer meets the right, top and bottom window edges');
-      check(Math.abs(drawer.width - (layout === 'popup' ? drawer.viewportWidth : 380)) < 1, 'large window has side drawer; popup has full-width drawer');
+      check(drawer.left >= 0 && drawer.right <= drawer.viewportWidth && drawer.top >= 0 && drawer.bottom <= drawer.viewportHeight, 'settings window stays within the viewport');
+      check(Math.abs(drawer.width - (layout === 'manager' ? Math.min(1080, drawer.viewportWidth - 48) : drawer.viewportWidth)) < 1, 'manager settings are centered; popup and embedded settings fill their container');
       check(drawer.headerTop === drawer.headerAfter && drawer.footerBottom === drawer.footerAfter, 'content scroll keeps title and save actions fixed');
       await page.locator('.preferences-content').evaluate(node => { node.scrollTop = 0; });
 
@@ -222,6 +226,7 @@ try {
     check(await edge.locator('#preferencesDialog').evaluate(node => node.open), 'failed save keeps defaults dialog open');
     check(await edge.evaluate(() => localStorage.getItem('fixture-browsing-preferences')) === null, 'failed save does not alter saved defaults');
     await edge.locator('#closePreferences').click();
+    await edge.locator('#discardPreferences').click();
     check(await edge.locator('#openPreferences').evaluate(node => node === document.activeElement), 'cancel closes settings and restores gear focus');
     await range(edge, '7days');
     await edge.locator('#filterToggle').click(); await edge.locator('#editProtection').click();

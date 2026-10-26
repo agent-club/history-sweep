@@ -1,3 +1,4 @@
+import { enterWorkspace } from './native-workspace.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, cp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -37,7 +38,7 @@ try {
   // Only this disposable browser profile receives and deletes the local test visits.
   await page.goto(`${origin}/site/`);
   await page.goto(`${origin}/site/privacy.html`);
-  await page.goto(`chrome-extension://${id}/manager.html`);
+  await page.goto(`chrome-extension://${id}/manager.html`); await enterWorkspace(page);
   const localVisits = await page.evaluate(async origin =>
     (await chrome.history.search({ text: '', startTime: 0, maxResults: 100 }))
       .filter(item => item.url.startsWith(origin)).length, origin);
@@ -66,6 +67,7 @@ try {
   const backgroundVisit = `${origin}/site/?background-test`;
   await page.goto(backgroundVisit);
   await page.goto(`chrome-extension://${id}/popup.html`);
+  await enterWorkspace(page);
   await page.getByRole('combobox', { name: 'Find in your history', exact: true }).waitFor({ state: 'visible' });
   assert.equal(await page.getByRole('combobox', { name: 'Find in your history', exact: true }).count(), 1);
   await page.locator('#query').fill('127.0.0.1');
@@ -88,6 +90,7 @@ try {
   await worker.evaluate(() => globalThis.finishTestDeletion());
   const review = await context.newPage();
   await review.goto(`chrome-extension://${id}/manager.html`);
+  await enterWorkspace(review);
   await review.waitForFunction(async url => (await chrome.history.getVisits({ url })).length === 0, backgroundVisit);
   const afterClose = await review.evaluate(async origin =>
     (await chrome.history.search({ text: '', startTime: 0, maxResults: 100 }))
@@ -95,16 +98,20 @@ try {
   assert.equal(afterClose, localVisits - 1, 'closing the UI does not stop deletion or remove unselected visits');
 
   await review.goto(`chrome-extension://${id}/popup.html`);
+  await enterWorkspace(review);
   await review.locator('#query').fill('127.0.0.1');
   await review.locator('#mode').selectOption('host-exact');
   await review.locator('#filters > summary').click();
   await review.locator('#timeRange').selectOption('custom');
   const today = await review.evaluate(() => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; });
   await review.locator('#startDate').fill(today); await review.locator('#endDate').fill(today);
-  await review.locator('#filters > summary').click();
+  if (await review.locator('#filters').evaluate(node => node.open)) await review.locator('#filterToggle').press('Escape');
+  assert.equal(await review.locator('#filters').evaluate(node => node.open), false, 'time panel closes before opening the full page');
   const fullPagePromise = context.waitForEvent('page');
+  fullPagePromise.catch(() => {});
   await review.locator('#openFull').click();
   const fullPage = await fullPagePromise;
+  await enterWorkspace(fullPage);
   await fullPage.waitForFunction(() => document.querySelector('#query')?.value === '127.0.0.1' && !document.querySelector('#query').disabled);
   assert.equal(new URL(fullPage.url()).search, '');
   assert.equal(new URL(fullPage.url()).hash, '');

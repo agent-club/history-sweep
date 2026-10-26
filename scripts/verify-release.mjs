@@ -20,7 +20,7 @@ const snapshot = page => page.evaluate(() => ({ messages: window.__messages.leng
 try {
   await mkdir(new URL('../test-results/', import.meta.url), { recursive: true });
   for (const layout of ['manager', 'popup', 'modal']) {
-    const context = await browser.newContext({ timezoneId: 'Asia/Shanghai', viewport: layout === 'popup' ? { width: 440, height: 590 } : { width: 1280, height: 850 } });
+    const context = await browser.newContext({ reducedMotion: 'reduce', timezoneId: 'Asia/Shanghai', viewport: layout === 'popup' ? { width: 440, height: 590 } : { width: 1280, height: 850 } });
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
     // Fixed local dates make midnight boundaries reproducible without real browsing history.
     await page.clock.setFixedTime(new Date('2026-10-16T12:00:00+08:00'));
@@ -94,8 +94,11 @@ try {
     await page.mouse.click(box.x + 5, box.y + 5);
     check(await page.locator('#preferencesDialog').evaluate(node => node.open), 'dialog padding is an internal click');
     const before = await snapshot(page);
-    if (layout === 'popup') await page.locator('#dismissPreferences').click();
+    if (layout === 'popup' || layout === 'modal') await page.locator('#dismissPreferences').click();
     else await page.mouse.click(3, 3);
+    await page.locator('#unsavedPreferencesDialog').waitFor({ state: 'visible' });
+    check(await page.locator('#unsavedPreferencesDialog').evaluate(node => node.open), `${layout}: changed preferences require a close confirmation`);
+    await page.locator('#discardPreferences').click();
     check(!await page.locator('#preferencesDialog').evaluate(node => node.open), 'Preferences close control or backdrop cancels');
     check((await snapshot(page)).messages === before.messages && (await snapshot(page)).deleted === 0, 'backdrop does not save preferences or delete history');
     await page.locator('#openPreferences').click(); await page.waitForFunction(() => !document.querySelector('#launchChoices').disabled);
@@ -105,7 +108,7 @@ try {
     await context.close();
   }
 
-  const hostContext = await browser.newContext({ timezoneId: 'Asia/Shanghai', viewport: { width: 1280, height: 900 } });
+  const hostContext = await browser.newContext({ reducedMotion: 'reduce', timezoneId: 'Asia/Shanghai', viewport: { width: 1280, height: 900 } });
   const host = await hostContext.newPage(); host.on('pageerror', error => errors.push(error.message));
   await installMock(host, []);
   await host.route('**/release-host', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><button id="prior">Host page</button>' }));
@@ -161,7 +164,7 @@ try {
   check(!(await loading.locator('#count').textContent()).startsWith('0') && await loading.locator('#empty h3').textContent() === 'Loading history…', 'initial loading does not claim zero results');
   await loading.evaluate(() => window.__releaseHistory()); await ready(loading); await loading.close();
 
-  const context = await browser.newContext({ timezoneId: 'Asia/Shanghai', viewport: { width: 375, height: 812 } });
+  const context = await browser.newContext({ reducedMotion: 'reduce', timezoneId: 'Asia/Shanghai', viewport: { width: 375, height: 812 } });
   const empty = await context.newPage(); await empty.clock.setFixedTime(new Date('2026-10-16T12:00:00+08:00'));
   await installMock(empty, [{ url: 'https://old.test/older', lastVisitTime: Date.parse('2026-10-01T12:00:00+08:00') }]);
   await empty.goto(`${origin}/extension/manager.html`); await ready(empty);

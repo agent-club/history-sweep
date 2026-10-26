@@ -46,6 +46,8 @@ try {
         return control.left >= list.left && control.right <= list.right && control.top >= list.top && control.bottom <= list.bottom;
       });
       check(bounds, `${surface.name}/${motion}: control stays inside the result viewport`);
+      // Establish the baseline after bringing the control into the visible popup.
+      await button.scrollIntoViewIfNeeded();
       const shellTop = await page.locator('.app-shell').evaluate(node => node.scrollTop);
       if (motion === 'no-preference') {
         await page.evaluate(() => {
@@ -70,7 +72,8 @@ try {
       await page.waitForFunction(() => getComputedStyle(document.getElementById('backToTop')).visibility === 'hidden');
       check(await button.evaluate(node => node.inert), `${surface.name}/${motion}: hidden control leaves keyboard navigation`);
       check(await page.locator('#selected').textContent() === selected, `${surface.name}/${motion}: selection is preserved`);
-      check(await page.locator('.app-shell').evaluate(node => node.scrollTop) === shellTop, `${surface.name}/${motion}: outer scroll is preserved`);
+      const shellAfter = await page.locator('.app-shell').evaluate(node => node.scrollTop);
+      check(shellAfter === shellTop, `${surface.name}/${motion}: outer scroll is preserved (${shellTop} → ${shellAfter})`);
       check(await page.locator('#resultScroll').evaluate(node => document.activeElement === node), `${surface.name}/${motion}: focus returns to the list`);
     }
     await page.locator('#resultScroll').evaluate(node => { node.scrollTop = 1800; });

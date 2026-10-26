@@ -34,7 +34,7 @@ try {
       await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
     });
     await page.goto(`${origin}/extension/${surface.file}.html`);
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
     await page.locator('#query').fill('site'); await visible(page, 10);
     await page.waitForTimeout(220);
@@ -60,7 +60,7 @@ try {
       check(await page.locator('#suggestionsPanel').evaluate(node => node.getBoundingClientRect().bottom <= document.querySelector('.actionbar').getBoundingClientRect().top - 7), 'popup: suggestions stay above the fixed footer');
     }
     const outerState = () => page.evaluate(() => ({
-      activity: document.querySelector('#toggleActivity').getAttribute('aria-expanded'),
+      activity: document.querySelector('#activityEntry').getAttribute('aria-expanded'),
       shell: document.querySelector('.app-shell').scrollTop,
       document: document.scrollingElement.scrollTop,
       queryTop: document.querySelector('#query').getBoundingClientRect().top,
@@ -87,11 +87,11 @@ try {
     check(JSON.stringify(await outerState()) === JSON.stringify(before), `${surface.name}: suggestion touch gesture does not collapse activity`);
     await page.locator('#suggestionsPanel .suggestions-heading').dispatchEvent('wheel', { deltaY: 80 });
     await page.waitForTimeout(260);
-    check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'true', `${surface.name}: suggestion heading wheel keeps activity open`);
+    check(await page.locator('#activityEntry').getAttribute('aria-expanded') === 'true', `${surface.name}: suggestion heading wheel keeps activity open`);
     await page.locator('#query').press('Escape');
     await page.locator('.app-shell').dispatchEvent('wheel', { deltaY: 80 });
     await page.waitForFunction(() => document.querySelector('#activityPanel').hidden);
-    check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'false', `${surface.name}: outer wheel still collapses activity`);
+    check(await page.locator('#activityEntry').getAttribute('aria-expanded') === 'false', `${surface.name}: outer wheel still collapses activity`);
     await page.close();
   }
   for (const layout of ['manager', 'popup']) {

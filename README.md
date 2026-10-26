@@ -24,9 +24,9 @@ History Sweep is a Chrome extension that helps you search, review, and delete br
 - **Search the current website.** Use the popup's current-website button or the page's right-click menu to find that site's history.
 - **Use English or Simplified Chinese.** Switch languages in the extension; your choice is remembered.
 
-The overview above illustrates v0.4.0. The current Chrome Web Store release is **v0.5.0**, verified on October 25, 2026. Its additions are described below; later development work is marked separately.
+The overview above illustrates v0.4.0. The Chrome Web Store release was verified as **v0.5.0** on October 25, 2026; local release materials now target **v0.6.0**. Its additions are described below; later development work is marked separately.
 
-## Current release — v0.5.0
+## Previous release — v0.5.0
 
 v0.5.0 includes [frequency browsing and defaults #8](https://github.com/agent-club/history-sweep/issues/8), navigation and privacy improvements, and [configuration sync #14](https://github.com/agent-club/history-sweep/issues/14). Public availability is verified from the [Chrome Web Store listing](https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm). GitHub planning status is managed separately.
 
@@ -35,11 +35,41 @@ v0.5.0 includes [frequency browsing and defaults #8](https://github.com/agent-cl
 - **Private cleanup.** Save **Preferences → Private cleanup** to stop new cleanups from saving counts or website details in Local activity. Existing activity stays on this device. The activity panel opens with Browsing history first; scrolling up can collapse it, and group headings stay visible as you browse.
 - **Return and reopen quickly.** A lower-right **Back to top** button returns to the beginning of a long list and respects reduced motion. With no saved opening preference, the extension opens over the current webpage; existing opening choices are preserved. **Preferences → Change keyboard shortcut** shows Chrome’s current binding and opens its shortcut settings; Chrome must be focused.
 - **Sync configuration and keep a recovery file.** Use **Preferences → Sync & disk backup** to manually transfer language, appearance and opening preferences to your own HTTPS WebDAV file. Export a password-encrypted disk backup outside the extension folder for recovery after uninstall. Host access is requested only when you initiate a connection test or transfer; browsing history is excluded. The provider can read the remote JSON.
-- **Check for store updates.** The store installation checks public version metadata at most once per 15 minutes when the official store installation opens, then asks Chrome to check for an update when appropriate. Only a Chrome-confirmed download enables Update, and deletion or verification blocks reload. Unpacked installations skip this request. No browsing history, search terms or configuration is sent; the website host receives standard connection metadata.
 
 ![v0.5.0 frequency browsing, captured from the packaged extension with synthetic history](site/assets/candidate-manager-frequency-en.png)
 
 These screenshots were captured from the original v0.5.0 ZIP in an isolated browser with synthetic native history. v0.5.0 is publicly available on the Chrome Web Store; the listing shows an October 23, 2026 update date, not an exact publication timestamp. [Store copy and package evidence](store/v0.5.0-candidate.md) retain the submission history. WebDAV sync and encrypted disk backup are included. Website classification, history tags and tracking-parameter cleanup are not included.
+
+## Quick start and release notes
+
+v0.6.0 includes an optional three-step guide under **Preferences → Quick start** and the **?** beside search. Its first-use hint can be dismissed; opening help keeps the current search, selection and unsaved preferences. **Preferences → Version & updates** includes offline release notes. The bilingual [website release notes](site/releases.html) use the same source, with published packages, candidates and later development changes marked separately. These help features are not in the published v0.5.0 package.
+
+Edit `extension/release-notes.mjs`, then run `npm run notes:generate` to refresh the website page; the build also generates it. Verify help with `npm run test:help`. The package and website both preset v0.6.0 as Published, and update metadata targets 0.6.0. These local materials do not establish that store submission or website deployment has occurred.
+
+## Prepared release — v0.6.0
+
+The local v0.6.0 release package includes the changes below. Store submission and website deployment have not been performed. See [release materials and verification](store/v0.6.0-candidate.md). Existing v0.5.0 screenshots above retain their original scope.
+
+**Version & updates.** v0.6.0 adds a permanent entry in Preferences with your installed version, install source, last check and manual retry. Published releases, Chrome-ready downloads, deferred checks and failures have separate states. A published release can prompt before Chrome makes it ready; only a Chrome-confirmed download enables reload. Deletion, verification and unsaved settings block reload. Unpacked installs show manual replacement instructions without contacting the version service. Official store installs check public version metadata automatically at most once per 15 minutes; a manual retry can refresh metadata while respecting the Chrome API cooldown. No browsing history, search terms or configuration is sent; the website host receives standard connection metadata. This redesign is included in the v0.6.0 release package.
+
+**WebDAV in settings.** Open **Preferences → Sync & disk backup** to configure WebDAV, sync manually or manage disk backups inside the same settings window as cleanup tasks. Switching settings sections preserves connection drafts. Included in the v0.6.0 release package.
+
+**Your nameplate.** Use the card icon in the top bar or **Preferences → General → My nameplate** to see a locally assigned keepsake in one of four finishes: matte obsidian, ivory, aurora or champagne gold. New installs receive one at installation. Their first opening moves directly from loading into an orbital card reveal; collecting or closing it reveals the workspace. This automatic reveal runs once, while the card icon replays it on demand. Each finish has its own light and backdrop. Existing installs receive a card on first opening without automatic onboarding. The finish, decorative number and first-received date stay on this device and are retained across openings and updates. Drag or use arrow keys to rotate, click to flip, or pause the default slow rotation. Hover adds a subtle tilt and highlight, with drifting glints and halos around the card. Reduced motion skips the entrance, starts with rotation paused and removes ambient animation. The version chip beside the brand opens version and update details. Nameplates are excluded from configuration sync and disk backups; uninstalling clears them. Included in the v0.6.0 release package.
+
+**Copy a URL.** Hover a history row or focus it with the keyboard to reveal a copy button beside its URL, together with the delete button. Copy keeps the full address, including query parameters and fragments, without changing the selection. A brief confirmation appears after copying; if copying is blocked, a dialog offers the full URL for manual copying. Touch devices keep the controls visible. Included in the v0.6.0 release package.
+
+**Cleanup tasks.** Open **Preferences → Cleanup tasks**. In the in-page modal, settings use the same container and returning preserves the search and list state. You can also create a task from a website group or an explicit website search. Choose a one-time date or a daily, weekly, or monthly schedule in local time, optionally combined with 1, 7, 30, or a custom number of full days without a visit. Tasks match an exact domain or include its subdomains. Preview before enabling; saving does not delete pages. One-time tasks finish after their scheduled attempt. Monthly dates that do not exist use the month's last day; an overdue restart catches up once before scheduling the next occurrence. Existing rules retain their 24-hour interval until edited. Protected websites take priority; overlapping scopes are rejected. Pause individual tasks or all cleanup. “Preview cleanup” shows the matching scope before a separate deletion confirmation and leaves scheduled occurrences unchanged. Each run rescans and verifies deletions; verified activity distinguishes automatic and manual cleanup. Private cleanup stores no new completion history, and soft privacy hides results. Tasks stay on this device and are excluded from configuration sync and disk backups. Deleting a URL removes all its visits. Browser shutdown or sleep can delay execution. Included in the v0.6.0 release package.
+
+**Local activity disclosure.** Click **Expand analysis** in the compact entry above search to open local activity in place, then click **Collapse analysis** to close it. Scrolling the history list keeps the current open or closed state. Query, grouping and the list position are retained. The entry supports keyboard activation, Escape closes the panel, and reduced motion skips the disclosure animation. Included in the v0.6.0 release package.
+
+**View order and visibility.** In **Preferences → View order and visibility**, choose which of the date, website and frequency views appear and drag their handles or use the arrows to reorder them. Keep at least one view visible; hiding the default selects the first remaining view, while choosing a default also shows it. Saved changes apply when reopening History Sweep. This local preference is excluded from sync and disk backups and is included in the v0.6.0 release package.
+
+**Unsaved preferences.** Closing Preferences after changing a setting asks whether to keep editing, discard the changes, or save and close. Unchanged settings, including values changed back to their original state, close directly. Browser-controlled popup dismissal and tab closure cannot show this confirmation. Included in the v0.6.0 release package.
+
+**Soft privacy.** Save **Preferences → Hide cleanup activity (soft privacy)** to hide cleanup totals, heatmap and website details while keeping the records. **Show cleanup activity / Hide cleanup activity** in the Cleanups view switches display at any time and updates other open extension views. Browsing history remains visible. Recording new cleanups still follows **Private cleanup**. This local preference is excluded from sync and disk backups. Included in the v0.6.0 release package; the v0.5.0 screenshots above retain their original scope.
+
+![v0.6.0 scheduled cleanup with a synthetic domain](store/assets/v0.6.0/screenshot-tasks-en-1280x800.png)
+
 
 ## When History Sweep fits
 
@@ -87,7 +117,7 @@ Read the [privacy policy](https://sweep.agentclub.dev/privacy) for details.
 
 Each search reads up to 100,000 URLs. If that limit is reached, a notice appears and older records may be missing. Suggestions and current-website searches never select or delete pages automatically.
 
-Keep Chrome open until deletion finishes. Tasks do not resume after Chrome exits, the extension reloads, or its background process stops unexpectedly. If a webpage cannot display the in-page modal, History Sweep opens the full workspace instead.
+Keep Chrome open until deletion finishes. Interrupted manual deletions do not resume after Chrome exits, the extension reloads, or its background process stops unexpectedly. Scheduled cleanup tasks rescan when Chrome runs again. If a webpage cannot display the in-page modal, History Sweep opens the full workspace instead.
 
 ## Feedback
 

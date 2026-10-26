@@ -41,14 +41,17 @@ test('only the official store install queries an anonymous version hint and requ
   assert.equal(options.method, 'GET'); assert.equal(options.credentials, 'omit');
   assert.equal(options.referrerPolicy, 'no-referrer'); assert.equal(options.cache, 'no-store');
   assert.equal(options.redirect, 'error'); assert.ok(options.signal instanceof AbortSignal);
-  assert.deepEqual(f.saved, { extensionUpdateCheck: { installedVersion: '0.3.1', checkedAt: 1000000 } });
+  assert.equal(f.saved.extensionUpdateCheck.status, 'ready');
+  assert.equal(f.saved.extensionUpdateCheck.version, '0.3.2');
 });
 
 test('unpacked, forked and managed installs make no website or store request', async () => {
   for (const self of [{ installType: 'development' }, { id: 'fork' }, { installType: 'admin' }, { updateUrl: 'https://other.test/update' }]) {
     const f = fixture({ self });
     assert.equal(await f.check(), null);
-    assert.equal(f.requests.length, 0); assert.equal(f.checks, 0); assert.deepEqual(f.saved, {});
+    assert.equal(f.requests.length, 0); assert.equal(f.checks, 0);
+    assert.equal(f.saved.extensionUpdateCheck.status, 'manual');
+    assert.equal(f.saved.extensionUpdateCheck.channel, self.installType === 'development' ? 'development' : self.installType === 'admin' ? 'managed' : 'other');
   }
 });
 
@@ -92,7 +95,7 @@ test('a website hint cannot substitute for a downloaded update confirmed by Chro
   }
 });
 
-test('offline, non-OK, invalid JSON and API failures are silent and retain the cooldown', async () => {
+test('offline, non-OK, invalid JSON and API failures remain nonfatal with a visible retry state', async () => {
   for (const overrides of [
     { fetchVersion: async () => { throw new TypeError('offline'); } },
     { ok: false },
@@ -101,10 +104,75 @@ test('offline, non-OK, invalid JSON and API failures are silent and retain the c
     const f = fixture(overrides);
     assert.equal(await f.check(), null); assert.equal(await f.check(), null);
     assert.equal(f.requests.length, 1); assert.equal(f.checks, 0);
+    assert.equal(f.saved.extensionUpdateCheck.status, 'error');
   }
   const f = fixture();
   f.chrome.runtime.requestUpdateCheck = async () => { throw new Error('unavailable'); };
   assert.equal(await f.check(), null);
   f.chrome.management.getSelf = async () => { throw new Error('unavailable'); };
   assert.equal(await f.check(), null);
+});
+
+test('published and throttled releases remain visible without enabling reload', async () => {
+  for (const [result, status] of [[{ status: 'no_update' }, 'published'], [{ status: 'throttled' }, 'throttled']]) {
+    const f = fixture({ result });
+    assert.equal(await f.check(), null);
+    assert.equal(f.saved.extensionUpdateCheck.status, status);
+    assert.equal(f.saved.extensionUpdateCheck.version, '0.3.2');
+    await createUpdateChecker(f.chrome, f.options)();
+    assert.equal(f.requests.length, 1, 'reopening preserves the result without repeating requests');
+    assert.equal(f.saved.extensionUpdateCheck.status, status);
+    await f.check({ manual: true });
+    assert.equal(f.requests.length, 2, 'manual checks refresh website metadata');
+    assert.equal(f.checks, 1, 'manual checks respect the Chrome API cooldown');
+    assert.equal(f.saved.extensionUpdateCheck.status, status);
+  }
+});
+
+test('a manual retry recovers from network failure within the automatic cooldown', async () => {
+  let online = false;
+  const f = fixture({ result: { status: 'no_update' }, fetchVersion: async () => {
+    if (!online) throw new TypeError('offline');
+    return { ok: true, json: async () => ({ extensionId, version: '0.3.1' }) };
+  } });
+  await f.check();
+  assert.equal(f.saved.extensionUpdateCheck.status, 'error');
+  online = true;
+  await f.check({ manual: true });
+  assert.equal(f.requests.length, 2);
+  assert.equal(f.saved.extensionUpdateCheck.status, 'current');
+  assert.equal(f.checks, 1);
+});
+
+test('a suspended check becomes retryable and a known release survives a later network failure', async () => {
+  const f = fixture({ result: { status: 'no_update' } });
+  await f.check();
+  f.saved.extensionUpdateCheck.status = 'checking';
+  await createUpdateChecker(f.chrome, f.options)();
+  assert.equal(f.saved.extensionUpdateCheck.status, 'error');
+  assert.equal(f.requests.length, 1);
+  f.options.fetchVersion = async () => { throw new TypeError('offline'); };
+  await createUpdateChecker(f.chrome, f.options)({ manual: true });
+  assert.equal(f.saved.extensionUpdateCheck.status, 'error');
+  assert.equal(f.saved.extensionUpdateCheck.version, '0.3.2');
+});
+
+test('an unavailable Chrome API cannot be repeatedly invoked by manual retry', async () => {
+  const f = fixture();
+  let attempts = 0;
+  f.chrome.runtime.requestUpdateCheck = async () => { attempts++; throw new Error('unavailable'); };
+  await f.check();
+  await f.check({ manual: true });
+  assert.equal(attempts, 1);
+  assert.equal(f.saved.extensionUpdateCheck.status, 'published');
+});
+
+
+test('manual checks can discover a Chrome download when website metadata is stale or unavailable', async () => {
+  for (const overrides of [{ hint: { extensionId, version: '0.3.1' } }, { fetchVersion: async () => { throw new TypeError('offline'); } }]) {
+    const f = fixture(overrides);
+    assert.equal(await f.check({ manual: true }), '0.3.2');
+    assert.equal(f.saved.extensionUpdateCheck.status, 'ready');
+    assert.equal(f.checks, 1);
+  }
 });

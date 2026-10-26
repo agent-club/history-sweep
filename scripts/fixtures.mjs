@@ -1,5 +1,9 @@
 import { readFile } from 'node:fs/promises';
+const nameplateSource = (await readFile(new URL('../extension/nameplate-store.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
 const backgroundSource = (await readFile(new URL('../extension/background.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '');
+const autoScheduleSource = (await readFile(new URL('../extension/auto-cleanup-schedule.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
+const autoModelSource = (await readFile(new URL('../extension/auto-cleanup-model.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '').replace(/\bexport /g, '');
+const autoCleanupSource = (await readFile(new URL('../extension/auto-cleanup.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '').replace(/\bexport /g, '');
 const updateCheckSource = (await readFile(new URL('../extension/update-check.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
 const activityLogSource = (await readFile(new URL('../extension/activity-log.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
 const filterSource = (await readFile(new URL('../extension/history-filters.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
@@ -66,6 +70,8 @@ export async function installMock(page, records = demoHistory) {
       storage: {
         local: {
           get: async key => {
+            if (key === 'nameplate') { const value = localStorage.getItem('fixture-nameplate'); return value === null ? {} : { nameplate: JSON.parse(value) }; }
+            if (key === 'extensionUpdateCheck') { const value = localStorage.getItem('fixture-update-check'); return value === null ? {} : { extensionUpdateCheck: JSON.parse(value) }; }
             if (key === 'activityScrollHint') { const value = localStorage.getItem('fixture-activity-scroll-hint'); return value === null ? {} : { activityScrollHint: JSON.parse(value) }; }
             if (key === 'localActivity') {
               if (window.__failActivityRead) throw new Error('fixture');
@@ -73,10 +79,13 @@ export async function installMock(page, records = demoHistory) {
             }
             if (key === 'browsingPreferences') { const value = localStorage.getItem('fixture-browsing-preferences'); return value === null ? {} : { browsingPreferences: JSON.parse(value) }; }
             if (key === 'privateCleanup') { if (window.__failPrivacyRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-private-cleanup'); return value === null ? {} : { privateCleanup: JSON.parse(value) }; }
+            if (key === 'softPrivacy') { if (window.__failSoftPrivacyRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-soft-privacy'); return value === null ? {} : { softPrivacy: JSON.parse(value) }; }
             if (key === 'launchMode') { const launchMode = localStorage.getItem('fixture-launch-mode'); return launchMode === null ? {} : { launchMode }; }
             if (window.__failRulesRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-kept-sites'); return value === null ? {} : { protectedSites: JSON.parse(value) };
           },
           set: async data => {
+            if (Object.hasOwn(data, 'nameplate')) localStorage.setItem('fixture-nameplate', JSON.stringify(data.nameplate));
+            if (Object.hasOwn(data, 'extensionUpdateCheck')) { localStorage.setItem('fixture-update-check', JSON.stringify(data.extensionUpdateCheck)); changed({ extensionUpdateCheck: { newValue: data.extensionUpdateCheck } }); }
             if (Object.hasOwn(data, 'activityScrollHint')) { localStorage.setItem('fixture-activity-scroll-hint', JSON.stringify(data.activityScrollHint)); changed({ activityScrollHint: { newValue: data.activityScrollHint } }); }
             if (Object.hasOwn(data, 'localActivity')) {
               if (window.__failActivitySave) throw new Error('fixture');
@@ -84,6 +93,7 @@ export async function installMock(page, records = demoHistory) {
             }
             if (Object.hasOwn(data, 'browsingPreferences')) { if (window.__failBrowsingSave) throw new Error('fixture'); localStorage.setItem('fixture-browsing-preferences', JSON.stringify(data.browsingPreferences)); changed({ browsingPreferences: { newValue: data.browsingPreferences } }); }
             if (Object.hasOwn(data, 'privateCleanup')) { if (window.__failPrivacySave) throw new Error('fixture'); localStorage.setItem('fixture-private-cleanup', JSON.stringify(data.privateCleanup)); changed({ privateCleanup: { newValue: data.privateCleanup } }); }
+            if (Object.hasOwn(data, 'softPrivacy')) { if (window.__failSoftPrivacySave) throw new Error('fixture'); localStorage.setItem('fixture-soft-privacy', JSON.stringify(data.softPrivacy)); changed({ softPrivacy: { newValue: data.softPrivacy } }); }
             if (Object.hasOwn(data, 'launchMode')) { localStorage.setItem('fixture-launch-mode', data.launchMode); changed({ launchMode: { newValue: data.launchMode } }); }
             if (Object.hasOwn(data, 'protectedSites')) {
               if (window.__failRulesSave) throw new Error('fixture'); localStorage.setItem('fixture-kept-sites', JSON.stringify(data.protectedSites)); changed({ protectedSites: { newValue: data.protectedSites } });
@@ -99,5 +109,5 @@ export async function installMock(page, records = demoHistory) {
     };
   }, records);
   // Exercise the production message handler rather than a second implementation.
-  await page.addInitScript(modalHostSource + '\n' + launcherSource + '\n' + filterSource + '\n' + activityLogSource + '\n' + updateCheckSource + '\n' + backgroundSource);
+  await page.addInitScript(modalHostSource + '\n' + launcherSource + '\n' + filterSource + '\n' + activityLogSource + '\n' + updateCheckSource + '\n' + autoScheduleSource + '\n' + autoModelSource + '\n' + autoCleanupSource + '\n' + nameplateSource + '\n' + backgroundSource);
 }

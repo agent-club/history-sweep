@@ -1,6 +1,6 @@
 {
   "name": "history-sweep",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,6 +12,10 @@
     "test:native": "node scripts/verify-native.mjs",
     "test:toolbar": "node scripts/verify-toolbar.mjs",
     "test:config-sync": "node scripts/verify-config-sync.mjs",
+    "test:soft-privacy": "node scripts/verify-soft-privacy.mjs",
+    "test:preferences-close": "node scripts/verify-preferences-close.mjs",
+    "notes:generate": "node scripts/generate-release-notes.mjs",
+    "test:help": "node scripts/verify-help.mjs",
     "assets": "node scripts/assets.mjs",
     "assets:store": "node scripts/capture-store-screenshots.mjs",
     "render:opening": "node scripts/render-opening.mjs",

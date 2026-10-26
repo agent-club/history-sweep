@@ -39,7 +39,7 @@ try {
     await page.goto(`http://127.0.0.1:${server.address().port}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`);
     await page.waitForFunction(() => document.querySelector('#search') && !document.querySelector('#search').disabled);
     await page.evaluate(() => { window.__holdActivity = true; window.__holdBrowsing = true; });
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await page.waitForFunction(() => window.__releaseBrowsing);
     await page.locator('[data-activity-mode=cleanup]').click();
     await page.evaluate(() => { window.__holdBrowsing = false; window.__releaseBrowsing(); window.__releaseBrowsing = null; });
@@ -64,9 +64,9 @@ try {
     check(await page.evaluate(() => document.querySelector('.activity-day[aria-pressed=true]') === window.__selectedCell), `${layout}: hover keeps a single selected cell`);
     await page.locator('#activityTitle').hover();
     await page.waitForFunction(() => document.querySelector('#activityTooltip').hidden);
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await page.waitForFunction(() => document.querySelector('#activityPanel').hidden);
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     check(await page.evaluate(() => document.querySelector('.activity-day[aria-pressed=true]') === window.__selectedCell), `${layout}: reopen retains existing chart nodes and selection`);
     await page.locator('.activity-day[aria-pressed=true]').focus();
     await page.keyboard.press('ArrowUp');

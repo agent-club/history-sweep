@@ -135,7 +135,7 @@ try {
     check(await page.locator('#status').getAttribute('data-kind') === 'scanFailed' && await page.locator('#query').isEnabled(), `${label}: background read failure remains visible without disabling input`);
     check(await page.evaluate(() => window.beforeGroup === document.querySelector('.website-group')), `${label}: failed automatic read retains existing rows`);
     await armRefresh(page); await releaseRefresh(page); await ready(page);
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await page.waitForFunction(() => document.getElementById('activityPanel').getAttribute('aria-busy') === 'false');
     await page.evaluate(() => { window.beforeDay = document.querySelector('.activity-day[aria-pressed=true]'); });
     await armRefresh(page);
@@ -143,11 +143,11 @@ try {
     await releaseRefresh(page);
     await page.waitForFunction(() => document.getElementById('activityPanel').getAttribute('aria-busy') === 'false');
     check(await page.evaluate(() => window.beforeDay === document.querySelector('.activity-day[aria-pressed=true]')), `${label}: unchanged activity refresh retains selected calendar cell`);
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await page.waitForFunction(() => document.getElementById('activityPanel').hidden);
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     check(await page.evaluate(() => window.beforeDay === document.querySelector('.activity-day[aria-pressed=true]')), `${label}: collapse and reopen retain the cached calendar`);
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await page.waitForFunction(() => document.getElementById('activityPanel').hidden);
     for (const toggle of ['themeToggle', 'filterToggle']) {
       await page.locator(`#${toggle}`).click(); await page.keyboard.press('Escape');

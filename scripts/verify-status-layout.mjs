@@ -107,13 +107,13 @@ try {
         await search(page);
       }
 
-      await page.locator('#toggleActivity').click();
+      await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
       await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
       await page.locator('#query').fill('c');
       await page.locator('#query').press('Escape');
       // Popup keeps a fixed footer while its expanded workspace scrolls behind it.
       if (surface.name !== 'popup') await layout(page, `${label}/activity-draft`, surface.modal);
-      await page.locator('#toggleActivity').click();
+      await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
       await page.locator('#query').fill('example');
       await search(page);
 

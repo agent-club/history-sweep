@@ -24,9 +24,10 @@ for (let index = 0; index < 31; index++) {
 const log = { version: 1, startedOn: '2024-01-01', days };
 async function ready(page) {
   await page.waitForFunction(() => document.querySelector('#search') && !document.querySelector('#search').disabled);
+  await page.locator('.topbar').waitFor({ state: 'visible' });
 }
 async function openActivity(page) {
-  await page.locator('#toggleActivity').click();
+  await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
   await page.locator('[data-activity-mode=cleanup]').click();
   await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false' && !document.querySelector('#activityContent').hidden);
 }
@@ -72,7 +73,7 @@ try {
     check(await page.locator('#delete').evaluate(node => node.getBoundingClientRect().bottom <= innerHeight), 'deletion action stays visible');
     await page.locator('.activity-day[data-date="2026-10-17"]').focus();
     await page.screenshot({ path: new URL(`activity-${layout}.png`, results).pathname });
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     check(await page.locator('#activityPanel').isHidden(), 'analysis button collapses panel');
     await page.reload(); await ready(page);
     check(await page.locator('#activityPanel').isHidden(), 'collapsed preference survives reload');
@@ -97,10 +98,10 @@ try {
   check(await page.locator('#activityEmpty').isVisible(), 'fresh installations show an honest empty state');
   check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '375px page has no horizontal overflow');
   await page.screenshot({ path: new URL('activity-narrow.png', results).pathname, fullPage: true });
-  await page.locator('#toggleActivity').click();
+  await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
   await page.reload(); await ready(page);
   await page.evaluate(() => { window.__failActivityRead = true; });
-  await page.locator('#toggleActivity').click();
+  await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
   await page.locator('[data-activity-mode=cleanup]').click();
   await page.waitForFunction(() => !document.querySelector('#activityRetry').hidden);
   check(await page.locator('#search').isEnabled(), 'statistics read failure leaves search available');
@@ -145,7 +146,7 @@ try {
     await installMock(page, items.slice(0, 1));
     await page.clock.install({ time: new Date('2026-10-17T12:00:00+08:00') });
     await page.goto(`${origin}/extension/${layout}.html`); await ready(page);
-    await page.locator('#toggleActivity').click();
+    await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await page.waitForFunction(() => document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
     check(await page.locator('[data-activity-mode]').first().getAttribute('data-activity-mode') === 'browsing', 'browsing tab is first');
     check(await page.locator('[data-activity-mode=browsing]').getAttribute('aria-pressed') === 'true', 'activity defaults to browsing');
@@ -156,6 +157,7 @@ try {
     check(!await page.locator('#privateCleanup').isChecked(), 'private cleanup is opt-in');
     await page.locator('#privateCleanup').check();
     await page.locator('#closePreferences').click();
+    await page.locator('#discardPreferences').click();
     await page.locator('#openPreferences').click();
     await page.waitForFunction(() => !document.querySelector('#savePreferences').disabled);
     check(!await page.locator('#privateCleanup').isChecked(), 'cancel does not save privacy changes');

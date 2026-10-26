@@ -12,6 +12,8 @@ Disk backups contain the saved connection credentials and lightweight configurat
 
 ## WebDAV connection
 
+In the development source, **Preferences → Sync & disk backup** opens inside the settings window alongside cleanup tasks, without opening a new tab. Connection drafts remain available when switching settings sections. The extension's Options page remains available separately. This interface change has not been packaged or published.
+
 **WebDAV:** enter the full HTTPS file URL, including a filename. The parent directory must exist. Username and app password are optional for servers permitting anonymous access. Authenticated requests use UTF-8 Basic authentication over HTTPS. This adapter uses GET and conditional PUT; it does not create directories or list remote files.
 A Cloudflare Worker + R2 service can expose this same WebDAV interface. Configure its HTTPS file URL and WebDAV credentials in the extension. The service must support GET, conditional PUT (`If-Match` / `If-None-Match`), and strong ETags. The extension does not expose bucket/account settings, accept R2 access keys, or implement S3 signing. Implementing or deploying a Worker gateway is outside this change.
 
@@ -33,7 +35,7 @@ Only this allowlisted versioned JSON document is transferred, with a 128 KiB UTF
 
 `historyTags` reserves configuration IDs (letters, numbers, underscores and hyphens, up to 80 characters) mapped to label arrays. It does not store visited URLs or history records. `domainLabels` reserves domain-name keys mapped to category-label arrays. Each map allows up to 1,000 entries, each array up to 30 non-empty labels of at most 80 characters. Tag editing, automatic classification and record-level tagging are future work, tracked separately in [#7](https://github.com/agent-club/history-sweep/issues/7) and [#11](https://github.com/agent-club/history-sweep/issues/11).
 
-Unknown versions, unknown fields, malformed values and oversized responses are rejected before local application. Browsing history, cleanup activity, protected-domain rules, browsing defaults (`browsingPreferences`), Private cleanup preferences, connection credentials and temporary view state are excluded. No automatic background sync runs. Remote JSON is not encrypted at rest by this feature; the selected provider can read it. Keep buckets and DAV directories private.
+Unknown versions, unknown fields, malformed values and oversized responses are rejected before local application. Browsing history, cleanup activity, protected-domain rules, browsing defaults (`browsingPreferences`), Private cleanup preferences, connection credentials and temporary view state are excluded. The development-source soft privacy display preference (`softPrivacy`) is also local only and excluded from both configuration sync and disk backups. No automatic background sync runs. Remote JSON is not encrypted at rest by this feature; the selected provider can read it. Keep buckets and DAV directories private.
 
 Upload explicitly confirms replacement, reads and validates the current remote document, then uses its strong ETag in `If-Match`. New files use `If-None-Match: *`. Conflicts stop the upload; servers without strong ETags cannot replace existing files. Download previews the settings before replacing the corresponding local values; it does not merge configurations. Each successful upload is an intentional snapshot replacement, not a multi-device merge protocol.
 

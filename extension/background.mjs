@@ -1,7 +1,9 @@
 import { defaultTimeFilter, resolveTimeRange, parseProtectedSites, isProtectedUrl } from './history-filters.mjs';
 import { createLauncher } from './launcher.mjs';
 import { createActivityLog } from './activity-log.mjs';
+import { createNameplateStore } from './nameplate-store.mjs';
 import { createUpdateChecker, isNewerVersion } from './update-check.mjs';
+import { createAutoCleanup, AUTO_CLEANUP_ALARM } from './auto-cleanup.mjs';
 
 const launcher = createLauncher(chrome);
 void launcher.register().catch(() => {});
@@ -9,10 +11,13 @@ void launcher.register().catch(() => {});
 const handoffs = new Map();
 const jobs = new Map();
 const activityLog = createActivityLog(chrome.storage.local);
+const nameplates = createNameplateStore(chrome.storage.local);
 const checkForUpdate = createUpdateChecker(chrome);
 const modes = new Set(['smart', 'host-subdomains', 'host-exact', 'contains']);
 let policyQueue = Promise.resolve();
 let applyingUpdate = false;
+let cleanupQueue = Promise.resolve();
+let queuedCleanups = 0;
 
 function withPolicyLock(operation) {
   const result = policyQueue.then(operation);
@@ -20,14 +25,33 @@ function withPolicyLock(operation) {
   return result;
 }
 
-const deletionRunning = () => [...jobs.values()].some(job => ['deleting', 'verifying'].includes(job.phase));
+const deletionRunning = () => queuedCleanups > 0 || autoCleanup.busy() || [...jobs.values()].some(job => ['deleting', 'verifying'].includes(job.phase));
+function queueCleanup(operation) {
+  queuedCleanups++;
+  const task = cleanupQueue.then(operation);
+  cleanupQueue = task.catch(() => {});
+  return task.finally(() => {
+    queuedCleanups--;
+    void withPolicyLock(publishUpdateState).catch(() => {});
+  });
+}
+const autoCleanup = createAutoCleanup(chrome, {
+  readProtectedSites,
+  recordActivity: (pages, items, canRecord) => activityLog.record(pages, items, 'automatic', canRecord),
+  runExclusive: queueCleanup,
+  isBusy: () => applyingUpdate || queuedCleanups > 0,
+  onStateChange: () => { void withPolicyLock(publishUpdateState).catch(() => {}); },
+});
 
 async function readUpdateState() {
+  const installedVersion = chrome.runtime.getManifest().version;
+  const { extensionUpdateCheck } = await chrome.storage.local.get('extensionUpdateCheck');
+  const check = extensionUpdateCheck?.installedVersion === installedVersion ? extensionUpdateCheck : null;
   const { extensionUpdate } = await chrome.storage.session.get('extensionUpdate');
   // Session metadata survives worker suspension, but must not advertise an already installed version.
   if (!extensionUpdate || extensionUpdate.installedVersion !== chrome.runtime.getManifest().version ||
-      !isNewerVersion(extensionUpdate.version, extensionUpdate.installedVersion)) return { update: null };
-  return { update: { version: extensionUpdate.version, busy: deletionRunning() } };
+      !isNewerVersion(extensionUpdate.version, extensionUpdate.installedVersion)) return { update: null, check };
+  return { update: { version: extensionUpdate.version, busy: deletionRunning() }, check };
 }
 
 async function publishUpdateState() {
@@ -72,6 +96,7 @@ function websiteHost(value) {
 }
 
 chrome.runtime.onInstalled.addListener(details => {
+  if (details?.reason === 'install') void nameplates.prepareReveal().catch(() => {});
   chrome.contextMenus.create({ id: 'sweep-site', title: chrome.i18n.getMessage('sweepSite'), contexts: ['page'], documentUrlPatterns: ['http://*/*', 'https://*/*'] });
   if (details?.reason === 'install') void withPolicyLock(async () => {
     const { activityScrollHint } = await chrome.storage.local.get('activityScrollHint');
@@ -86,7 +111,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
 function trustedPage(sender) {
   if (sender.id !== chrome.runtime.id || (sender.frameId != null && sender.frameId !== 0)) return false;
   const url = new URL(sender.url);
-  return ['popup.html', 'manager.html'].some(page => `${url.protocol}//${url.host}${url.pathname}` === chrome.runtime.getURL(page));
+  return ['popup.html', 'manager.html', 'auto-cleanup.html'].some(page => `${url.protocol}//${url.host}${url.pathname}` === chrome.runtime.getURL(page));
 }
 
 function snapshot(job) {
@@ -138,13 +163,32 @@ async function runDeletion(job, urls, details) {
   }
 }
 
-async function handleMessage(message, sender, owner) {
+async function handleMessage(message, sender, owner, modal = false) {
+  if (message.type === 'claim-nameplate-reveal') return { nameplate: await nameplates.claimReveal() };
+  if (message.type === 'get-nameplate') return { nameplate: await nameplates.issue() };
+  if (message.type.startsWith('auto-')) {
+    // A modal reaches this branch only after the one-use launch/session check succeeds.
+    const page = new URL(sender.url).pathname;
+    if (!modal && !['/auto-cleanup.html','/manager.html','/popup.html'].includes(page)) throw new Error('AUTO_UNAVAILABLE');
+    await autoCleanup.initialize();
+    return autoCleanup.handle(message, owner);
+  }
+  if (message.type === 'open-auto-cleanup') {
+    let fragment = '';
+    if (message.domain !== undefined) {
+      const sites = parseProtectedSites(message.domain);
+      if (sites.length !== 1 || typeof message.includeSubdomains !== 'boolean') throw new Error('AUTO_INVALID_RULE');
+      fragment = '#' + new URLSearchParams({ domain: sites[0], subdomains: message.includeSubdomains ? '1' : '0' });
+    }
+    await chrome.tabs.create({ url: chrome.runtime.getURL(`auto-cleanup.html${fragment}`) });
+    return {};
+  }
   if (message.type === 'get-activity') return activityLog.read();
   if (message.type === 'get-update-state') return withPolicyLock(readUpdateState);
   if (message.type === 'check-for-update') {
     // Never hold the deletion policy lock while waiting for the website or Chrome's downloader.
     if (!(await withPolicyLock(readUpdateState)).update) {
-      const version = await checkForUpdate();
+      const version = await checkForUpdate({ manual: message.manual === true });
       if (version) await recordAvailableUpdate(version);
     }
     return withPolicyLock(readUpdateState);
@@ -198,7 +242,7 @@ async function handleMessage(message, sender, owner) {
     const sites = parseProtectedSites(message.input);
     return withPolicyLock(async () => {
       // A newly protected site must never race a confirmed deletion already in flight.
-      if ([...jobs.values()].some(job => ['deleting', 'verifying'].includes(job.phase))) throw new Error('RULES_BUSY');
+      if (deletionRunning()) throw new Error('RULES_BUSY');
       await chrome.storage.local.set({ protectedSites: sites });
       return { sites };
     });
@@ -230,7 +274,7 @@ async function handleMessage(message, sender, owner) {
           ...(Number.isFinite(item.lastVisitTime) && item.lastVisitTime > 0 ? { lastVisitTime: item.lastVisitTime } : {}),
         });
       }
-      void runDeletion(job, [...selected], details);
+      void queueCleanup(() => runDeletion(job, [...selected], details));
       return snapshot(job);
     });
   }
@@ -266,10 +310,23 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   const authorized = modal ? launcher.isTrustedModal(sender) : Promise.resolve(true);
   authorized.then(trusted => {
     if (!trusted) throw new Error('Invalid modal session');
-    return handleMessage(message, sender, owner);
+    return handleMessage(message, sender, owner, modal);
   }).then(data => respond({ ok: true, data }), error => {
-    const code = ['CURRENT_SITE_UNAVAILABLE', 'INVALID_TIME_RANGE', 'INVALID_PROTECTED_SITES', 'RULES_BUSY', 'PROTECTED_URL', 'UPDATE_BUSY', 'UPDATE_UNAVAILABLE', 'UPDATE_RELOADING'].includes(error.message) ? error.message : undefined;
+    const code = ['CURRENT_SITE_UNAVAILABLE', 'INVALID_TIME_RANGE', 'INVALID_PROTECTED_SITES', 'RULES_BUSY', 'PROTECTED_URL', 'UPDATE_BUSY', 'UPDATE_UNAVAILABLE', 'UPDATE_RELOADING',
+      'AUTO_INVALID_RULE', 'AUTO_CONFLICT', 'AUTO_STALE', 'AUTO_PREVIEW_REQUIRED', 'AUTO_PREVIEW_EXPIRED', 'AUTO_SCAN_INCOMPLETE', 'AUTO_FULLY_PROTECTED', 'AUTO_BUSY', 'AUTO_UNAVAILABLE', 'AUTO_ACTIVITY_FAILED'].includes(error.message) ? error.message : undefined;
     respond({ ok: false, ...(code ? { code } : {}) });
   });
   return true;
 });
+
+if (chrome.alarms) {
+  chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name === AUTO_CLEANUP_ALARM) void autoCleanup.initialize().then(() => autoCleanup.checkDue()).catch(() => {});
+  });
+  chrome.runtime.onStartup.addListener(() => { void autoCleanup.initialize().then(() => autoCleanup.checkDue()).catch(() => {}); });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && Object.hasOwn(changes, 'privateCleanup')) void autoCleanup.privacyChanged(changes.privateCleanup.newValue).catch(() => {});
+  });
+  // Recreate alarms on every worker start; Chrome versions below 150 may discard them on restart.
+  void autoCleanup.initialize().catch(() => {});
+}

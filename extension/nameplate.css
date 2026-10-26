@@ -1,0 +1,195 @@
+/* Materials and motion follow the approved interactive nameplate preview. */
+.nameplate-dialog { width: min(620px, calc(100% - 24px)); max-height: calc(100dvh - 24px); padding: 0; overflow-x: hidden; }
+.nameplate-dialog .nameplate-header { display: flex; align-items: flex-start; gap: 16px; padding: 22px 24px 16px; border-bottom: 1px solid var(--line-soft); }
+.nameplate-dialog .nameplate-header > div { flex: 1; min-width: 0; }
+.nameplate-dialog .nameplate-heading { margin: 0 0 5px; font-size: 18px; letter-spacing: -.3px; }
+.nameplate-dialog .nameplate-intro { margin: 0; font-size: 12px; line-height: 1.6; }
+.nameplate-dialog .nameplate-close { flex: 0 0 auto; min-width: 36px; min-height: 36px; }
+.nameplate-dialog .nameplate-feedback { min-height: 230px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
+.nameplate-dialog .nameplate-status { margin: 0; }
+.nameplate-dialog .nameplate-feedback[hidden], .nameplate-dialog .nameplate-content[hidden], .nameplate-dialog .nameplate-retry[hidden] { display: none; }
+.nameplate-dialog .np-stage:hover, .nameplate-dialog .np-stage:active { background: transparent; box-shadow: none; border: 0; }
+.nameplate-dialog .np-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: -5px; border-radius: 12px; }
+.nameplate-dialog .np-screen-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+  .nameplate-dialog { --np-ink: var(--ink); --np-muted: var(--muted); color: var(--np-ink); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .nameplate-dialog .np-preview { position: relative; }
+  .nameplate-dialog .np-caption { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; padding: 20px 24px 0; font-size: 12px; line-height: 1.5; color: var(--np-muted); letter-spacing: .08em; }
+  .nameplate-dialog .np-caption strong { font-weight: 500; color: var(--np-ink); }
+  .nameplate-dialog .np-stage { position: relative; display: block; width: 100%; height: 350px; border: 0; margin: 0; padding: 0; background: transparent; color: inherit; perspective: 1300px; perspective-origin: 50% 44%; container-type: inline-size; cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; font: inherit; }
+  .nameplate-dialog .np-stage.is-dragging { cursor: grabbing; touch-action: none; }
+  .nameplate-dialog .np-effects { position: absolute; inset: 0; overflow: clip; pointer-events: none; perspective: inherit; perspective-origin: inherit; mask-image: linear-gradient(transparent, #000 10%, #000 87%, transparent); }
+  .nameplate-dialog .np-atmosphere { position: absolute; left: 50%; top: 48%; width: min(82%, 460px); aspect-ratio: 1.586; pointer-events: none; --np-glow-a: 131 153 190; --np-glow-b: 186 199 220; opacity: calc(.72 + var(--np-hover, 0) * .28); }
+  .nameplate-dialog .np-halo { position: absolute; inset: -8% -9%; border-radius: 25%; background: radial-gradient(ellipse at 13% 22%, rgb(var(--np-glow-a) / .52), transparent 43%), radial-gradient(ellipse at 91% 71%, rgb(var(--np-glow-b) / .48), transparent 42%); filter: blur(21px); animation: np-halo-drift 12s ease-in-out infinite alternate; }
+  .nameplate-dialog .np-halo-secondary { inset: -4% -7%; background: radial-gradient(ellipse at 72% 5%, rgb(var(--np-glow-b) / .52), transparent 38%), radial-gradient(ellipse at 24% 97%, rgb(var(--np-glow-a) / .42), transparent 41%); filter: blur(15px); animation-delay: -7s; animation-duration: 15s; }
+  .nameplate-dialog .np-glare { position: absolute; left: var(--np-sx); top: var(--np-sy); width: var(--np-size, 5px); aspect-ratio: 1; border-radius: 50%; background: rgb(var(--np-glow-b)); box-shadow: 0 0 5px 2px rgb(var(--np-glow-a) / .8), 0 0 19px 7px rgb(var(--np-glow-a) / .43); animation: np-glare-drift var(--np-duration, 8s) ease-in-out infinite; animation-delay: var(--np-delay, 0s); }
+  .nameplate-dialog .np-glare::before { content: ""; position: absolute; left: 50%; top: 50%; width: 1px; height: 13px; transform: translate(-50%, -50%) rotate(-25deg); background: linear-gradient(transparent, rgb(var(--np-glow-b)), transparent); }
+  .nameplate-dialog .np-glare::after { content: ""; position: absolute; left: 50%; top: 50%; width: 27px; height: 1px; transform: translate(-50%, -50%) rotate(-25deg); background: linear-gradient(90deg, transparent, rgb(var(--np-glow-b) / .8), transparent); }
+  .nameplate-dialog .np-ivory .np-atmosphere { --np-glow-a: 178 174 154; --np-glow-b: 226 220 202; }
+  .nameplate-dialog .np-aurora .np-atmosphere { --np-glow-a: 155 157 184; --np-glow-b: 157 189 179; }
+  .nameplate-dialog .np-gold .np-atmosphere { --np-glow-a: 165 145 105; --np-glow-b: 218 201 163; }
+  @keyframes np-halo-drift { from { transform: translate(-7px, 4px) scale(.98); opacity: .65; } to { transform: translate(10px, -7px) scale(1.06); opacity: 1; } }
+  @keyframes np-glare-drift { 0%, 100% { transform: translate(-7px, 6px) scale(.55); opacity: .18; } 38% { opacity: .9; } 62% { transform: translate(10px, -8px) scale(1); opacity: .65; } }
+  .nameplate-dialog .np-shadow { position: absolute; width: 65%; height: 12%; left: 17.5%; top: 75%; border-radius: 50%; background: #0002; filter: blur(23px); pointer-events: none; }
+  .nameplate-dialog .np-object { position: absolute; left: 50%; top: 48%; width: min(82%, 460px); aspect-ratio: 1.586; transform-style: preserve-3d; transform: translate(-50%, -50%) rotateX(-9deg) rotateY(-16deg) rotateZ(-3deg); will-change: transform; --np-lx: 33%; --np-ly: 25%; --np-glint: .4; }
+  .nameplate-dialog .np-face, .nameplate-dialog .np-edge { display: block; position: absolute; inset: 0; border-radius: 18px; }
+  .nameplate-dialog .np-edge { background: linear-gradient(110deg, #a8a9a5, #363937 28%, #e6e7e0 47%, #777b78 65%, #b5b8b0); }
+  .nameplate-dialog .np-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; will-change: transform; overflow: hidden; border: 1px solid #fff6; box-sizing: border-box; text-align: left; box-shadow: inset 0 0 0 1px #00000012, inset 0 1px 1px #ffffff99; }
+  .nameplate-dialog .np-front { transform: translateZ(3.3px); }
+  .nameplate-dialog .np-back { transform: rotateY(180deg) translateZ(3.3px); }
+  .nameplate-dialog .np-face::before { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: radial-gradient(ellipse at var(--np-hx, 50%) var(--np-hy, 50%), #ffffff20, #ffffff00 65%); opacity: var(--np-hover, 0); }
+  .nameplate-dialog .np-face::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: radial-gradient(ellipse at var(--np-lx) var(--np-ly), #ffffff2b, #ffffff00 62%); opacity: var(--np-glint); }
+  .nameplate-dialog .np-brand { position: absolute; top: 9%; left: 7%; font-size: clamp(11px, 1.85cqw, 13px); font-weight: 600; letter-spacing: .16em; }
+  .nameplate-dialog .np-edition { position: absolute; top: 10%; right: 7%; font: 11px ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .06em; opacity: .72; }
+  .nameplate-dialog .np-title { position: absolute; left: 7%; top: 32%; font-family: Georgia, "Songti SC", "Noto Serif CJK SC", "Noto Serif SC", "STSong", serif; font-size: clamp(25px, 5.7cqw, 39px); line-height: 1.15; font-weight: 700; letter-spacing: .06em; white-space: nowrap; }
+  .nameplate-dialog .np-subtitle { position: absolute; left: 7%; top: 51%; font-size: clamp(11px, 1.95cqw, 14px); line-height: 1.3; font-weight: 500; letter-spacing: .09em; }
+  .nameplate-dialog .np-number { position: absolute; left: 7%; top: 66%; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: clamp(12px, 2.5cqw, 18px); line-height: 1.2; font-weight: 500; letter-spacing: .19em; }
+  .nameplate-dialog .np-details { position: absolute; left: 7%; right: 7%; bottom: 8%; display: flex; justify-content: space-between; gap: 9px; }
+  .nameplate-dialog .np-detail { display: flex; flex-direction: column; gap: 3px; }
+  .nameplate-dialog .np-detail-label { font-size: 11px; line-height: 1.2; font-weight: 500; opacity: .82; }
+  .nameplate-dialog .np-detail-value { font-size: clamp(11px, 1.85cqw, 13px); line-height: 1.3; font-weight: 500; letter-spacing: .06em; white-space: nowrap; }
+  .nameplate-dialog .np-art { display: block; position: absolute; pointer-events: none; }
+  .nameplate-dialog .np-back-wordmark { position: absolute; left: 7%; top: 29%; font: 700 min(clamp(20px, 5.9cqw, 40px), 4.5dvh)/1.05 Georgia, "Times New Roman", serif; letter-spacing: .035em; }
+  .nameplate-dialog .np-back-motto { position: absolute; right: 7%; bottom: 33%; font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif; font-weight: 600; font-size: clamp(11px, 2.3cqw, 16px); letter-spacing: .12em; }
+  .nameplate-dialog .np-back-rule { position: absolute; height: 1px; left: 7%; right: 7%; bottom: 27%; background: currentColor; opacity: .22; }
+  .nameplate-dialog .np-back .np-number { top: auto; bottom: 11%; font-size: clamp(10px, 2cqw, 14px); }
+  .nameplate-dialog .np-back-validity { position: absolute; right: 7%; bottom: 11%; font-size: clamp(10px, 1.85cqw, 11px); letter-spacing: .06em; }
+  .nameplate-dialog .np-controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; padding: 0 16px; }
+  .nameplate-dialog .np-control { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--np-ink); font: 12px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  .nameplate-dialog .np-control:hover { background: var(--mist); }
+  .nameplate-dialog .np-control i { width: 13px; height: 13px; }
+  .nameplate-dialog .np-footnote { display: block; margin: 12px 16px 0; padding-bottom: 20px; color: var(--np-muted); text-align: center; font-size: 11px; line-height: 1.5; }
+  .nameplate-dialog .np-obsidian .np-face { color: #bcbab0; background: radial-gradient(ellipse at var(--np-lx) var(--np-ly), #e8e3d609, #ffffff00 78%), linear-gradient(125deg, #242729, #16191b 55%, #101214); border-color: #474945; box-shadow: inset 0 0 0 1px #00000060, inset 0 1px 0 #ffffff0b; }
+  .nameplate-dialog .np-obsidian .np-edge { background: linear-gradient(105deg, #424540, #171a1b 30%, #696b62 55%, #242726); }
+  .nameplate-dialog .np-obsidian .np-face::before { background: radial-gradient(ellipse at var(--np-hx, 50%) var(--np-hy, 50%), #ffffff10, #ffffff00 78%); }
+  .nameplate-dialog .np-obsidian .np-face::after { opacity: calc(var(--np-glint) * .16); }
+  .nameplate-dialog .np-obsidian { --np-cut: #050708; --np-cut-light: #e2ded247; --np-cut-top: #9a9c94; --np-cut-bottom: #c6c5ba; --np-cut-ink: #b7b8ae; --np-cut-rim: #070a0ba6; }
+  .nameplate-dialog .np-obsidian .np-art { width: 33%; height: 20%; right: -1%; top: 26%; border: 1px solid #8c909b55; border-radius: 50%; transform: rotate(-28deg); box-shadow: 0 1px 0 #0009; }
+  .nameplate-dialog .np-obsidian .np-art::before { content: ""; position: absolute; width: 25%; aspect-ratio: 1; top: 15%; left: 38%; border-radius: 50%; background: radial-gradient(circle at 32% 25%, #53565f, #262830 50%, #111216 85%); box-shadow: 1px 2px 4px #0008; }
+  .nameplate-dialog .np-obsidian .np-art::after { content: ""; position: absolute; width: 9%; aspect-ratio: 1; top: 7%; right: 8%; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #8b8e97, #51545e 42%, #24262d 85%); }
+  .nameplate-dialog .np-ivory .np-face { color: #5b584e; background: radial-gradient(ellipse at var(--np-lx) var(--np-ly), #faf9f180, #fff0 70%), repeating-linear-gradient(35deg, #76705c04 0px, #76705c04 1px, #ffffff04 1px, #ffffff04 3px), linear-gradient(120deg, #e8e6de, #d8d5ca); border-color: #f3f1e8; }
+  .nameplate-dialog .np-ivory .np-edge { background: linear-gradient(100deg, #b6b0a0, #918a78 20%, #eeece1 46%, #a9a18d 65%, #d5d0be); }
+  .nameplate-dialog .np-ivory { --np-cut: #49453980; --np-cut-light: #fffef3b3; --np-cut-top: #4d4b41; --np-cut-bottom: #736d5c; --np-cut-ink: #5e5b4f; --np-cut-rim: #46423547; }
+  .nameplate-dialog .np-ivory .np-art { width: 43%; height: 66%; top: -11%; right: -3%; opacity: .5; background: repeating-radial-gradient(circle at 95% 2%, transparent 0 17px, #8c877445 18px, #fffef0a3 20px, transparent 22px 30px); border-radius: 50%; }
+  .nameplate-dialog .np-aurora .np-face { color: #454b52; background: radial-gradient(ellipse at var(--np-lx) var(--np-ly), #f1f1e95c, #fff0 66%), conic-gradient(from var(--np-hue, 112deg) at 66% 52%, #b7bbc9, #b4c5c1, #c8c8b5, #cbbfc5, #b5b9cb, #b7bbc9); border-color: #dfe6e2d9; box-shadow: inset 0 0 0 1px #f4f5ed66, inset 1px 1px 3px #727b8d66; }
+  .nameplate-dialog .np-aurora .np-edge { background: conic-gradient(from var(--np-hue, 112deg), #7d849d, #9bb6ad, #c0bfa4, #b29baa, #7d849d); }
+  .nameplate-dialog .np-aurora .np-face::after { background: linear-gradient(var(--np-hue, 112deg), #ffffff00 0 20%, #a8c9bf4d 36%, #fcfcf200 47%, #999dbb47 61%, #c6b2bd26 75%, #fff0 90%); opacity: .28; }
+  .nameplate-dialog .np-aurora { --np-cut: #303b498c; --np-cut-light: #f3f5edab; --np-cut-top: #37414d; --np-cut-bottom: #616777; --np-cut-ink: #454e5c; --np-cut-rim: #30394759; }
+  .nameplate-dialog .np-aurora .np-art { width: 41%; height: 73%; right: -16%; top: 6%; border: 1px solid #81799460; border-radius: 51% 5% 0 55%; transform: rotate(28deg); box-shadow: -7px 0 0 -6px #ffffffdf, -15px 0 0 -14px #9db7bd, -22px 0 0 -21px #fff, -31px 0 0 -30px #b5a2ce, -39px 0 0 -38px #fff, -50px 0 0 -49px #b2c9c3, -60px 0 0 -59px #fff, -72px 0 0 -71px #bfb1d5; opacity: .8; }
+  .nameplate-dialog .np-gold .np-face { color: #514432; background: radial-gradient(ellipse at var(--np-lx) var(--np-ly), #f8efda52, #fff0 61%), repeating-linear-gradient(0deg, #fff8e405 0 1px, #39312304 2px, #0000 3px), linear-gradient(112deg, #a08d6d, #ccbd9c 33%, #b3a07d 55%, #d9cbae 78%, #a18d6d); border-color: #e2d5b8; }
+  .nameplate-dialog .np-gold .np-edge { background: linear-gradient(110deg, #c0ac84, #6f5c3d 20%, #e9dec4 49%, #968260 72%, #d0c09a); }
+  .nameplate-dialog .np-gold { --np-cut: #3b30208c; --np-cut-light: #f4e8c7a6; --np-cut-top: #473a28; --np-cut-bottom: #6b5739; --np-cut-ink: #56452e; --np-cut-rim: #3d302052; }
+  .nameplate-dialog .np-gold .np-art { width: 15%; aspect-ratio: 1; right: 7%; top: 20%; border: 1px solid #62513680; border-radius: 50%; background: repeating-conic-gradient(from 3deg, transparent 0deg 11deg, #6d593b80 12deg 13deg, transparent 14deg 20deg); box-shadow: inset 0 0 0 5px #bca984, inset 0 0 0 6px #65543b33; }
+  .nameplate-dialog .np-gold .np-art::after { content: ""; position: absolute; inset: 30%; border-radius: 50%; background: radial-gradient(circle at 30% 20%, #d7c7a4, #a38d65); box-shadow: 0 0 0 3px #beaa81, 0 0 0 4px #65523788; }
+  /* A dark upper cut and a light lower lip recess the lettering into each finish. */
+  .nameplate-dialog :is(.np-brand, .np-edition, .np-title, .np-subtitle, .np-number, .np-detail-label, .np-detail-value, .np-back-wordmark, .np-back-motto, .np-back-validity) { color: var(--np-cut-ink); text-shadow: 0 -.45px .2px var(--np-cut), 0 .65px .2px var(--np-cut-light); }
+  .nameplate-dialog :is(.np-title, .np-back-wordmark) { -webkit-text-fill-color: var(--np-cut-ink); -webkit-text-stroke: .2px var(--np-cut-rim); text-shadow: 0 -.65px .3px var(--np-cut), 0 .8px .25px var(--np-cut-light); }
+  @media (max-width: 500px) {
+    .nameplate-dialog .np-stage { height: 300px; perspective: 1000px; }
+    .nameplate-dialog .np-caption { padding: 16px 16px 0; }
+    .nameplate-dialog .np-object { width: 85%; top: 48%; }
+    .nameplate-dialog .np-atmosphere { width: 85%; }
+    .nameplate-dialog .np-halo { filter: blur(14px); }
+    .nameplate-dialog .np-face, .nameplate-dialog .np-edge { border-radius: 13px; }
+    .nameplate-dialog .np-shadow { top: 72%; height: 9%; }
+    .nameplate-dialog .np-brand { letter-spacing: .1em; top: 9%; }
+    .nameplate-dialog .np-edition { top: 9%; }
+    .nameplate-dialog .np-title { top: 30%; font-size: clamp(23px, 6.5cqw, 32px); letter-spacing: .03em; }
+    .nameplate-dialog .np-subtitle { top: 50%; letter-spacing: .02em; }
+    .nameplate-dialog .np-number { top: 64%; letter-spacing: .11em; }
+    .nameplate-dialog .np-details { bottom: 7%; }
+    .nameplate-dialog .np-detail { gap: 2px; }
+    .nameplate-dialog .np-control { min-height: 42px; }
+  }
+  @media (max-width: 350px) {
+    .nameplate-dialog .np-stage { height: 255px; }
+    .nameplate-dialog .np-object { width: 89%; }
+    .nameplate-dialog .np-atmosphere { width: 89%; }
+    .nameplate-dialog .np-edition { display: none; }
+    .nameplate-dialog .np-title { top: 28%; }
+    .nameplate-dialog .np-subtitle { top: 48%; }
+    .nameplate-dialog .np-number { top: 62%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nameplate-dialog .np-halo, .nameplate-dialog .np-glare { animation: none; }
+    .nameplate-dialog .np-halo { opacity: .5; }
+    .nameplate-dialog .np-glare { opacity: .35; }
+  }
+
+/* English mottos take more width than the approved five-character Chinese titles. */
+:lang(en) .nameplate-dialog .np-title { font-size: min(clamp(20px, 4.7cqw, 29px), 4dvh); letter-spacing: .01em; }
+:lang(en) .nameplate-dialog .np-subtitle { font-size: clamp(10px, 1.9cqw, 12px); letter-spacing: 0; max-width: 84%; }
+:lang(en) .nameplate-dialog .np-detail-value { letter-spacing: 0; }
+:lang(en) .nameplate-dialog .np-back-motto { letter-spacing: .02em; }
+@media (max-width: 500px) {
+  .nameplate-dialog .nameplate-header { padding: 18px 16px 14px; }
+  .nameplate-dialog .np-caption { letter-spacing: .03em; }
+}
+@media (max-width: 350px) {
+  :lang(en) .nameplate-dialog .np-title { font-size: 5.3cqw; }
+  :lang(en) .nameplate-reveal .np-subtitle { top: 45%; line-height: 1.15; }
+  .nameplate-dialog .np-brand { font-size: 10px; }
+  .nameplate-dialog .np-detail-label, .nameplate-dialog .np-detail-value { font-size: 10px; }
+}
+
+/* 04 · orbital reveal. Opaque from its first frame, including over startup. */
+dialog.nameplate-reveal { position: fixed; inset: 0; width: 100%; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 24px; border: 0; border-radius: 0; overflow: hidden; box-sizing: border-box; background: rgb(var(--np-background, 5 7 13) / var(--np-background-opacity, 1)); --np-ink: #f4f1eb; --np-muted: #a8a6aa; --np-energy: 111 222 255; --np-secondary: 160 190 244; color-scheme: dark; }
+/* The opaque reveal owns its timeline; inherited glass/transform effects destabilize its 3D layers. */
+dialog.nameplate-reveal, dialog.nameplate-reveal::backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }
+dialog.nameplate-reveal[open] { display: flex; flex-direction: column; align-items: center; animation: none; }
+.nameplate-reveal::backdrop { background: transparent; }
+.nameplate-reveal .np-window-effects { position: absolute; inset: 0; overflow: hidden; pointer-events: none; opacity: 0; border-radius: inherit; }
+.nameplate-reveal .np-window-rim { position: absolute; inset: 2px; border: 1px solid rgb(var(--np-energy) / .65); border-radius: inherit; box-shadow: inset 0 0 32px rgb(var(--np-energy) / .14), 0 0 18px rgb(var(--np-secondary) / .2); }
+.nameplate-reveal .np-window-haze { position: absolute; inset: 0; background: radial-gradient(ellipse at 0 0, rgb(var(--np-energy) / .25), transparent 34%), radial-gradient(ellipse at 100% 100%, rgb(var(--np-secondary) / .2), transparent 34%); mask-image: linear-gradient(90deg, #000, transparent 18%, transparent 82%, #000), linear-gradient(#000, transparent 14%, transparent 86%, #000); }
+.nameplate-reveal .np-window-spark { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: rgb(var(--np-secondary)); box-shadow: 0 0 7px 2px rgb(var(--np-energy) / .6); opacity: 0; }
+.nameplate-reveal .nameplate-header { flex: 0 0 auto; width: 100%; padding: clamp(12px, 4dvh, 42px) 32px 12px; border: 0; text-align: center; box-sizing: border-box; }
+.nameplate-reveal .nameplate-heading { color: var(--np-ink); font-size: clamp(20px, 2.4vw, 28px); font-weight: 500; letter-spacing: .06em; }
+.nameplate-reveal .nameplate-intro { color: var(--np-muted); margin-top: 10px; font-size: 12px; }
+.nameplate-reveal .nameplate-close { position: absolute; right: 20px; top: 20px; border: 1px solid #ffffff1f; background: #ffffff08; color: #f4f1eb; border-radius: 50%; }
+.nameplate-reveal .nameplate-close img { filter: brightness(0) invert(1); }
+.nameplate-reveal .nameplate-content { width: 100%; flex: 1; min-height: 0; }
+.nameplate-reveal .nameplate-feedback { flex: 1; color: var(--np-muted); }
+.nameplate-reveal .np-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
+.nameplate-reveal .np-caption { justify-content: center; flex-direction: column; gap: 6px; padding: 8px 0 0; font-size: 11px; }
+.nameplate-reveal .np-caption span { color: #a8a6aa; letter-spacing: .02em; }
+.nameplate-reveal .np-stage { flex: 0 1 auto; width: min(100%, 720px); height: min(47dvh, 430px); min-height: 210px; perspective: 1300px; overflow: visible; }
+.nameplate-reveal .np-object, .nameplate-reveal .np-atmosphere { width: min(80%, 540px, 56dvh); top: 48%; }
+.nameplate-reveal .np-effects { overflow: visible; mask-image: none; }
+.nameplate-reveal .np-controls { flex: 0 0 auto; margin: 0 0 16px; gap: 8px; }
+.nameplate-reveal .np-control { border-color: #ffffff26; background: #ffffff08; color: #c4c1c5; border-radius: 20px; }
+.nameplate-reveal .np-control:hover { background: #ffffff16; }
+.nameplate-reveal .np-collect { flex: 0 0 auto; min-height: 44px; padding: 11px 32px; border: 1px solid rgb(var(--np-energy) / .4); border-radius: 24px; background: linear-gradient(120deg, rgb(var(--np-energy) / .14), rgb(var(--np-secondary) / .06)); color: #f4f1eb; font-size: 13px; letter-spacing: .05em; box-shadow: 0 0 26px rgb(var(--np-energy) / .07); }
+.nameplate-reveal .np-collect:hover { background: rgb(var(--np-energy) / .2); }
+.nameplate-reveal .np-footnote { flex: 0 0 auto; margin: 14px 0 0; padding: 0; color: #9c999e; font-size: 10px; }
+.nameplate-reveal button:focus-visible { outline: 2px solid rgb(var(--np-energy)); outline-offset: 4px; }
+.nameplate-reveal .np-stage:focus-visible { outline-color: rgb(var(--np-energy)); }
+.nameplate-reveal .np-stage:disabled { cursor: default; opacity: 1; }
+.nameplate-reveal .np-preview[data-phase=revealing] .np-controls, .nameplate-reveal .np-preview[data-phase=revealing] .np-collect, .nameplate-reveal .np-preview[data-phase=revealing] .np-footnote { opacity: 0; pointer-events: none; }
+.nameplate-reveal .np-controls, .nameplate-reveal .np-collect, .nameplate-reveal .np-footnote { transition: opacity .3s ease; }
+.nameplate-reveal .np-preview[data-phase=revealing] .np-effects { opacity: 0; }
+.nameplate-reveal[data-collecting] :is(.nameplate-header, .np-caption, .np-controls, .np-collect, .np-footnote, .np-effects, .np-shadow) { opacity: 0; pointer-events: none; transition: opacity .18s ease; }
+.nameplate-reveal .np-orbit-scene { position: absolute; inset: 0; pointer-events: none; perspective: inherit; }
+.nameplate-reveal .np-orbit-scene > span { position: absolute; left: 50%; top: 48%; pointer-events: none; }
+.nameplate-reveal .np-reveal-aura { width: 100%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(ellipse, rgb(var(--np-energy) / .32), rgb(var(--np-secondary) / .12) 35%, transparent 65%); filter: blur(20px); }
+.nameplate-reveal .np-orbit-ring { width: 93%; aspect-ratio: 1; border: 1px solid rgb(var(--np-energy) / .9); border-radius: 50%; box-shadow: 0 0 16px rgb(var(--np-energy) / .3), inset 0 0 12px rgb(var(--np-energy) / .15); }
+.nameplate-reveal .np-orbit-ring:nth-child(3) { border-color: rgb(var(--np-secondary)); border-width: 2px; }
+.nameplate-reveal .np-shock-ring { width: 85%; aspect-ratio: 1; border: 1px solid rgb(var(--np-energy) / .6); border-radius: 50%; }
+.nameplate-reveal .np-reveal-flare { width: 150%; height: 2px; transform: translate(-50%, -50%); background: linear-gradient(90deg, transparent, rgb(var(--np-energy)), #fff, rgb(var(--np-secondary)), transparent); box-shadow: 0 0 20px rgb(var(--np-energy)); }
+.nameplate-reveal .np-orbit-particle { aspect-ratio: 1; border-radius: 50%; background: rgb(var(--np-energy)); box-shadow: 0 0 6px rgb(var(--np-secondary)); }
+.nameplate-reveal[data-material=ivory] .np-orbit-ring { box-shadow: 0 0 10px rgb(var(--np-energy) / .12); }
+.nameplate-reveal[data-material=ivory] .np-shock-ring { border-style: dotted; }
+.nameplate-reveal[data-material=aurora] .np-reveal-aura { background: radial-gradient(ellipse at 30% 40%, rgb(var(--np-energy) / .4), transparent 58%), radial-gradient(ellipse at 70% 60%, rgb(var(--np-secondary) / .35), transparent 58%); }
+@media (max-width: 540px), (max-height: 650px) {
+  dialog.nameplate-reveal { padding: 16px; }
+  .nameplate-reveal .nameplate-header { padding: 24px 18px 12px; }
+  .nameplate-reveal .nameplate-heading { font-size: 20px; }
+  .nameplate-reveal .nameplate-intro { margin-top: 8px; font-size: 11px; }
+  .nameplate-reveal .nameplate-close { right: 10px; top: 10px; min-width: 32px; min-height: 32px; }
+  .nameplate-reveal .np-stage { min-height: 185px; height: min(42dvh, 340px); }
+  .nameplate-reveal .np-object, .nameplate-reveal .np-atmosphere { width: min(89%, 50dvh); }
+  .nameplate-reveal .np-controls { margin-bottom: 12px; }
+  .nameplate-reveal .np-footnote { margin-top: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nameplate-reveal .np-controls, .nameplate-reveal .np-collect, .nameplate-reveal .np-footnote { transition: none; }
+}

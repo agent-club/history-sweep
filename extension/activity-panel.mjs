@@ -1,14 +1,15 @@
 import { activityCalendar, browsingActivityAsync, activitySummary } from './activity-calendar.mjs';
 import { parseDate } from './calendar-dates.mjs';
 import { MAX_HISTORY_RESULTS } from './history-utils.mjs';
+import { createActivityReveal } from './activity-reveal.mjs';
 
 export function createActivityPanel({ compact, request, readHistory, t, language }) {
   let opened = false;
   try { opened = localStorage.getItem('activityOpen') === 'true'; } catch {}
   let mode = 'browsing', range = compact ? 'quarter' : 'year', year = new Date().getFullYear();
+  let softPrivacy = true, privacyReady = false, privacyRevision = 0, savingPrivacy = false, privacyError = false;
   let cleanup = null, browsing = null, selected = null, events, root, loading = false, failure = false, ticket = 0, refreshTimer;
-  let collapseAnimation = null, tooltipTimer, tooltipHideTimer;
-  let scrollHintTimer, scrollHintPending = opened, scrollHintTicket = 0;
+  let tooltipTimer, tooltipHideTimer;
   let renderedRoot, renderedData, renderedKey, detailRoot, detailData, detailDate;
   const dirty = new Set();
   const $ = id => root.querySelector(`#${id}`);
@@ -18,34 +19,14 @@ export function createActivityPanel({ compact, request, readHistory, t, language
   const earliestYear = () => mode === 'cleanup'
     ? cleanup ? Number(cleanup.log.startedOn.slice(0, 4)) : year
     : browsing ? Math.min(new Date().getFullYear(), ...Object.keys(browsing.days).map(date => Number(date.slice(0, 4)))) : year;
-  function hideScrollHint() {
-    scrollHintTicket++;
-    clearTimeout(scrollHintTimer);
-    const hint = root?.querySelector('#activityScrollHint');
-    if (hint) hint.hidden = true;
-  }
-  function scheduleScrollHint() {
-    if (!scrollHintPending || loading || failure) return;
-    scrollHintPending = false;
-    const current = ++scrollHintTicket;
-    scrollHintTimer = setTimeout(async () => {
-      if (!opened || !root.isConnected) return;
-      if (loading || failure) { scrollHintPending = true; return; }
-      let allowed;
-      try { allowed = await request({ type: 'claim-activity-scroll-hint' }); } catch { return; }
-      if (!allowed?.show || current !== scrollHintTicket || !opened || !root.isConnected) return;
-      const hint = $('activityScrollHint');
-      hint.style.setProperty('--activity-legend-width', `${root.querySelector('.activity-legend').offsetWidth}px`);
-      hint.hidden = false;
-      // Match the selected concept: entrance, gesture and exit share one 1.2 s lifetime.
-      scrollHintTimer = setTimeout(() => { hint.hidden = true; }, 1200);
-    }, 300);
-  }
   function detail(date) {
     const day = days()?.[date];
-    return mode === 'cleanup'
+    const summary = mode === 'cleanup'
       ? t(day?.websitesComplete ? 'activityDayCleanupSites' : 'activityDayCleanup', { operations: number(day ? day.operations : 0), pages: number(day ? day.pages : 0), sites: number(day?.websites?.length || 0) })
       : t('activityDayBrowsing', { pages: number(day ? day.pages : 0), sites: number(day ? day.sites.size : 0) });
+    return mode === 'cleanup' && day?.automaticOperations
+      ? `${summary} · ${t('activityCleanupSources', { automatic: number(day.automaticOperations), manual: number(day.operations - day.automaticOperations) })}`
+      : summary;
   }
   function hideTooltip(immediate = false) {
     clearTimeout(tooltipTimer); clearTimeout(tooltipHideTimer);
@@ -97,32 +78,6 @@ export function createActivityPanel({ compact, request, readHistory, t, language
       strip.append(button);
     }
   }
-  function collapse() {
-    if (!opened) return;
-    opened = false;
-    scrollHintPending = false; hideScrollHint();
-    try { localStorage.setItem('activityOpen', 'false'); } catch {}
-    hideTooltip();
-    const toggle = document.getElementById('toggleActivity');
-    if (root.contains(document.activeElement)) toggle.focus({ preventScroll: true });
-    const shell = root.closest('.app-shell');
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      const style = getComputedStyle(root);
-      root.inert = true;
-      const animation = root.animate([
-        { height: `${root.getBoundingClientRect().height}px`, paddingTop: style.paddingTop, paddingBottom: style.paddingBottom, marginBottom: style.marginBottom, opacity: 1, overflow: 'hidden' },
-        { height: '0px', paddingTop: '0px', paddingBottom: '0px', marginBottom: '0px', opacity: 0, overflow: 'hidden' },
-      ], { duration: 220, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' });
-      collapseAnimation = animation;
-      animation.finished.then(() => {
-        if (collapseAnimation !== animation) return;
-        collapseAnimation = null; animation.cancel(); root.inert = false;
-        render(); shell.scrollTop = 0;
-      }, () => {});
-    }
-    render();
-    if (!collapseAnimation) shell.scrollTop = 0;
-  }
   function showDay(button, tooltip = true, pin = false) {
     const date = button.dataset.date;
     if (pin) selected = date;
@@ -140,17 +95,39 @@ export function createActivityPanel({ compact, request, readHistory, t, language
   }
   function render() {
     if (!root?.isConnected) return;
-    root.hidden = !opened && !collapseAnimation;
-    const toggle = document.getElementById('toggleActivity');
-    toggle.setAttribute('aria-expanded', String(opened)); toggle.setAttribute('aria-pressed', String(opened));
+    const entrySummary = document.getElementById('activityEntrySummary');
+    entrySummary.textContent = '';
+    if (days() && !failure && !(mode === 'cleanup' && softPrivacy)) {
+      const calendar = activityCalendar(year, range);
+      const summary = activitySummary(days(), calendar.start, calendar.end, calendar.today);
+      const metrics = mode === 'cleanup' ? [[summary.operations, 'activityOperations'], [summary.pages, 'activityPages']] : [[summary.pages, 'activityHistoryPages'], [summary.sites, 'activitySites']];
+      entrySummary.textContent = metrics.map(([value, key]) => `${number(value)}${t(key)}`).join(' · ');
+    }
+    const privacyToggle = $('toggleCleanupVisibility');
+    privacyToggle.hidden = mode !== 'cleanup';
+    privacyToggle.textContent = t(softPrivacy ? 'showCleanupActivity' : 'hideCleanupActivity');
+    privacyToggle.disabled = savingPrivacy || !privacyReady;
+    privacyToggle.setAttribute('aria-pressed', String(!softPrivacy));
+    for (const button of root.querySelectorAll('[data-activity-mode]')) button.setAttribute('aria-pressed', String(button.dataset.activityMode === mode));
+    if (mode === 'cleanup' && softPrivacy) {
+      // Remove rendered details too: hidden records must not linger in tooltips or accessible markup.
+      hideTooltip(true); $('activityTooltip').replaceChildren();
+      for (const id of ['activityStats', 'activityGrid', 'activitySites']) $(id).replaceChildren();
+      for (const id of ['activitySubtitle', 'activityDate', 'activityDetail', 'activitySiteNotice', 'activityEmpty', 'activityScope']) $(id).textContent = '';
+      $('activityContent').hidden = true; $('activityRetry').hidden = true;
+      $('activityNotice').textContent = t(!privacyReady ? 'preferencesLoadFailed' : privacyError ? 'preferencesSaveFailed' : 'cleanupActivityHidden');
+      $('activityNotice').classList.remove('sr-only');
+      root.dataset.loading = 'false'; root.setAttribute('aria-busy', 'false');
+      renderedData = null; detailData = null; detailDate = null;
+      return;
+    }
     if (!opened) return;
     root.setAttribute('aria-busy', String(loading));
     $('activityYear').textContent = String(year);
     $('activityPreviousYear').disabled = (loading && !days()) || year <= earliestYear();
     $('activityNextYear').disabled = (loading && !days()) || year >= new Date().getFullYear();
-    for (const button of root.querySelectorAll('[data-activity-mode]')) button.setAttribute('aria-pressed', String(button.dataset.activityMode === mode));
     for (const button of root.querySelectorAll('[data-activity-range]')) button.setAttribute('aria-pressed', String(button.dataset.activityRange === range));
-    $('activityNotice').textContent = loading ? t('activityLoading') : failure ? t('activityLoadFailed') : '';
+    $('activityNotice').textContent = privacyError ? t('preferencesSaveFailed') : loading ? t('activityLoading') : failure ? t('activityLoadFailed') : '';
     $('activityNotice').classList.toggle('sr-only', loading);
     $('activityRetry').hidden = !failure;
     $('activityContent').hidden = failure;
@@ -158,7 +135,6 @@ export function createActivityPanel({ compact, request, readHistory, t, language
     const skeleton = !data;
     root.dataset.loading = String(skeleton && !failure);
     if (failure) { hideTooltip(true); renderedData = null; return; }
-    scheduleScrollHint();
     const key = `${mode}:${year}:${range}:${language()}:${new Date().toDateString()}`;
     // Retain the chart and favicon nodes on reopen and while refreshing cached data.
     if (data && renderedRoot === root && renderedData === data && renderedKey === key) return;
@@ -229,6 +205,7 @@ export function createActivityPanel({ compact, request, readHistory, t, language
   }
   async function load() {
     if (!opened) return;
+    if (mode === 'cleanup' && softPrivacy) { render(); return; }
     const current = ++ticket; const source = mode;
     loading = true; failure = false; render();
     try {
@@ -260,8 +237,21 @@ export function createActivityPanel({ compact, request, readHistory, t, language
       refreshTimer = setTimeout(() => { if (!source || source === mode) void load(); }, 200);
     }
   }
+  function setSoftPrivacy(value) {
+    privacyRevision++;
+    privacyReady = typeof value === 'boolean';
+    softPrivacy = !privacyReady || value;
+    privacyError = false;
+    if (mode === 'cleanup') {
+      ticket++; loading = false;
+      clearTimeout(refreshTimer);
+    }
+    render();
+    if (opened && mode === 'cleanup' && !softPrivacy && (!cleanup || dirty.has('cleanup'))) void load();
+  }
   return {
     invalidate,
+    setSoftPrivacy,
     async refreshCleanup() {
       clearTimeout(refreshTimer);
       const showingCleanup = opened && mode === 'cleanup';
@@ -289,35 +279,29 @@ export function createActivityPanel({ compact, request, readHistory, t, language
       }
     },
     mount() {
-      hideScrollHint(); scrollHintPending = opened;
-      collapseAnimation?.cancel(); collapseAnimation = null;
       clearTimeout(tooltipTimer); clearTimeout(tooltipHideTimer);
       events?.abort(); events = new AbortController(); root = document.getElementById('activityPanel');
       const listen = (target, type, callback, options = {}) => target.addEventListener(type, callback, { ...options, signal: events.signal });
-      listen(document.getElementById('toggleActivity'), 'click', () => {
-        if (opened) return collapse();
-        collapseAnimation?.cancel(); collapseAnimation = null; root.inert = false;
-        opened = true;
-        scrollHintPending = true;
-        try { localStorage.setItem('activityOpen', 'true'); } catch {}
-        if (!days() || dirty.has(mode)) void load(); else render();
+      const revision = ++privacyRevision;
+      void chrome.storage.local.get('softPrivacy').then(({ softPrivacy = false }) => {
+        if (revision === privacyRevision) setSoftPrivacy(softPrivacy);
+      }, () => { if (revision === privacyRevision) setSoftPrivacy(null); });
+      listen($('toggleCleanupVisibility'), 'click', async () => {
+        if (savingPrivacy || !privacyReady) return;
+        const value = !softPrivacy;
+        savingPrivacy = true; privacyError = false; render();
+        try {
+          await chrome.storage.local.set({ softPrivacy: value });
+          setSoftPrivacy(value);
+        } catch { privacyError = true; }
+        finally { savingPrivacy = false; render(); }
       });
-      const shell = root.closest('.app-shell');
-      listen(shell, 'wheel', event => {
-        // Wrapped website rows may extend below a compact viewport; let users reach them.
-        if (!event.target.closest('#activitySites') && !event.ctrlKey && Math.abs(event.deltaY) > Math.abs(event.deltaX)) collapse();
-      }, { passive: false });
-      let touch = null;
-      listen(shell, 'touchstart', event => {
-        touch = event.touches.length === 1 ? { x: event.touches[0].clientX, y: event.touches[0].clientY, sites: Boolean(event.target.closest('#activitySites')) } : null;
-      }, { passive: true });
-      listen(shell, 'touchmove', event => {
-        if (!touch || event.touches.length !== 1) { touch = null; return; }
-        const dx = event.touches[0].clientX - touch.x, dy = event.touches[0].clientY - touch.y;
-        if (!touch.sites && Math.abs(dy) >= 8 && Math.abs(dy) > Math.abs(dx)) { collapse(); touch = null; }
-      }, { passive: true });
-      listen(shell, 'touchend', () => { touch = null; }, { passive: true });
-      listen(shell, 'touchcancel', () => { touch = null; }, { passive: true });
+      createActivityReveal({ opened, signal: events.signal, onChange(value, { commit }) {
+        opened = value;
+        if (commit) { try { localStorage.setItem('activityOpen', String(value)); } catch {} }
+        hideTooltip(true);
+        if (opened && (!days() || dirty.has(mode)) && !loading) void load(); else render();
+      } });
       for (const button of root.querySelectorAll('[data-activity-mode]')) listen(button, 'click', () => {
         if (mode === button.dataset.activityMode) return;
         mode = button.dataset.activityMode; selected = null; failure = false; ticket++; loading = false;

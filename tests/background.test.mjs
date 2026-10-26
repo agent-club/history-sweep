@@ -7,6 +7,8 @@ import * as filters from '../extension/history-filters.mjs';
 import { createLauncher } from '../extension/launcher.mjs';
 import { createActivityLog } from '../extension/activity-log.mjs';
 import { createUpdateChecker, isNewerVersion } from '../extension/update-check.mjs';
+import { createNameplateStore } from '../extension/nameplate-store.mjs';
+import { createAutoCleanup } from '../extension/auto-cleanup.mjs';
 
 const source = (await readFile(new URL('../extension/background.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '');
 const sender = { id: 'fixture', frameId: 0, documentId: 'popup-document', url: 'chrome-extension://fixture/popup.html' };
@@ -37,7 +39,7 @@ function worker(history, sessions = {}, currentVersion = '0.3.1', updateOptions 
     contextMenus: { create: menu => { menus.push(menu); }, onClicked: { addListener: callback => { menuClicked = callback; } } },
     runtime: { id: 'fixture', getManifest: () => ({ version: currentVersion }), reload: () => { reloads++; }, onUpdateAvailable: { addListener: callback => { updateAvailable = callback; } }, getURL: path => 'chrome-extension://fixture/' + path, onMessage: { addListener: value => { listener = value; } }, onInstalled: { addListener: callback => { installed.push(callback); } }, onStartup: { addListener() {} } },
   };
-  runInNewContext(source, { ...filters, createLauncher, createActivityLog, createUpdateChecker: api => createUpdateChecker({ ...api, ...updateOptions }, { fetchVersion: updateOptions.fetchVersion }), isNewerVersion, chrome, URL, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date: updateOptions.Date || Date });
+  runInNewContext(source, { ...filters, createNameplateStore, createAutoCleanup, createLauncher, createActivityLog, createUpdateChecker: api => createUpdateChecker({ ...api, ...updateOptions }, { fetchVersion: updateOptions.fetchVersion }), isNewerVersion, chrome, URL, URLSearchParams, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date: updateOptions.Date || Date });
   return {
     opened, timers, saved, menus, injected, popups, sessions, updateAvailable: details => updateAvailable(details), get reloads() { return reloads; }, clickAction: tab => actionClicked(tab), install: (reason = 'install') => installed.forEach(callback => callback({ reason })), clickMenu: info => menuClicked(info), setActiveUrl: url => { activeUrl = url; },
     send: (message, from = sender) => new Promise(resolve => {
@@ -53,6 +55,32 @@ async function finished(w, id) {
   }
   throw new Error('Deletion did not finish');
 }
+
+test('nameplates persist across trusted views and reject untrusted web senders', async () => {
+  const w = worker({});
+  const replies = await Promise.all(Array.from({ length: 5 }, () => w.send({ type: 'get-nameplate' })));
+  assert.ok(replies.every(reply => reply.ok));
+  assert.ok(replies.every(reply => JSON.stringify(reply.data.nameplate) === JSON.stringify(w.saved.nameplate)));
+  assert.equal((await w.send({ type: 'get-nameplate' }, { id: 'fixture', frameId: 0, url: 'https://example.test/' })).ok, false);
+  const retained = JSON.stringify(w.saved.nameplate);
+  w.install('update');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(JSON.stringify(w.saved.nameplate), retained);
+});
+
+test('fresh installation prepares one reveal; updates and untrusted senders cannot consume it', async () => {
+  const existing = worker({});
+  existing.install('update');
+  assert.equal((await existing.send({ type: 'claim-nameplate-reveal' })).data.nameplate, null);
+  const fresh = worker({});
+  fresh.install();
+  assert.equal((await fresh.send({ type: 'claim-nameplate-reveal' }, { ...sender, url: 'https://example.test/' })).ok, false);
+  const claims = await Promise.all(Array.from({ length: 4 }, () => fresh.send({ type: 'claim-nameplate-reveal' })));
+  assert.equal(claims.filter(reply => reply.data.nameplate).length, 1);
+  assert.deepEqual(claims.find(reply => reply.data.nameplate).data.nameplate, fresh.saved.nameplate);
+  fresh.install('update');
+  assert.equal((await fresh.send({ type: 'claim-nameplate-reveal' })).data.nameplate, null);
+});
 
 test('activity counts one verified task, excludes failed URLs, and status polling does not recount', async () => {
   const w = worker({ deleteUrl: async () => {}, getVisits: async ({ url }) => url.endsWith('/keep') ? [{ visitId: '1' }] : [] });
@@ -224,10 +252,13 @@ test('launch preferences persist and only a claimed modal document may use histo
   const modal = { id: 'fixture', tab: { id: 7 }, frameId: 2, documentId: 'modal-document', url: modalUrl };
   const deletion = { type: 'start-delete', urls: ['https://example.test/remove'] };
   assert.equal((await w.send(deletion, modal)).ok, false);
+  assert.equal((await w.send({type:'auto-get'},modal)).ok,false);
   assert.equal((await w.send({ type: 'claim-modal', token }, { ...modal, tab: { id: 8 } })).ok, false);
   assert.equal((await w.send({ type: 'claim-modal', token }, modal)).ok, true);
   assert.equal((await w.send({ type: 'claim-modal', token }, modal)).ok, false);
   assert.equal((await w.send({ type: 'get-launch-preference' }, modal)).data.launchMode, 'modal');
+  assert.equal((await w.send({type:'auto-get'},modal)).ok,true);
+  assert.equal((await w.send({type:'auto-get'},{...modal,documentId:'other-document'})).ok,false);
   assert.equal((await w.send(deletion, { ...modal, documentId: 'other-document' })).ok, false);
   const started = await w.send(deletion, modal);
   assert.equal(started.ok, true);
@@ -453,4 +484,10 @@ test('analytics hints do not invent install dates for existing users and require
   Object.defineProperty(localState, 'activityScrollHint', { value: state, writable: true, enumerable: true, configurable: true });
   assert.equal((await w.send({ type: 'claim-activity-scroll-hint' })).data.show, true);
   assert.equal((await w.send({ type: 'claim-activity-scroll-hint' }, { ...sender, url: 'https://example.test/' })).ok, false);
+});
+
+test('cleanup settings accept owned application pages and reject unclaimed frames',async()=>{
+ const w=worker({search:async()=>[],getVisits:async()=>[],deleteUrl:async()=>{}});
+ for(const page of ['manager','popup','auto-cleanup']) assert.equal((await w.send({type:'auto-get'},{...sender,url:`chrome-extension://fixture/${page}.html`})).ok,true);
+ for(const from of [{...sender,frameId:2},{...sender,id:'other'},{...sender,url:'https://untrusted.test/manager.html'}]) assert.equal((await w.send({type:'auto-get'},from)).ok,false);
 });

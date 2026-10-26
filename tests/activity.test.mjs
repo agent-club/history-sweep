@@ -87,6 +87,25 @@ test('local midnight starts a new daily aggregate and empty tasks remain valid z
   assert.deepEqual((await log.read()).log.days, { '2026-12-31': { operations: 1, pages: 1 }, '2027-01-01': { operations: 1, pages: 0 } });
 });
 
+test('automatic counts remain distinct after manual cleanup and no-op checks never add activity', async () => {
+  const f = fixture();
+  const log = createActivityLog(f.storage, () => new Date(2026, 9, 17));
+  await log.record(2, [], 'automatic'); await log.record(1);
+  await log.record(0, [], 'automatic'); await log.record(3, [], 'automatic', () => false);
+  assert.deepEqual((await log.read()).log.days['2026-10-17'], { operations: 2, pages: 3, automaticOperations: 1 });
+  assert.equal((await createActivityLog(f.storage).read()).log.days['2026-10-17'].automaticOperations, 1);
+});
+
+test('a private switch while activity storage is being read prevents automatic counts', async () => {
+  const f = fixture();
+  const log = createActivityLog(f.storage, () => new Date(2026, 9, 17));
+  await log.record(1);
+  let reads = 0;
+  const interrupted = createActivityLog({ ...f.storage, get: async () => { reads++; return structuredClone(f.saved); } }, () => new Date(2026, 9, 17));
+  await interrupted.record(2, [], 'automatic', () => reads === 0);
+  assert.equal(f.saved.localActivity.days['2026-10-17'].operations, 1);
+});
+
 test('failed writes preserve the existing log, report incompleteness, and do not poison the queue', async () => {
   const f = fixture(); const log = createActivityLog(f.storage, () => new Date(2026, 9, 17));
   await log.record(2); f.fail(true); await assert.rejects(log.record(3));

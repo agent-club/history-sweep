@@ -22,7 +22,7 @@ let checks = 0, browser;
 const check = (condition, message) => { assert.ok(condition, message); checks++; };
 const ready = page => page.waitForFunction(() => document.querySelector('.date-header') && !document.querySelector('#search').disabled);
 async function openActivity(page) {
-  await page.locator('#toggleActivity').click();
+  await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
   await page.waitForFunction(() => !document.querySelector('#activityPanel').hidden && document.querySelector('#activityPanel').getAttribute('aria-busy') === 'false');
 }
 async function touchMove(page, dx, dy) {
@@ -151,14 +151,16 @@ try {
     }), `${surface.name}: select all remains reachable and unobscured with activity open`);
     await page.locator('.app-shell').evaluate(node => { node.scrollTop = 0; });
     await page.locator('.activity-chart-scroll').dispatchEvent('wheel', { deltaX: 80, deltaY: 1 });
-    check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'true', `${surface.name}: horizontal wheel keeps activity open`);
+    check(await page.locator('#activityEntry').getAttribute('aria-expanded') === 'true', `${surface.name}: horizontal wheel keeps activity open`);
     await touchMove(page, 80, 1);
-    check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'true', `${surface.name}: horizontal touch keeps activity open`);
+    check(await page.locator('#activityEntry').getAttribute('aria-expanded') === 'true', `${surface.name}: horizontal touch keeps activity open`);
     await touchMove(page, 1, 3);
-    check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'true', `${surface.name}: touch jitter does not close activity`);
+    check(await page.locator('#activityEntry').getAttribute('aria-expanded') === 'true', `${surface.name}: touch jitter does not close activity`);
     await page.locator('#activityTitle').hover(); await page.mouse.wheel(0, 80);
-    await page.waitForFunction(() => document.querySelector('#toggleActivity').getAttribute('aria-expanded') === 'false');
-    const shrinking = await page.locator('#activityPanel').evaluate(node => {
+    check(await page.locator('#activityEntry').getAttribute('aria-expanded') === 'true', `${surface.name}: vertical scrolling keeps activity open`);
+    await page.locator('#activityCollapse').evaluate(node => node.click());
+    await page.waitForFunction(() => document.querySelector('#activityEntry').getAttribute('aria-expanded') === 'false');
+    const shrinking = await page.locator('#activityDock').evaluate(node => {
       const animation = node.getAnimations().find(animation => animation.effect.getTiming().duration === 220);
       if (!animation) return false;
       animation.pause(); animation.currentTime = 0;
@@ -168,31 +170,31 @@ try {
       animation.play();
       return middleHeight > 0 && middleHeight < fullHeight;
     });
-    check(shrinking, `${surface.name}: a real vertical wheel animates the panel height down`);
+    check(shrinking, `${surface.name}: the explicit close button animates the disclosed height down`);
     await page.waitForFunction(() => document.querySelector('#activityPanel').hidden);
-    check(await page.locator('.app-shell').evaluate(node => node.scrollTop === 0), `${surface.name}: history workspace returns without outer scroll offset`);
+    check(await page.locator('.topbar').evaluate(node => { const box = node.getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; }), `${surface.name}: navigation remains visible after explicit collapse`);
     check(await page.locator('#resultScroll').evaluate((node, height) => node.clientHeight >= height - 1 && node.clientHeight > 0, collapsedHeight), `${surface.name}: history regains its original reading space`);
     check(await page.locator('#selected').textContent() === selected, `${surface.name}: collapse preserves history selection`);
     await page.reload(); await ready(page);
-    check(await page.locator('#activityPanel').isHidden(), `${surface.name}: scroll collapse preference survives reload`);
+    check(await page.locator('#activityPanel').isHidden(), `${surface.name}: explicit collapse preference survives reload`);
     await openActivity(page);
     await page.locator('.app-shell').evaluate(shell => {
-      shell.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }));
-      document.getElementById('toggleActivity').click();
+      document.getElementById('activityCollapse').click();
+      document.getElementById('activityEntry').click();
     });
     await page.waitForTimeout(260);
-    check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'true' && await page.locator('#activityPanel').isVisible(), `${surface.name}: reopening interrupts an in-progress collapse`);
+    check(await page.locator('#activityEntry').getAttribute('aria-expanded') === 'true' && await page.locator('#activityPanel').isVisible(), `${surface.name}: reopening interrupts an in-progress collapse`);
     await touchMove(page, 0, -50);
+    check(await page.locator('#activityEntry').getAttribute('aria-expanded') === 'true', `${surface.name}: upward touch scrolling keeps activity open`);
+    await touchMove(page, 0, 50);
+    check(await page.locator('#activityEntry').getAttribute('aria-expanded') === 'true', `${surface.name}: downward touch scrolling keeps activity open`);
+    await page.locator('#activityCollapse').click();
     await page.waitForFunction(() => document.querySelector('#activityPanel').hidden);
-    check(await page.locator('#toggleActivity').getAttribute('aria-expanded') === 'false', `${surface.name}: upward touch gesture closes activity`);
-    await openActivity(page); await touchMove(page, 0, 50);
-    await page.waitForFunction(() => document.querySelector('#activityPanel').hidden);
-    check(true, `${surface.name}: downward touch gesture closes activity`);
     await page.emulateMedia({ reducedMotion: 'reduce' }); await openActivity(page);
     await page.locator('.activity-day:not(:disabled)').last().focus();
     const immediate = await page.locator('.app-shell').evaluate(shell => {
-      shell.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -40 }));
-      return document.getElementById('activityPanel').hidden && document.activeElement.id === 'toggleActivity';
+      document.getElementById('activityCollapse').click();
+      return document.getElementById('activityPanel').hidden && document.activeElement.id === 'activityEntry';
     });
     check(immediate, `${surface.name}: reduced motion closes immediately and restores focus`);
     await page.locator('#expandGroups').click();

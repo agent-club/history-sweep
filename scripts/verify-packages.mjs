@@ -17,7 +17,9 @@ try {
     execFileSync('unzip', ['-q', zip, '-d', join(temporary, target)]);
   }
   const released = JSON.parse(await readFile(join(temporary, 'extension/manifest.json'), 'utf8'));
-  assert.deepEqual(released, manifest, 'the v0.5.0 manifest includes the source sync entry and optional permissions');
+  assert.deepEqual(released, manifest, 'the release manifest includes the source entries and permissions');
+  assert.equal(released.version, '0.6.0');
+  assert.ok(released.permissions.includes('alarms'), 'cleanup scheduling permission ships in the candidate');
   assert.ok((await readdir(join(temporary, 'extension'))).includes('update-check.mjs'), 'official update checker is packaged');
   assert.match(await readFile(join(temporary, 'site/_headers'), 'utf8'), /Access-Control-Allow-Origin: \*/);
   assert.deepEqual(JSON.parse(await readFile(join(temporary, 'site/extension-updates.json'), 'utf8')),
@@ -44,12 +46,19 @@ try {
   // every page and native extension comes from the actual distribution archives.
   await cp(root + 'scripts', join(temporary, 'scripts'), { recursive: true });
   await symlink(root + 'node_modules', join(temporary, 'node_modules'), 'dir');
+  const failures = [];
   for (const [script, ...args] of [
     ['verify-release.mjs'], ['verify-frequency.mjs'], ['verify-back-to-top.mjs'], ['verify-config-sync.mjs'], ['verify-updates.mjs'], ['verify-native.mjs'], ['verify-theme-native.mjs'],
+    ['verify-auto-cleanup.mjs'], ['verify-help.mjs'], ['verify-nameplate.mjs'], ['verify-copy-url.mjs'], ['verify-preferences-close.mjs'], ['verify-soft-privacy.mjs'], ['verify-view-preferences.mjs'], ['verify-embedded-sync.mjs'],
     ['verify-activity-native.mjs'], ['verify-row-removal.mjs', '--native'],
     ['verify-batch-removal.mjs', '--native'], ['verify-deletion-expansion.mjs'], ['verify-site.mjs'],
-  ]) execFileSync(process.execPath, [join(temporary, 'scripts', script), ...args], {
-    cwd: temporary, stdio: 'inherit', env: process.env,
-  });
+  ]) {
+    try {
+      execFileSync(process.execPath, [join(temporary, 'scripts', script), ...args], {
+        cwd: temporary, stdio: 'inherit', env: process.env,
+      });
+    } catch { failures.push(script); }
+  }
+  assert.deepEqual(failures, [], 'all packaged browser/native suites must pass');
   console.log(`Release archives verified: ${compared} file comparisons, matching download copies, release scope, and browser/native suites.`);
 } finally { await rm(temporary, { recursive: true, force: true }); }

@@ -1,3 +1,4 @@
+import { enterWorkspace } from './native-workspace.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -76,7 +77,7 @@ try {
     const page = await context.newPage(), errors = [], violations = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (/Refused|Content Security Policy/i.test(message.text())) violations.push(message.text()); });
-    await page.goto(`chrome-extension://${id}/manager.html`); await ready(page);
+    await page.goto(`chrome-extension://${id}/manager.html`); await enterWorkspace(page); await ready(page);
     await page.evaluate(async ({ records, origin }) => { for (const item of records) await chrome.history.addUrl({ url: `${origin}/wind-native/${item.visitCount}` }); }, { records, origin });
     await search(page, '/wind-native/'); await observe(page);
     const urls = [];

@@ -1,10 +1,14 @@
 # Chrome Web Store submission pack
 
-## Current public release — v0.5.0
+## Prepared update — v0.6.0
+
+Use [the v0.6.0 release materials](v0.6.0-candidate.md), the current bilingual listing copy and versioned screenshots in `store/assets/v0.6.0/`. The package, website download, update metadata and release notes all target 0.6.0. Both release-note surfaces preset Published as requested by the owner; website deployment and store submission have not been performed in this preparation.
+
+## Last verified public release — v0.5.0
 
 Prepare the existing store item for v0.5.0: frequency browsing and defaults from [#8](https://github.com/agent-club/history-sweep/issues/8), completed local improvements, and WebDAV configuration sync plus encrypted disk recovery from [#14](https://github.com/agent-club/history-sweep/issues/14), explicitly included by the user on October 22, 2026. See [the candidate copy, privacy fields and package status](v0.5.0-candidate.md).
 
-The user authorized Chrome Web Store publication, followed by Git commit and push. The user also authorized website and privacy-page deployment before submission. GitHub planning updates remain outside this task. Do not advance public version metadata to v0.5.0 before the version is publicly downloadable.
+The historical v0.5.0 task authorized Chrome Web Store publication, Git commit/push and website/privacy deployment. Those receipts describe that release and do not establish authorization for v0.6.0 external actions.
 
 The owner submitted the update on October 22, 2026. The existing item's Status page was directly verified as **Pending review** (“This draft is pending review.”). Website/privacy deployment, package upload, bilingual listing/privacy fields and screenshots are complete. That is the historical submission receipt. On October 25, 2026, the public [Chrome Web Store listing](https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm) showed version **0.5.0**, an **Add to Chrome** action and an October 23, 2026 update date. The store listing is the source of truth for the public version; the exact approval or publication timestamp is not inferred. The exact package checksum and validation are recorded in the linked v0.5.0 materials.
 
@@ -26,7 +30,7 @@ Prepared locally on 2026-10-16; UI and package refreshed on 2026-10-17 and relea
 
 The store-installed extension checks `https://sweep.agentclub.dev/extension-updates.json` when a popup, workspace or modal opens, with a shared 15-minute cooldown and a five-second website timeout. A newer version hint invokes `chrome.runtime.requestUpdateCheck()`; only Chrome-confirmed downloaded versions enable the existing Update button. Deletion and verification in any open view block reload. Chrome throttling, offline failures and missing metadata leave history operations available. No downloaded script or ZIP is executed by the extension.
 
-`site/extension-updates.json` is deliberately independent of the development manifest and build version. Its value is now `0.5.0`, following the public store verification on October 25, 2026. The October 22 deployment used `0.4.0` while v0.5.0 was awaiting review. Public CORS and no-store caching must remain enabled. After each new version is actually published and downloadable for the existing store item, update this file to that version and deploy the website through the separately authorized release process. Do not advance it on a local build or review submission. Preserve `site/_headers`: the endpoint needs public CORS and no-store caching so the extension can read it without new host permissions. Verify those response headers on the deployed endpoint.
+`site/extension-updates.json` is independent of the manifest and build version. The October 22 deployment used `0.4.0` while v0.5.0 awaited review; the October 25 public verification supported `0.5.0`. For the current preparation, the owner explicitly requested `0.6.0` without waiting for website deployment. The local file and website archive therefore use `0.6.0`. This does not establish the live endpoint value or store availability. Preserve `site/_headers` for public CORS and no-store caching; verify those headers after an authorized deployment.
 
 Reproduce update-specific checks with `node --test tests/update-check.test.mjs tests/background.test.mjs` and `node scripts/verify-updates.mjs`. The latter uses disposable Chrome profiles and synthetic metadata/store responses to verify opening, task guards, native CORS and the release CSP. It does not prove a signed store upgrade; verify that separately with a previous store-installed build after publishing. Existing installed versions need to receive this implementation through Chrome’s normal update cycle once before they can use the faster check.
 

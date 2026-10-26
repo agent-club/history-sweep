@@ -47,8 +47,9 @@ try {
   const saved = await page.evaluate(async () => chrome.history.search({ text: 'example.test', startTime: 0, maxResults: 100 }));
   assert.equal(saved.length, 12);
   assert.ok(saved.every(item => item.title && new URL(item.url).hostname.endsWith('.example.test')));
-  assert.equal(await page.locator('a[href="sync.html"]').count(), 1, 'the v0.5.0 package includes configuration sync');
-  const output = root + 'store/assets/'; await mkdir(output, { recursive: true });
+  assert.equal(await page.locator('[data-settings-section="sync"]').count(), 1, 'the package includes configuration sync');
+  const customOutput = process.env.HISTORY_SWEEP_STORE_OUTPUT;
+  const output = customOutput ? join(customOutput, '/') : root + 'store/assets/'; await mkdir(output, { recursive: true });
   let popup;
   for (const language of ['en', 'zh-CN']) {
     await page.evaluate(language => { localStorage.setItem('language', language); localStorage.setItem('theme', 'light'); }, language);
@@ -71,21 +72,29 @@ try {
         const lang = language === 'en' ? 'en' : 'zh';
         const website = await sharp(image).flatten({ background: '#fcfcfc' }).removeAlpha().png().toBuffer();
         await writeFile(output + `screenshot-workspace-${lang}-1280x800.png`, website);
-        await writeFile(root + `site/assets/candidate-manager-website-${lang}.png`, website);
+        if (!customOutput) await writeFile(root + `site/assets/candidate-manager-website-${lang}.png`, website);
         await page.locator('#groupByFrequency').click(); await ready(page);
         assert.equal(await page.locator('#rows .history-row').count(), 12);
         const frequency = await sharp(await page.screenshot()).flatten({ background: '#fcfcfc' }).removeAlpha().png().toBuffer();
         await writeFile(output + `screenshot-frequency-${lang}-1280x800.png`, frequency);
-        await writeFile(root + `site/assets/candidate-manager-frequency-${lang}.png`, frequency);
-        const sync = await context.newPage();
-        await sync.goto(`${origin}/sync.html`);
-        await sync.waitForFunction(() => document.querySelector('#connectionFields') && !document.querySelector('#connectionFields').disabled);
-        assert.equal(await sync.locator('#davUrl').inputValue(), '');
-        assert.equal(await sync.locator('#davPassword').inputValue(), '');
-        const settings = await sharp(await sync.screenshot()).flatten({ background: '#fcfcfc' }).removeAlpha().png().toBuffer();
+        if (!customOutput) await writeFile(root + `site/assets/candidate-manager-frequency-${lang}.png`, frequency);
+        await page.locator('#openPreferences').click();
+        await page.locator('[data-settings-section="sync"]').click();
+        await page.waitForFunction(() => document.querySelector('#connectionFields') && !document.querySelector('#connectionFields').disabled);
+        assert.equal(await page.locator('#davUrl').inputValue(), '');
+        assert.equal(await page.locator('#davPassword').inputValue(), '');
+        const settings = await sharp(await page.screenshot()).flatten({ background: '#fcfcfc' }).removeAlpha().png().toBuffer();
         await writeFile(output + `screenshot-sync-${lang}-1280x800.png`, settings);
-        await writeFile(root + `site/assets/candidate-manager-sync-${lang}.png`, settings);
-        await sync.close();
+        if (!customOutput) await writeFile(root + `site/assets/candidate-manager-sync-${lang}.png`, settings);
+        await page.locator('#dismissPreferences').click();
+        const tasks = await context.newPage();
+        await tasks.goto(`${origin}/auto-cleanup.html`);
+        await tasks.locator('#createFirst').click();
+        await tasks.locator('#ruleDomain').fill('docs.example.test');
+        await tasks.locator('#ruleDaysPreset').selectOption('7');
+        await tasks.evaluate(() => document.fonts.ready);
+        await sharp(await tasks.screenshot()).flatten({ background: '#fcfcfc' }).removeAlpha().png().toFile(output + `screenshot-tasks-${lang}-1280x800.png`);
+        await tasks.close();
       }
     }
   }
@@ -123,5 +132,5 @@ try {
     assert.equal(metadata.width, width); assert.equal(metadata.height, height); assert.equal(metadata.hasAlpha, false);
   }
   assert.deepEqual(errors, []);
-  console.log(`Refreshed seven localized store screenshots, six website previews and both promotional tiles from the v${version} ZIP, using an isolated browser and 12 synthetic pages. Choose at most five screenshots per store language.`);
+  console.log(`Captured localized store screenshots and promotional tiles from the v${version} ZIP, using an isolated browser and 12 synthetic pages. Choose at most five screenshots per store language.`);
 } finally { await context?.close(); await rm(temporary, { recursive: true, force: true }); }
