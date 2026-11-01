@@ -50,7 +50,7 @@ try {
     check((await page.locator('#selected').textContent()).startsWith('126'), 'individual exclusion updates total');
     await page.screenshot({ path: `${root}test-results/grouped-${layout}.png` });
     await x.locator('.group-load-more').click();
-    check(await x.locator('.history-row').count() === (layout === 'popup' ? 45 : 105), 'load more grows only its group');
+    check(await x.locator('.history-row').count() === 25, 'load more adds twenty rows only to its group');
     check(await x.locator('.row-select').last().isChecked(), 'newly shown rows retain group selection');
     await github.locator('.group-toggle').click();
     check(await github.locator('.row-select:checked').count() === 3, 'selecting collapsed group persists on expansion');
@@ -103,7 +103,8 @@ try {
   check(await page.locator('.history-row').count() === 1, 'many sites keep initial row rendering bounded');
   await page.locator('#selectAll').click();
   check((await page.locator('#selected').textContent()).startsWith('105'), 'global selection includes non-rendered sites');
-  await page.locator('#loadMore').click();
+  await page.locator('#resultScroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await page.waitForFunction(() => document.querySelectorAll('.website-group').length === 105);
   check(await page.locator('.website-group').count() === 105 && await page.locator('.group-select:checked').count() === 105, 'more sites inherit selection');
   await page.close();
   console.log(`${checks} website-group assertions passed. Synthetic history only.`);

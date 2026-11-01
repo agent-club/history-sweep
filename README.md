@@ -15,7 +15,7 @@ History Sweep is a Chrome extension that helps you search, review, and delete br
 ## What you can do
 
 - **Find the right pages.** Search by website, exact domain, domain and subdomains, or words in page titles and URLs. Suggestions from your own history help you complete a search, with support for Simplified and Traditional Chinese text.
-- **Narrow down by date.** Choose today, the last 3, 7 or 30 days, or a custom date range. You can also search by date without a keyword.
+- **Narrow down by date.** Choose No limit, today, the last 3, 7 or 30 days, or a custom date range. You can also search by date without a keyword.
 - **Browse recent history by date or website.** Opening the extension shows the last three local calendar days. Expand a date to see website summaries, or switch to website grouping over the same results. Counts refer to unique pages, grouped by each URL’s last visit.
 - **View local activity.** The chart icon beside Settings opens a yearly or three-month heatmap. Cleanup totals include verified tasks and confirmed removed URLs, starting when tracking begins. Daily counts and one website summary per date stay on this device: hostname, latest page title when available, and last-visit time. Full deleted URLs are not logged. Both views show website icons ordered by latest visit, wrapping onto additional rows; hover to preview a date and click to pin it. The browsing view groups existing pages by their last visit date, not daily visit counts.
 - **Keep websites you care about.** Add domains to your kept websites. Their pages and subdomains stay out of deletion.
@@ -24,7 +24,13 @@ History Sweep is a Chrome extension that helps you search, review, and delete br
 - **Search the current website.** Use the popup's current-website button or the page's right-click menu to find that site's history.
 - **Use English or Simplified Chinese.** Switch languages in the extension; your choice is remembered.
 
-The overview above illustrates v0.4.0. The Chrome Web Store release was verified as **v0.5.0** on October 25, 2026; local release materials now target **v0.6.0**. Its additions are described below; later development work is marked separately.
+The overview above illustrates v0.4.0. The Chrome Web Store release was verified as **v0.6.0** on November 1, 2026; local release materials now target the **v0.7.0 candidate**. This does not confirm store availability. Its additions and the earlier v0.6.0 package are described below.
+
+## Release candidate — v0.7.0
+
+Prepared locally for review; not submitted or published. Includes recommended cleanup, saved searches, AND filters, exact-URL protection, visit details and deletion impact, manual website labels, cleaned-link copying, selected-result export, activity clearing, interruption notices, selective encrypted recovery, progressive results and settings tabs. WebDAV transfer and manifest permissions are unchanged. Restored tasks stay paused; deletion still removes all visits to each URL.
+
+See [release materials and verification](store/v0.7.0-candidate.md), [workspace tools](docs/workspace-tools.md) and the [shared bilingual release notes](site/releases.html). The public update hint is kept separate from the candidate version.
 
 ## Previous release — v0.5.0
 
@@ -46,9 +52,9 @@ v0.6.0 includes an optional three-step guide under **Preferences → Quick start
 
 Edit `extension/release-notes.mjs`, then run `npm run notes:generate` to refresh the website page; the build also generates it. Verify help with `npm run test:help`. The package and website both preset v0.6.0 as Published, and update metadata targets 0.6.0. These local materials do not establish that store submission or website deployment has occurred.
 
-## Prepared release — v0.6.0
+## Earlier package — v0.6.0
 
-The local v0.6.0 release package includes the changes below. Store submission and website deployment have not been performed. See [release materials and verification](store/v0.6.0-candidate.md). Existing v0.5.0 screenshots above retain their original scope.
+The v0.6.0 package includes the changes below. Its October 26 local preparation did not include submission or deployment; the public store was verified at v0.6.0 on November 1. See [release materials and verification](store/v0.6.0-candidate.md). Existing v0.5.0 screenshots above retain their original scope.
 
 **Version & updates.** v0.6.0 adds a permanent entry in Preferences with your installed version, install source, last check and manual retry. Published releases, Chrome-ready downloads, deferred checks and failures have separate states. A published release can prompt before Chrome makes it ready; only a Chrome-confirmed download enables reload. Deletion, verification and unsaved settings block reload. Unpacked installs show manual replacement instructions without contacting the version service. Official store installs check public version metadata automatically at most once per 15 minutes; a manual retry can refresh metadata while respecting the Chrome API cooldown. No browsing history, search terms or configuration is sent; the website host receives standard connection metadata. This redesign is included in the v0.6.0 release package.
 
@@ -59,6 +65,8 @@ The local v0.6.0 release package includes the changes below. Store submission an
 **Copy a URL.** Hover a history row or focus it with the keyboard to reveal a copy button beside its URL, together with the delete button. Copy keeps the full address, including query parameters and fragments, without changing the selection. A brief confirmation appears after copying; if copying is blocked, a dialog offers the full URL for manual copying. Touch devices keep the controls visible. Included in the v0.6.0 release package.
 
 **Cleanup tasks.** Open **Preferences → Cleanup tasks**. In the in-page modal, settings use the same container and returning preserves the search and list state. You can also create a task from a website group or an explicit website search. Choose a one-time date or a daily, weekly, or monthly schedule in local time, optionally combined with 1, 7, 30, or a custom number of full days without a visit. Tasks match an exact domain or include its subdomains. Preview before enabling; saving does not delete pages. One-time tasks finish after their scheduled attempt. Monthly dates that do not exist use the month's last day; an overdue restart catches up once before scheduling the next occurrence. Existing rules retain their 24-hour interval until edited. Protected websites take priority; overlapping scopes are rejected. Pause individual tasks or all cleanup. “Preview cleanup” shows the matching scope before a separate deletion confirmation and leaves scheduled occurrences unchanged. Each run rescans and verifies deletions; verified activity distinguishes automatic and manual cleanup. Private cleanup stores no new completion history, and soft privacy hides results. Tasks stay on this device and are excluded from configuration sync and disk backups. Deleting a URL removes all its visits. Browser shutdown or sleep can delay execution. Included in the v0.6.0 release package.
+
+**v0.7.0 candidate update:** Hover over a task to reveal **Run now** and **Edit** in a compact action group. Keyboard focus also reveals the group; touch devices keep it visible. The schedule switch stays visible. Review that task’s matching pages and confirm deletion before it runs. Other tasks and scheduled times stay unchanged. Paused or finished tasks cannot run immediately.
 
 **Local activity disclosure.** Click **Expand analysis** in the compact entry above search to open local activity in place, then click **Collapse analysis** to close it. Scrolling the history list keeps the current open or closed state. Query, grouping and the list position are retained. The entry supports keyboard activation, Escape closes the panel, and reduced motion skips the disclosure animation. Included in the v0.6.0 release package.
 
@@ -71,7 +79,19 @@ The local v0.6.0 release package includes the changes below. Store submission an
 ![v0.6.0 scheduled cleanup with a synthetic domain](store/assets/v0.6.0/screenshot-tasks-en-1280x800.png)
 
 
+## Candidate additions — v0.7.0
+
+**Progressive results.** Website and date lists, including websites within an expanded date, and the frequency list append more results as you scroll near the end. Each website keeps its five-row preview and a button to show 20 more records at a time, or the remaining records when fewer are left. Appending preserves the scroll position and selection; selecting a whole group or all matches still includes records not yet shown. Included in the v0.7.0 candidate package. Historical website media retain their documented versions.
+
+**Visited settings pages.** Compact tabs stay at the top of Preferences. Click a tab to return to its page without losing its draft; each tab has a close button. When tabs exceed the available width, use the **…** menu, horizontal scrolling, or a touch swipe to reach them. Closing an edited page asks before discarding changes. Closing the current tab selects its adjacent tab; closing the final tab returns to browsing history. Included in the v0.7.0 candidate package. Historical website media retain their documented versions.
+
+**Recommended cleanup.** A quiet strip inside the results offers reasons without changing their order or selection. Preferences → Recommended cleanup lets you choose exact websites or subdomains, always suggest their records or require 1–365 days without a visit, adjust the cleanup-history lookback and distinct-date threshold, and enable extension records or app protocols. Defaults remain at least two different local cleanup dates within the past seven days, including today. Multiple reasons merge into one record; kept websites take priority. Missing last-visit times and legacy website summaries are not inferred. Soft privacy suppresses cleanup-derived recommendations. Preview uses the current search results and the unsaved draft, without selecting or deleting anything. Settings are stored on this device; daily or weekly animation limits store only a timestamp, and reduced motion skips animations. Verified residual hints remain available independently of recommendation rules. Included in the v0.7.0 candidate package; historical v0.6.0 assets remain unchanged.
+
 ## When History Sweep fits
+
+### Workspace tools — v0.7.0 candidate
+
+The current `extension/` source adds saved searches, explicit AND filters, exact-URL protection, per-URL visit details, manual website labels, cleaned-link copying, selected-result export, local cleanup-activity clearing, an interruption notice, and optional local sections in encrypted disk backups. Website labels support individual text/background colors, six color combinations, three built-in background textures and local images, with a live preview. Find **Saved searches** and **Advanced filters** below search; each page's **Page actions** menu contains the contextual tools. **Preferences → Privacy** clears existing Local activity. In **Sync & disk backup**, explicitly choose whether a disk file includes kept websites/URLs, browsing defaults or task scopes; imported tasks remain paused. WebDAV transfer is unchanged. These additions are included in the v0.7.0 candidate ZIP and absent from v0.6.0. They do not establish public availability. See [usage, data boundaries and verification commands](docs/workspace-tools.md).
 
 Choose History Sweep for a deliberate cleanup: find a website, review the matching URLs, keep exceptions, and confirm what to remove.
 

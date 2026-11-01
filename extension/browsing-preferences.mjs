@@ -12,6 +12,8 @@ function validate(value) {
   return { view: value.view, range: value.range, viewOrder: [...viewOrder], hiddenViews: [...hiddenViews] };
 }
 
+export { validate as validateBrowsingPreferences };
+
 export async function readBrowsingPreferences(storage) {
   const data = await storage.get(key);
   return data[key] === undefined ? browsingDefaults() : validate(data[key]);

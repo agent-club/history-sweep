@@ -18,14 +18,18 @@ await generateReleaseNotes();
 await mkdir(root+'dist',{recursive:true});await mkdir(root+'site/downloads',{recursive:true});
 const extensionZip=root+'dist/history-sweep-'+manifest.version+'.zip';
 const entries=['manifest.json','background.mjs','update-check.mjs','launcher.mjs','modal-host.mjs','modal.html','modal.mjs','popup.html','manager.html','app.css','app.mjs','view.mjs','release-notes.mjs','nameplate.mjs','nameplate-reveal.mjs','nameplate-store.mjs','nameplate.css','settings-select.mjs','theme.js','startup.js','i18n.mjs','history-utils.mjs','history-filters.mjs','history-frequency.mjs','browsing-preferences.mjs','calendar-dates.mjs','date-picker.mjs','history-groups.mjs','history-suggestions.mjs','search-text.mjs','suggestions-ui.mjs','suggestions-worker.mjs','activity-calendar.mjs','activity-log.mjs','activity-panel.mjs','activity-reveal.mjs','row-removal.mjs','batch-removal.mjs','sync.html','sync.css','sync-page.mjs','config-sync.mjs','config-store.mjs','vendor','locales','_locales','icons'];
+entries.push('cleanup-hint.css','cleanup-hint.mjs','cleanup-recommendations.mjs');
+entries.push('settings-tabs.mjs');
+entries.push('workspace-tools.mjs','workspace-copy.mjs','workspace-page.mjs','workspace.css','label-appearance.mjs','local-backup.mjs','backup-page.mjs');
+entries.push('recommendation-settings.mjs','recommendation-settings-page.mjs','recommendation-settings-view.mjs','recommendation-copy.mjs','recommendation-settings.css');
 entries.push('auto-cleanup-view.mjs','auto-cleanup.html','auto-cleanup-page.mjs','auto-cleanup.css','auto-cleanup-copy.mjs','auto-cleanup.mjs','auto-cleanup-model.mjs','auto-cleanup-schedule.mjs','time-picker.mjs');
 const temporary=await mkdtemp(join(tmpdir(),'history-sweep-build-'));
 try {
  const staged=join(temporary,'extension'); await mkdir(staged);
  for(const entry of entries) await cp(root+'extension/'+entry,join(staged,entry),{recursive:true});
- // v0.6.0 includes local cleanup tasks, nameplates and the shared release notes.
+ // v0.7.0 adds recommendation rules, workspace tools and selective local recovery.
  // Preserve the source entry point, optional host permissions and HTTPS CSP.
- if(manifest.version!=='0.6.0') throw new Error('Confirm the release scope before packaging a new version');
+ if(manifest.version!=='0.7.0') throw new Error('Confirm the release scope before packaging a new version');
  // Start fresh so a previously built archive cannot retain deferred or obsolete files.
  const candidate=join(temporary,'extension.zip');
  execFileSync('zip',['-q','-r',candidate,...entries,'-x','*/.DS_Store'],{cwd:staged});

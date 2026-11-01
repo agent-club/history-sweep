@@ -11,7 +11,7 @@ const autoError = code => new Error(code);
 const freshConfig = () => ({ version: 2, paused: false, rules: [], nextRunAt: null, revision: 0 });
 
 // Recovery rescans browser history instead of replaying a stored URL list.
-export function createAutoCleanup(api, { readProtectedSites, recordActivity, runExclusive, isBusy, onStateChange = () => {}, now = () => Date.now() }) {
+export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls = async () => [], recordActivity, runExclusive, isBusy, onStateChange = () => {}, now = () => Date.now() }) {
   let mutationQueue = Promise.resolve();
   let active = false;
   let stopping = false;
@@ -98,6 +98,7 @@ export function createAutoCleanup(api, { readProtectedSites, recordActivity, run
   const fullyProtected = (rule, sites) => isProtectedUrl(`https://${rule.domain}/`, sites);
   const ruleSnapshot = rule => JSON.stringify(normalizeRule(rule));
   async function scan(rules, sites, cutoff) {
+    const protectedUrls = new Set(await readProtectedUrls());
     // Exactly hitting the API cap is ambiguous; refuse partial results before any deletion.
     const items = await api.history.search({ text: '', startTime: 0, maxResults: scanLimit });
     if (!Array.isArray(items) || items.length >= scanLimit) throw autoError('AUTO_SCAN_INCOMPLETE');
@@ -107,7 +108,7 @@ export function createAutoCleanup(api, { readProtectedSites, recordActivity, run
       if (!item || typeof item.url !== 'string') continue;
       const rule = rules.find(rule => ruleMatches(rule, item.url) && isExpired(item.lastVisitTime, rule.days, cutoff));
       if (!rule) continue;
-      if (isProtectedUrl(item.url, sites)) { excluded.add(item.url); continue; }
+      if (isProtectedUrl(item.url, sites) || protectedUrls.has(item.url)) { excluded.add(item.url); continue; }
       candidates.set(item.url, { url: item.url, ...(typeof item.title === 'string' && item.title ? { title: item.title } : {}), lastVisitTime: item.lastVisitTime, ruleId: rule.id });
     }
     return { items: [...candidates.values()], excluded: excluded.size };
@@ -116,7 +117,10 @@ export function createAutoCleanup(api, { readProtectedSites, recordActivity, run
     const config = await readConfig();
     const sites = await readProtectedSites();
     let rules;
-    if (message.all === true) rules = enabledRules(config);
+    if (message.all === true) {
+      rules = enabledRules(config).filter(rule => message.id === undefined || rule.id === message.id);
+      if (message.id !== undefined && !rules.length) throw autoError('AUTO_UNAVAILABLE');
+    }
     else {
       const rule = normalizeRule(message.rule);
       checkConflict(config, rule, message.id);
@@ -125,18 +129,19 @@ export function createAutoCleanup(api, { readProtectedSites, recordActivity, run
     const result = await scan(rules, sites, now());
     const previewId = crypto.randomUUID();
     for (const [key, value] of previews) if (value.expires <= now() || value.owner === owner) previews.delete(key);
-    previews.set(previewId, { owner, expires: now() + previewLifetime, revision: config.revision, sites: JSON.stringify(sites), all: message.all === true,
+    previews.set(previewId, { owner, expires: now() + previewLifetime, revision: config.revision, sites: JSON.stringify(sites), urls: JSON.stringify(await readProtectedUrls()), all: message.all === true,
       ruleSnapshot: message.all === true ? null : ruleSnapshot(message.rule), id: message.id });
-    return { ...result, previewId, ...(message.all !== true ? { rule: normalizeRule(rules[0]) } : {}),
+    return { ...result, previewId, ...(message.all !== true || message.id !== undefined ? { rule: normalizeRule(rules[0]) } : {}),
       fullyProtected: message.all !== true && fullyProtected(rules[0], sites) };
   }
   async function consumePreview(message, config, owner, rule) {
     const proof = previews.get(message.previewId);
     if (!proof) throw autoError('AUTO_PREVIEW_REQUIRED');
     if (proof.expires <= now()) { previews.delete(message.previewId); throw autoError('AUTO_PREVIEW_EXPIRED'); }
-    if (proof.owner !== owner || proof.revision !== config.revision || proof.all !== !rule ||
+    // An immediate-run preview authorizes exactly its reviewed task scope, never another task or all tasks.
+    if (proof.owner !== owner || proof.revision !== config.revision || proof.all !== !rule || proof.id !== message.id ||
         (rule && (proof.id !== message.id || proof.ruleSnapshot !== ruleSnapshot(rule))) ||
-        proof.sites !== JSON.stringify(await readProtectedSites())) throw autoError('AUTO_STALE');
+        proof.sites !== JSON.stringify(await readProtectedSites()) || proof.urls !== JSON.stringify(await readProtectedUrls())) throw autoError('AUTO_STALE');
     previews.delete(message.previewId);
     if (rule && fullyProtected(rule, await readProtectedSites())) throw autoError('AUTO_FULLY_PROTECTED');
   }
@@ -184,7 +189,7 @@ export function createAutoCleanup(api, { readProtectedSites, recordActivity, run
         const latestConfig = await readConfig();
         if (latestConfig.paused) { result.phase = 'stopped'; break; }
         const rule = latestConfig.rules.find(rule => rule.id === item.ruleId && rule.enabled);
-        if (!rule || !ruleMatches(rule, item.url) || isProtectedUrl(item.url, await readProtectedSites())) { result.skipped++; continue; }
+        if (!rule || !ruleMatches(rule, item.url) || isProtectedUrl(item.url, await readProtectedSites()) || (await readProtectedUrls()).includes(item.url)) { result.skipped++; continue; }
         let visits;
         try { visits = await api.history.getVisits({ url: item.url }); }
         catch { verificationFailed = true; result.skipped++; continue; }
@@ -204,7 +209,7 @@ export function createAutoCleanup(api, { readProtectedSites, recordActivity, run
           // A pause can arrive while visit details are pending, including between retries.
           const beforeDelete = await readConfig();
           const currentRule = beforeDelete.rules.find(candidate => candidate.id === item.ruleId && candidate.enabled);
-          const protectedNow = isProtectedUrl(item.url, await readProtectedSites());
+          const protectedNow = isProtectedUrl(item.url, await readProtectedSites()) || (await readProtectedUrls()).includes(item.url);
           if (runGeneration !== generation || beforeDelete.paused || !currentRule || protectedNow) { skippedRetry = true; break; }
           try { await api.history.deleteUrl({ url: item.url }); deleted = true; break; } catch {}
         }
@@ -304,8 +309,10 @@ export function createAutoCleanup(api, { readProtectedSites, recordActivity, run
       if (active || isBusy()) throw autoError('AUTO_BUSY');
       if (message.type === 'auto-run') {
         if (!runnable(config)) throw autoError('AUTO_UNAVAILABLE');
+        const selected = enabledRules(config).filter(rule => message.id === undefined || rule.id === message.id);
+        if (!selected.length) throw autoError('AUTO_UNAVAILABLE');
         await consumePreview(message, config, owner);
-        launch(enabledRules(config).map(rule => rule.id), false);
+        launch(selected.map(rule => rule.id), false);
         return { accepted: true };
       }
       if (message.type === 'auto-remove') {
@@ -330,6 +337,7 @@ export function createAutoCleanup(api, { readProtectedSites, recordActivity, run
     });
   }
   return { handle, initialize, checkDue, busy: () => active,
+    configurationChanged: () => serial(async () => { previews.clear(); await schedule(await readConfig()); }),
     privacyChanged: value => {
       privacyGeneration++;
       if (active && value !== false) privateDuringRun = true;

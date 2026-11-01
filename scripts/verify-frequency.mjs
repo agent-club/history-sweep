@@ -229,7 +229,7 @@ try {
     await edge.locator('#discardPreferences').click();
     check(await edge.locator('#openPreferences').evaluate(node => node === document.activeElement), 'cancel closes settings and restores gear focus');
     await range(edge, '7days');
-    await edge.locator('#filterToggle').click(); await edge.locator('#editProtection').click();
+    await edge.locator('#filterToggle').click(); await edge.locator('#protectionMenu > summary').click(); await edge.locator('#editProtection').click();
     await edge.locator('#protectionInput').fill('docs.example.org'); await edge.locator('#saveProtection').click();
     await edge.waitForFunction(() => !document.querySelector('#protectionDialog').open && !document.querySelector('#search').disabled);
     await scan(edge);

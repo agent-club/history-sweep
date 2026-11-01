@@ -18,7 +18,7 @@ try {
   }
   const released = JSON.parse(await readFile(join(temporary, 'extension/manifest.json'), 'utf8'));
   assert.deepEqual(released, manifest, 'the release manifest includes the source entries and permissions');
-  assert.equal(released.version, '0.6.0');
+  assert.equal(released.version, '0.7.0');
   assert.ok(released.permissions.includes('alarms'), 'cleanup scheduling permission ships in the candidate');
   assert.ok((await readdir(join(temporary, 'extension'))).includes('update-check.mjs'), 'official update checker is packaged');
   assert.match(await readFile(join(temporary, 'site/_headers'), 'utf8'), /Access-Control-Allow-Origin: \*/);
@@ -52,6 +52,8 @@ try {
     ['verify-auto-cleanup.mjs'], ['verify-help.mjs'], ['verify-nameplate.mjs'], ['verify-copy-url.mjs'], ['verify-preferences-close.mjs'], ['verify-soft-privacy.mjs'], ['verify-view-preferences.mjs'], ['verify-embedded-sync.mjs'],
     ['verify-activity-native.mjs'], ['verify-row-removal.mjs', '--native'],
     ['verify-batch-removal.mjs', '--native'], ['verify-deletion-expansion.mjs'], ['verify-site.mjs'],
+    ['verify-workspace-tools.mjs'], ['verify-design-refinements.mjs'], ['verify-label-appearance.mjs'],
+    ['verify-cleanup-hint.mjs'], ['verify-recommendation-privacy.mjs'], ['verify-settings-tabs.mjs'], ['verify-progressive-results.mjs'],
   ]) {
     try {
       execFileSync(process.execPath, [join(temporary, 'scripts', script), ...args], {

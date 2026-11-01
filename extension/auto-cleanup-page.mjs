@@ -5,21 +5,48 @@ import { normalizeRule, rulesOverlap } from './auto-cleanup-model.mjs';
 import { normalizeSchedule, nextOccurrence } from './auto-cleanup-schedule.mjs';
 import { setupTimePicker } from './time-picker.mjs';
 
-export function mountAutoCleanup(root, { lang = readLanguage(), send = message => chrome.runtime.sendMessage(message), onSection = () => {} } = {}) {
+export function mountAutoCleanup(root, { lang = readLanguage(), send = message => chrome.runtime.sendMessage(message), onSection = () => {}, onPage = () => {}, onPagesClosed = () => {} } = {}) {
 root.classList.add('auto-cleanup-root');
 root.innerHTML = autoCleanupView(root.dataset.embedded === 'true' ? 'cleanup-' : '');
-const $ = id => root.querySelector(`[data-auto-id="${id}"]`);
+const nodes = new Map([...root.querySelectorAll('[data-auto-id]')].map(node=>[node.dataset.autoId,node]));
+const $ = id => nodes.get(id);
+// A suspended page's confirmation must remain visible outside its hidden panel.
+const confirmationHost = root.closest('#preferencesDialog');
+if(confirmationHost) confirmationHost.append($('confirmDialog'));
 let currentPage = 'tasksPage';
 let previewReturn = 'tasksPage';
+let editorOpen = false;
+const pageSection = id => id === 'protectionPage' ? 'protection' : 'tasks';
+function notifyPage() {
+  if(root.hidden) return;
+  const id = currentPage;
+  onPage({ id, section:pageSection(id), title:$(id).querySelector('h1').textContent, panelId:$(id).id });
+}
 function showPage(id) {
   timePicker.close();
   currentPage = id;
   for (const page of root.querySelectorAll('.auto-page')) page.hidden = page.dataset.autoId !== id;
   $(id).querySelector('h1')?.focus({ preventScroll: true });
+  notifyPage();
+}
+function activatePage(id) { if(busy) return; onSection(pageSection(id)); showPage(id); }
+function closePage(id, done) {
+  if(busy) return;
+  const editor = id === 'ruleEditor' || id === 'tasksPage';
+  const discard = () => {
+    const closed = [id];
+    if(editor) { dirty=false; editorOpen=false; editingId=null; clearPreview(); closed.push('ruleEditor','previewPanel'); }
+    if(id === 'protectionPage' && protectionDirty()) $('protectedDomains').value=protectionOriginal;
+    if(id === 'previewPanel') clearPreview();
+    done([...new Set(closed)]);
+  };
+  if((editor && dirty) || (id === 'protectionPage' && protectionDirty())) ask(tr('confirmDiscardTitle'),tr('confirmDiscardBody'),tr('confirmDiscard'),discard);
+  else discard();
 }
 function navigate(section, rule) {
   guardUnsaved(() => {
-    dirty = false; clearPreview(); $('ruleEditor').hidden = true;
+    dirty = false; editorOpen=false; clearPreview(); $('ruleEditor').hidden = true;
+    onPagesClosed(['ruleEditor','previewPanel']);
     onSection(section);
     if (section === 'tasks' || section === 'protection') showPage(section === 'tasks' ? 'tasksPage' : 'protectionPage');
     if (rule) { openEditor({ ...rule, days:7, schedule:{type:'daily',time:'02:00'} }); $('handoffNotice').hidden=false; }
@@ -49,6 +76,9 @@ root.querySelectorAll('[data-copy-label]').forEach((node) => { node.setAttribute
 
 const labels = { pauseAll: 'pause', reviewAll: 'reviewAll', newRule: 'addRule', editorHeading: 'editorNew', previewHeading: 'previewHeading', closePreview: 'closePreview', previewRule: 'previewRule', saveDisabled: 'saveDisabled', saveEnabled: 'saveEnabled', cancelEditor: 'cancel', emptyRules: 'emptyRules', confirmCancel: 'confirmCancel', saveProtection: 'saveProtection', deletePreviewNow: 'deleteNow' };
 Object.entries(labels).forEach(([id, key]) => { if(id !== 'emptyRules') $(id).textContent = tr(key); });
+const editorBackArrow = document.createElement('img');
+editorBackArrow.src = 'icons/ui/arrow-left.svg'; editorBackArrow.alt = ''; editorBackArrow.className = 'ui-icon';
+$('cancelEditor').prepend(editorBackArrow);
 const select = $('ruleDaysPreset');
 [ ['all','allPages'], ['1','day1'], ['7','day7'], ['30','day30'], ['custom','custom'] ].forEach(([value,key]) => { select.querySelector(`[value="${value}"]`).textContent = tr(key); });
 const scheduleSelect = $('scheduleType');
@@ -79,7 +109,7 @@ function setBusy(value) {
     $('pauseAll').disabled=value; $('newRule').disabled=value;
     $('reviewAll').disabled=value || state.running || state.config.paused || !state.config.rules.some(rule=>rule.enabled);
   }
-  $('rulesList').querySelectorAll('button').forEach(button=>{button.disabled=value;});
+  $('rulesList').querySelectorAll('button').forEach(button=>{button.disabled=value || (button.hasAttribute('data-run-task') && (state.running || state.config.paused || !state.config.rules.find(rule=>rule.id===button.dataset.runTask)?.enabled));});
 }
 function fmtTime(value) { const date=new Date(value); return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat(lang === 'zh-CN' ? 'zh-CN' : 'en', { dateStyle: 'medium', timeStyle: 'short' }).format(date) : tr('scheduleMissingTime'); }
 function localDateTime(value) {
@@ -122,6 +152,7 @@ function signature(rule, id=editingId) {
 }
 function clearPreview() {
   draftGeneration++; previewRequest++; preview = null; previewKey = ''; allPreview = null;
+  onPagesClosed(['previewPanel']);
   $('saveEnabled').disabled = true; $('deletePreviewNow').hidden = true; $('previewPanel').hidden=true;
 }
 function protectionDirty() { return protectionReady && $('protectedDomains').value !== protectionOriginal; }
@@ -130,14 +161,16 @@ function guardUnsaved(action) {
   if(busy) return;
   if(!hasUnsavedChanges()) { action(); return; }
   ask(tr('confirmDiscardTitle'),tr('confirmDiscardBody'),tr('confirmDiscard'),async()=>{
-    dirty=false; $('ruleEditor').hidden=true; editingId=null; clearPreview();
+    dirty=false; editorOpen=false; $('ruleEditor').hidden=true; editingId=null; clearPreview();
+    onPagesClosed(['ruleEditor','previewPanel']);
     if(protectionDirty()) { $('protectedDomains').value=protectionOriginal; }
     action();
   });
 }
 function openEditor(rule = null, id = null) {
-  editingId = id; dirty = false; clearPreview(); remove.hidden=!id; $('handoffNotice').hidden=true;
-  showPage('ruleEditor'); $('editorHeading').textContent = tr(id ? 'editorEdit' : 'editorNew');
+  editingId = id; dirty = false; editorOpen=true; clearPreview(); remove.hidden=!id; $('handoffNotice').hidden=true;
+  onPagesClosed(['previewPanel']);
+  $('editorHeading').textContent = tr(id ? 'editorEdit' : 'editorNew'); showPage('ruleEditor');
   $('ruleDomain').value = rule?.domain || ''; $('ruleDaysPreset').value = rule?.days===null?'all':[1,7,30].includes(rule?.days) ? String(rule.days) : rule ? 'custom' : '7';
   $('ruleDays').value = rule?.days && ![1,7,30].includes(rule.days) ? rule.days : '';
   $('ruleForm').elements.scope.value = rule?.includeSubdomains ? 'subdomains' : 'exact';
@@ -192,7 +225,17 @@ function renderRules() {
     const badge=appendText(head,'span',tr(badgeKey),'auto-rule-badge'); badge.hidden=rule.enabled&&!rule.completed;
     head.insertBefore(info, head.lastElementChild); card.append(head);
     const actions = document.createElement('div'); actions.className='auto-rule-actions';
-    actions.append(button(tr('edit'),()=>guardUnsaved(()=>openEditor(rule,rule.id))));
+    const tools = document.createElement('div'); tools.className='auto-rule-tools';
+    const run = button(tr('runNow'),()=>guardUnsaved(()=>reviewAll(rule)), 'auto-task-action auto-run-task');
+    run.dataset.runTask=rule.id;
+    run.setAttribute('aria-label',`${tr('runNow')} · ${rule.domain}`);
+    run.disabled=busy || state.running || state.config.paused || !rule.enabled;
+    const edit = button(tr('edit'),()=>guardUnsaved(()=>openEditor(rule,rule.id)), 'auto-task-action auto-edit-task');
+    for (const [control, icon] of [[run,'play-fill'],[edit,'pencil-simple-fill']]) {
+      const image = document.createElement('img'); image.src=`icons/ui/${icon}.svg`; image.alt=''; image.className='ui-icon';
+      control.prepend(image);
+    }
+    tools.append(run,edit); actions.append(tools);
     const toggle = button(tr(rule.enabled?'disable':'enable'),()=>rule.enabled ? guardUnsaved(()=>toggleRule(rule,false)) : guardUnsaved(()=>{openEditor(rule,rule.id);void runPreview(rule,rule.id);}), 'auto-switch');
     toggle.setAttribute('role','switch'); toggle.setAttribute('aria-checked',String(rule.enabled)); toggle.setAttribute('aria-label',`${tr(rule.enabled?'disable':'enable')} · ${rule.domain}`);
     actions.append(toggle);
@@ -222,7 +265,7 @@ function render() {
   $('reviewAll').disabled=busy || Boolean(state.running || state.config.paused || !enabled);
   $('newRule').disabled=busy; $('createFirst').disabled=busy;
   renderRules();
-  $('rulesList').querySelectorAll('button').forEach(button=>{button.disabled=busy;});
+  $('rulesList').querySelectorAll('button:not([data-run-task])').forEach(button=>{button.disabled=busy;});
 }
 function renderPreviewGroups(data) {
   const root=$('previewItems'); root.replaceChildren();
@@ -298,7 +341,8 @@ function showPreview(data, {all=false,rule=null,label=''}={}) {
   $('deletePreviewNow').hidden=!all; $('deletePreviewNow').disabled=!data.items.length;
   $('saveEnabled').hidden=all; $('previewSaveNote').hidden=all;
   $('previewPanel').querySelector('.auto-steps').hidden=all;
-  $('previewIntro').textContent=all?tr('confirmReviewBody'):'';
+  $('previewIntro').textContent=all?tr(data.rule?'confirmTaskReviewBody':'confirmReviewBody',{domain:data.rule?.domain}):'';
+  if(all && data.rule && !data.items.length) $('previewSummary').textContent=tr('confirmTaskNoMatches');
   $('previewScope').textContent=data.rule?tr(data.rule.includeSubdomains?'enableScopeSubdomains':'enableScopeExact',{domain:data.rule.domain}):'';
   const next=rule?.schedule?nextOccurrence(rule.schedule,Date.now()):null;
   $('previewSchedule').textContent=all?'':state?.config.paused?tr('runPaused'):rule?.schedule?(next===null?tr('scheduleNoNext'):tr('previewNextRun',{time:fmtTime(next)})):tr('previewNextRun',{time:fmtTime(state?.config.nextRunAt||Date.now()+86400000)});
@@ -327,7 +371,7 @@ function ask(title,body,accept,callback,counts='') {
   $('confirmTitle').textContent=title; $('confirmBody').textContent=body;
   $('confirmCounts').textContent=counts; $('confirmCounts').hidden=!counts;
   $('confirmError').hidden=true; $('confirmAccept').textContent=accept;
-  $('confirmAccept').className = title===tr('confirmDeleteNow') || title===tr('confirmRemoveTitle') ? 'auto-danger' : 'primary';
+  $('confirmAccept').className = title===tr('confirmDeleteNow') || title===tr('confirmRunTaskNow') || title===tr('confirmRemoveTitle') ? 'auto-danger' : 'primary';
   confirmAction=callback; $('confirmDialog').showModal(); $('confirmCancel').focus();
 }
 $('confirmDialog').addEventListener('cancel',event=>{if(busy){event.preventDefault();return;}confirmAction=null;});
@@ -360,37 +404,38 @@ async function saveRule(enabled) {
     const payload={rule:confirmedRule,id:editingId||undefined,enabled,revision:state.config.revision};
     if(enabled) payload.previewId=proof.previewId;
     await request('auto-save',payload);
-    dirty=false; $('ruleEditor').hidden=true; clearPreview(); showPage('tasksPage'); await refresh();
+    dirty=false; editorOpen=false; $('ruleEditor').hidden=true; clearPreview(); onPagesClosed(['ruleEditor','previewPanel']); showPage('tasksPage'); await refresh();
   };
   if(enabled) { const scope=confirmedRule.includeSubdomains?tr('enableScopeSubdomains',{domain:confirmedRule.domain}):tr('enableScopeExact',{domain:confirmedRule.domain}); const days=confirmedRule.days===null?tr('allPagesSummary'):tr('daysPlain',{n:confirmedRule.days}); ask(tr('confirmEnableTitle'),tr('confirmEnableBody',{scope,days,schedule:scheduleLabel(confirmedRule.schedule)}),tr('confirmEnable'),action); }
   else { setBusy(true); try { await action(); } catch(e) { $('ruleError').textContent=e.message; $('ruleError').hidden=false; } finally { setBusy(false); } }
 }
-async function reviewAll() {
+async function reviewAll(rule=null) {
   previewReturn='tasksPage'; clearPreview(); preparePreview(true);
   const ticket=previewRequest;
   try {
     setStatus(''); $('previewError').hidden=true; $('previewItems').replaceChildren(); showPage('previewPanel'); $('previewSummary').textContent=tr('previewLoading');
     const generation=draftGeneration;
-    const data=await request('auto-preview',{all:true});
+    const data=await request('auto-preview',{all:true,...(rule?{id:rule.id}:{})});
     if(disposed || ticket!==previewRequest || generation!==draftGeneration) return;
-    showPreview(data,{all:true,label:tr('confirmReviewTitle')});
+    showPreview(data,{all:true,label:tr(rule?'confirmTaskReviewTitle':'confirmReviewTitle',{domain:rule?.domain})});
+    if(rule) allPreview={...data,taskId:rule.id};
   } catch(e) { if(ticket!==previewRequest) return; $('previewError').textContent=e.message; $('previewError').hidden=false; }
 }
 async function deleteReviewedPages() {
   if(!allPreview) return;
   const proof=allPreview;
   const counts=proof.items.length?tr('confirmReviewCount',{count:proof.items.length,excluded:proof.excluded}):tr('confirmNoMatches');
-  ask(tr('confirmDeleteNow'),tr('confirmDeleteBody'),tr('confirmRun'),async()=>{await request('auto-run',{previewId:proof.previewId,revision:state.config.revision});allPreview=null;showPage('tasksPage');await refresh();},counts);
+  ask(tr(proof.taskId?'confirmRunTaskNow':'confirmDeleteNow'),tr('confirmDeleteBody'),tr(proof.taskId?'runNow':'confirmRun'),async()=>{await request('auto-run',{previewId:proof.previewId,revision:state.config.revision,...(proof.taskId?{id:proof.taskId}:{})});allPreview=null;showPage('tasksPage');await refresh();},counts);
 }
-function cancelEditor() { guardUnsaved(()=>{dirty=false;editingId=null;clearPreview();showPage('tasksPage');}); }
+function cancelEditor() { closePage('ruleEditor', ids=>{onPagesClosed(ids);showPage('tasksPage');}); }
 $('ruleForm').querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>{dirty=true;clearPreview();$('ruleError').hidden=true;updateRuleSummary();}));
 select.addEventListener('change',()=>{$('customDaysField').hidden=select.value!=='custom';});
 scheduleSelect.addEventListener('change',()=>{updateScheduleFields();dirty=true;clearPreview();$('ruleError').hidden=true;updateRuleSummary();});
-$('createFirst').addEventListener('click',()=>openEditor());
+$('createFirst').addEventListener('click',()=>editorOpen?activatePage('ruleEditor'):guardUnsaved(()=>openEditor()));
 $('manageProtection').addEventListener('click',()=>navigate('protection'));
-$('newRule').addEventListener('click',()=>guardUnsaved(()=>openEditor())); $('cancelEditor').addEventListener('click',cancelEditor);
+$('newRule').addEventListener('click',()=>editorOpen?activatePage('ruleEditor'):guardUnsaved(()=>openEditor())); $('cancelEditor').addEventListener('click',cancelEditor);
 $('previewRule').addEventListener('click',()=>runPreview()); $('saveDisabled').addEventListener('click',()=>saveRule(false)); $('saveEnabled').addEventListener('click',()=>saveRule(true));
-$('closePreview').addEventListener('click',()=>{showPage(previewReturn);}); $('reviewAll').addEventListener('click',reviewAll); $('deletePreviewNow').addEventListener('click',deleteReviewedPages);
+$('closePreview').addEventListener('click',()=>{onPagesClosed(['previewPanel']);showPage(previewReturn);}); $('reviewAll').addEventListener('click',()=>reviewAll()); $('deletePreviewNow').addEventListener('click',deleteReviewedPages);
 $('confirmCancel').addEventListener('click',()=>{$('confirmDialog').close();confirmAction=null;}); $('confirmAccept').addEventListener('click',acceptDialog);
 $('pauseAll').addEventListener('click',async()=>{try{await request('auto-pause',{paused:!state.config.paused,revision:state.config.revision});await refresh();}catch(e){setStatus(tr(`error_${e.code}`)||e.message);}});
 async function loadProtection() {
@@ -410,23 +455,23 @@ chrome.storage?.onChanged?.addListener(storageChanged);
 $('ruleForm').addEventListener('submit',event=>{event.preventDefault();void runPreview();});
 const remove = document.createElement('button'); remove.type='button'; remove.className='auto-remove quiet'; remove.textContent=tr('remove');
 remove.hidden=true; $('ruleForm').append(remove);
-remove.addEventListener('click',()=>{const rule=state?.config.rules.find(rule=>rule.id===editingId);if(!rule)return;ask(tr('confirmRemoveTitle'),tr('confirmRemoveBody'),tr('confirmRemove'),async()=>{await request('auto-remove',{id:rule.id,revision:state.config.revision});dirty=false;editingId=null;clearPreview();showPage('tasksPage');await refresh();});});
+remove.addEventListener('click',()=>{const rule=state?.config.rules.find(rule=>rule.id===editingId);if(!rule)return;ask(tr('confirmRemoveTitle'),tr('confirmRemoveBody'),tr('confirmRemove'),async()=>{await request('auto-remove',{id:rule.id,revision:state.config.revision});dirty=false;editorOpen=false;editingId=null;clearPreview();onPagesClosed(['ruleEditor']);showPage('tasksPage');await refresh();});});
 
 function back() {
   if($('scheduleTime').getAttribute('aria-expanded')==='true') { timePicker.close(true); return true; }
   if(currentPage!=='ruleEditor' && currentPage!=='previewPanel') return false;
-  if(currentPage==='previewPanel') showPage(previewReturn); else cancelEditor();
+  if(currentPage==='previewPanel') { onPagesClosed(['previewPanel']);showPage(previewReturn); } else cancelEditor();
   return true;
 }
 if(root.dataset.embedded!=='true') root.addEventListener('keydown',event=>{if(event.key!=='Escape'||event.defaultPrevented||$('confirmDialog').open)return;const selectOpen=CSS.supports('selector(select:open)')&&root.querySelector('select:open');if(selectOpen)return;if(back()){event.preventDefault();event.stopPropagation();}});
 loadProtection(); refresh();
-return { navigate, guardUnsaved, hasUnsavedChanges, back, destroy:()=>{timePicker.destroy();disposed=true;refreshRequest++;clearPreview();clearTimeout(timer);window.removeEventListener('beforeunload',beforeUnload);chrome.storage?.onChanged?.removeListener(storageChanged);}, dismiss: () => { timePicker.close(); if($('confirmDialog').open) { if(!busy){$('confirmDialog').close();confirmAction=null;} return; } guardUnsaved(()=>{dirty=false;clearPreview();showPage('tasksPage');}); } };
+return { navigate, activatePage, closePage, guardUnsaved, hasUnsavedChanges, back, isBusy:()=>busy, destroy:()=>{timePicker.destroy();disposed=true;refreshRequest++;clearPreview();clearTimeout(timer);if(confirmationHost)$('confirmDialog').remove();window.removeEventListener('beforeunload',beforeUnload);chrome.storage?.onChanged?.removeListener(storageChanged);}, dismiss: () => { timePicker.close(); if($('confirmDialog').open) { if(!busy){$('confirmDialog').close();confirmAction=null;} return; } guardUnsaved(()=>{dirty=false;clearPreview();showPage('tasksPage');}); } };
 }
 
 if (document.body.classList.contains('auto-cleanup-page')) {
 const lang=readLanguage(), tr=(key)=>t(lang,key);
 const shell=document.getElementById('cleanupSettings');
-shell.innerHTML=`<header class="settings-window-header"><a class="settings-back" href="manager.html">${tr('back')}</a><span>${tr('eyebrow')}</span></header><div class="settings-layout"><nav class="settings-nav"><a href="manager.html#settings=general">${tr('general')}</a><a href="manager.html#settings=privacy">${tr('privacy')}</a><button type="button" data-section="tasks">${tr('title')}</button><button type="button" data-section="protection">${tr('protectionHeading')}</button><div class="settings-brand">History Sweep<small>${tr('local')}</small></div></nav><div id="standaloneTasks"></div></div>`;
+shell.innerHTML=`<header class="settings-window-header"><a class="settings-back" href="manager.html"><img class="ui-icon" src="icons/ui/arrow-left.svg" alt="">${tr('backToHistory')}</a><span>${tr('eyebrow')}</span></header><div class="settings-layout"><nav class="settings-nav"><a href="manager.html#settings=general">${tr('general')}</a><a href="manager.html#settings=privacy">${tr('privacy')}</a><button type="button" data-section="tasks">${tr('title')}</button><button type="button" data-section="protection">${tr('protectionHeading')}</button><div class="settings-brand">History Sweep<small>${tr('local')}</small></div></nav><div id="standaloneTasks"></div></div>`;
 const cleanup=mountAutoCleanup(document.getElementById('standaloneTasks'),{onSection:section=>shell.querySelectorAll('[data-section]').forEach(button=>button.setAttribute('aria-current',button.dataset.section===section?'page':'false'))});
 shell.querySelectorAll('[data-section]').forEach(button=>button.addEventListener('click',()=>cleanup.navigate(button.dataset.section)));
 shell.querySelector('.settings-back').addEventListener('click',event=>{event.preventDefault();cleanup.guardUnsaved(()=>location.assign('manager.html'));});

@@ -94,7 +94,7 @@ try {
     await openSettings(frame);
     await frame.locator('[data-settings-section=sync]').click();
     await frame.waitForFunction(() => !document.querySelector('#connectionFields').disabled);
-    check(await frame.locator('#syncSettingsContent h1').textContent() === '配置同步', `${layout}: sync follows the settings language`);
+    check(await frame.locator('#syncSettingsContent h1').textContent() === '同步与磁盘备份', `${layout}: sync follows the settings language`);
     if (screenshotDirectory) {
       await page.screenshot({ path: join(screenshotDirectory, `embedded-sync-${layout}-zh-dark.png`) });
     }

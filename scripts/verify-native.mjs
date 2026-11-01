@@ -85,6 +85,8 @@ try {
   await page.locator('#delete').click();
   await page.locator('#confirmDialog [value=confirm]').click();
   await page.waitForFunction(() => document.querySelector('#query').disabled);
+  // The UI locks before the worker finishes protection/storage preflight.
+  for (let attempt = 0; attempt < 100 && !await worker.evaluate(() => globalThis.testDeletionStarted); attempt++) await page.waitForTimeout(20);
   assert.equal(await worker.evaluate(() => globalThis.testDeletionStarted), true);
   await page.close();
   await worker.evaluate(() => globalThis.finishTestDeletion());
@@ -119,6 +121,7 @@ try {
   assert.equal(await fullPage.locator('#timeRange').inputValue(), 'custom');
   assert.equal(await fullPage.locator('#startDate').inputValue(), today);
   assert.equal(await fullPage.locator('#endDate').inputValue(), today);
+  await fullPage.locator('#protectionMenu > summary').click();
   await fullPage.locator('#editProtection').click();
   await fullPage.locator('#protectionInput').fill('127.0.0.1'); await fullPage.locator('#saveProtection').click();
   await fullPage.waitForFunction(() => !document.querySelector('#protectionDialog').open && !document.querySelector('#search').disabled);

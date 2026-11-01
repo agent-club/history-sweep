@@ -1,5 +1,9 @@
 # Chrome Web Store submission pack
 
+## Prepared candidate — v0.7.0
+
+Use [the v0.7.0 release materials](v0.7.0-candidate.md), current bilingual listing copy and versioned candidate screenshots. The new package and shared notes identify v0.7.0 as a candidate. Public update metadata is unchanged. No upload, submission, deployment or Git operation is implied. Earlier preparation records below retain their original scope.
+
 ## Prepared update — v0.6.0
 
 Use [the v0.6.0 release materials](v0.6.0-candidate.md), the current bilingual listing copy and versioned screenshots in `store/assets/v0.6.0/`. The package, website download, update metadata and release notes all target 0.6.0. Both release-note surfaces preset Published as requested by the owner; website deployment and store submission have not been performed in this preparation.

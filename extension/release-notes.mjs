@@ -4,6 +4,17 @@ const copy = (en, zh) => ({ en, 'zh-CN': zh });
 
 export const releaseNotes = [
   {
+    version: '0.7.0', status: 'candidate',
+    title: copy('More control over the pages you keep and clear', '更从容地保留与清理'),
+    changes: [
+      copy('Review cleanup recommendations with local website rules, inactivity thresholds and recent cleanup evidence. Reasons expand inside the results without selecting or deleting pages; kept websites and URLs take priority.', '通过本机网站规则、未访问天数与近期清理依据查看清理建议。原因在结果中展开，不自动选择或删除；保留网站与网址优先。'),
+      copy('Save searches, combine explicit AND filters and protect exact URLs. Inspect available visits and deletion impact before confirming removal. Deleting a URL still removes all of its visits.', '保存检索、组合 AND 筛选并保留精确网址；确认删除前查看可用访问明细及影响。删除网址仍会移除它的全部访问记录。'),
+      copy('Add manual website labels with individual colors, textures or a local image. Preview cleaned-link copying and export only selected results as URLs or CSV; exports are not encrypted.', '为网站手动添加标签，分别设置配色、纹理或本地图片；预览净化链接，或仅将选中结果导出为网址及 CSV。导出文件不加密。'),
+      copy('Optionally include protection, browsing defaults and task scopes in password-encrypted disk backups. Restored tasks stay paused. WebDAV transfer is unchanged and excludes these local sections.', '密码加密磁盘备份可选择包含保留规则、默认浏览设置及任务范围；恢复的任务保持暂停。WebDAV 传输范围不变，不含这些本机分区。'),
+      copy('Clear existing Local activity explicitly, review interrupted manual cleanup notices and switch settings tabs while keeping drafts. Task actions support preview and confirmation without changing scheduled times.', '主动清除已有本地活动，查看手动清理中断提示，切换设置页签时保留草稿；任务操作先预览并确认，不改变原计划时间。'),
+    ],
+  },
+  {
     version: '0.6.0', status: 'published',
     title: copy('Cleanup on your schedule, a workspace of your own', '按计划清理，按习惯使用'),
     changes: [
@@ -69,7 +80,7 @@ const labels = {
   candidateHint: copy('Prepared for release. Public availability is not yet confirmed.', '已准备发布，尚未确认公开提供。'),
   archiveHint: copy('Reconstructed from the archived package. Exact publication dates are not recorded here.', '依据历史安装包补录，此处不推定具体发布日期。'),
   development: copy('In development', '开发中'),
-  developmentTitle: copy('After v0.6.0', 'v0.6.0 之后'),
+  developmentTitle: copy('After v0.7.0', 'v0.7.0 之后'),
   developmentHint: copy('Source changes awaiting a future package.', '等待后续打包的源码改动。'),
 };
 

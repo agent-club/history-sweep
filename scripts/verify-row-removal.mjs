@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {dependency} from './runtime.mjs';
 import {createServer} from './serve.mjs';
 import {installMock} from './fixtures.mjs';
+import {enterWorkspace} from './native-workspace.mjs';
 
 const {chromium} = dependency('playwright');
 const output = await mkdtemp(join(tmpdir(), 'history-sweep-row-removal-'));
@@ -41,7 +42,7 @@ try {
     const id = new URL(worker.url()).hostname;
     const page = await context.newPage(); const errors = []; page.on('pageerror', error => errors.push(error.message));
     const violations = []; page.on('console', message => { if (/Refused|Content Security Policy/i.test(message.text())) violations.push(message.text()); });
-    await page.goto(`chrome-extension://${id}/manager.html`); await ready(page);
+    await page.goto(`chrome-extension://${id}/manager.html`); await enterWorkspace(page); await ready(page);
     await page.evaluate(async origin => { for (let i = 0; i < 6; i++) await chrome.history.addUrl({url: `${origin}/snow-native/${i}`}); }, origin);
     await search(page, '/snow-native/'); await observe(page);
     const target = await page.locator('.history-row').nth(1).locator('.row-select').getAttribute('data-url');

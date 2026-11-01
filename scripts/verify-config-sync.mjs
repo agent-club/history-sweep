@@ -66,7 +66,7 @@ try {
   check(context.pages().length === pageCount, 'WebDAV opens inside Preferences without creating a tab');
   check(await page.locator('#syncSettingsContent').isVisible(), 'sync surface is embedded in the settings window');
   check(await page.locator('#syncSettingsContent').evaluate(node => node.closest('dialog')?.id) === 'preferencesDialog', 'WebDAV shares the settings dialog');
-  check(await page.locator('.sync-root h1').textContent() === 'Configuration sync', 'embedded settings render localized title');
+  check(await page.locator('.sync-root h1').textContent() === 'Sync & disk backup', 'embedded settings render localized title');
   check(await page.locator('#uploadConfig').isDisabled(), 'remote controls disabled until a connection is saved');
   check(requests.length === 0, 'opening settings makes no remote requests');
   await page.locator('#davUrl').fill('https://dav.example.test/backup/config.json');
@@ -123,7 +123,7 @@ try {
   check(await page.evaluate(() => localStorage.getItem('language')) === 'zh-CN', 'disk import restores preferences after data removal');
   permissionRequests.push(...await page.evaluate(() => window.__permissionRequests));
   await page.reload(); await openEmbedded(page);
-  check(await page.locator('.sync-root h1').textContent() === '配置同步', 'Chinese locale applies on reopening');
+  check(await page.locator('.sync-root h1').textContent() === '同步与磁盘备份', 'Chinese locale applies on reopening');
   await page.setViewportSize({ width: 390, height: 844 });
   check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'narrow settings have no horizontal overflow');
   check(await page.locator('#syncSettingsContent').evaluate(node => node.scrollWidth <= node.clientWidth), 'embedded content has no horizontal overflow');

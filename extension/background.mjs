@@ -4,6 +4,11 @@ import { createActivityLog } from './activity-log.mjs';
 import { createNameplateStore } from './nameplate-store.mjs';
 import { createUpdateChecker, isNewerVersion } from './update-check.mjs';
 import { createAutoCleanup, AUTO_CLEANUP_ALARM } from './auto-cleanup.mjs';
+import { WORKSPACE_TOOLS_KEY, MANUAL_CLEANUP_KEY, readWorkspaceTools, readProtectedUrls, validateSavedSearch, validateProtectedUrls, validateLinkRule, validateWebsiteLabel, websiteHostname } from './workspace-tools.mjs';
+import { validateLocalBackup, pausedTaskConfig } from './local-backup.mjs';
+import { readBrowsingPreferences } from './browsing-preferences.mjs';
+import { validateConfig as validateSyncConfig, validateConnection, CONNECTION_KEY } from './config-sync.mjs';
+import { normalizeRule } from './auto-cleanup-model.mjs';
 
 const launcher = createLauncher(chrome);
 void launcher.register().catch(() => {});
@@ -37,6 +42,7 @@ function queueCleanup(operation) {
 }
 const autoCleanup = createAutoCleanup(chrome, {
   readProtectedSites,
+  readProtectedUrls: () => readProtectedUrls(chrome.storage.local),
   recordActivity: (pages, items, canRecord) => activityLog.record(pages, items, 'automatic', canRecord),
   runExclusive: queueCleanup,
   isBusy: () => applyingUpdate || queuedCleanups > 0,
@@ -111,7 +117,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
 function trustedPage(sender) {
   if (sender.id !== chrome.runtime.id || (sender.frameId != null && sender.frameId !== 0)) return false;
   const url = new URL(sender.url);
-  return ['popup.html', 'manager.html', 'auto-cleanup.html'].some(page => `${url.protocol}//${url.host}${url.pathname}` === chrome.runtime.getURL(page));
+  return ['popup.html', 'manager.html', 'auto-cleanup.html', 'sync.html'].some(page => `${url.protocol}//${url.host}${url.pathname}` === chrome.runtime.getURL(page));
 }
 
 function snapshot(job) {
@@ -157,6 +163,9 @@ async function runDeletion(job, urls, details) {
     job.phase = remaining.length ? 'partial' : 'done';
   } catch { job.phase = 'verifyFailed'; }
   finally {
+    // Only a minimal marker survives interruption. Never persist a pending URL queue.
+    const latest = (await chrome.storage.local.get(MANUAL_CLEANUP_KEY).catch(() => ({})))[MANUAL_CLEANUP_KEY];
+    if (latest?.id === job.id && job.phase !== 'verifyFailed') await chrome.storage.local.remove(MANUAL_CLEANUP_KEY).catch(() => {});
     void withPolicyLock(publishUpdateState).catch(() => {});
     // Briefly retain results for the initiating page, without persisting history.
     setTimeout(() => jobs.delete(job.id), 60000);
@@ -164,6 +173,77 @@ async function runDeletion(job, urls, details) {
 }
 
 async function handleMessage(message, sender, owner, modal = false) {
+  if (new URL(sender.url).pathname === '/sync.html' && !['get-local-backup', 'restore-local-backup'].includes(message.type)) throw new Error('Invalid page');
+  if (message.type === 'get-workspace-tools') {
+    const tools = await readWorkspaceTools(chrome.storage.local);
+    const marker = (await chrome.storage.local.get(MANUAL_CLEANUP_KEY))[MANUAL_CLEANUP_KEY];
+    const active = marker?.id && jobs.get(marker.id);
+    return { tools, interrupted: marker?.pending === true && (!active || active.phase === 'verifyFailed') };
+  }
+  if (message.type === 'dismiss-cleanup-notice') return withPolicyLock(async () => {
+    if (deletionRunning()) throw new Error('RULES_BUSY');
+    await chrome.storage.local.remove(MANUAL_CLEANUP_KEY); return {};
+  });
+  if (message.type === 'clear-local-activity') return withPolicyLock(async () => {
+    if (deletionRunning()) throw new Error('RULES_BUSY');
+    return queueCleanup(() => activityLog.clear());
+  });
+  if (['save-workspace-search', 'remove-workspace-search', 'save-url-protection', 'save-link-rule', 'save-website-label'].includes(message.type)) return withPolicyLock(async () => {
+    if (applyingUpdate || (message.type === 'save-url-protection' && deletionRunning())) throw new Error('RULES_BUSY');
+    const tools = await readWorkspaceTools(chrome.storage.local);
+    if (message.type === 'save-workspace-search') {
+      const saved = validateSavedSearch(message.search);
+      tools.searches = tools.searches.some(item => item.id === saved.id) ? tools.searches.map(item => item.id === saved.id ? saved : item) : [...tools.searches, saved];
+    } else if (message.type === 'remove-workspace-search') tools.searches = tools.searches.filter(item => item.id !== message.id);
+    else if (message.type === 'save-url-protection') {
+      const [url] = validateProtectedUrls([message.url]);
+      if (typeof message.protected !== 'boolean') throw new Error('INVALID_WORKSPACE_SETTINGS');
+      tools.protectedUrls = message.protected ? [...new Set([...tools.protectedUrls, url])] : tools.protectedUrls.filter(item => item !== url);
+    } else if (message.type === 'save-link-rule') {
+      const hostname = websiteHostname(message.rule?.hostname);
+      if (!Array.isArray(message.rule.parameters)) throw new Error('INVALID_WORKSPACE_SETTINGS');
+      tools.linkRules = tools.linkRules.filter(rule => rule.hostname !== hostname);
+      if (message.rule.parameters.length) tools.linkRules.push(validateLinkRule(message.rule));
+    } else {
+      const hostname = websiteHostname(message.hostname), label = validateWebsiteLabel(message.label);
+      if (['__proto__', 'constructor', 'prototype'].includes(hostname)) throw new Error('INVALID_WORKSPACE_SETTINGS');
+      if (label.values.length) tools.labels[hostname] = label; else delete tools.labels[hostname];
+    }
+    await chrome.storage.local.set({ [WORKSPACE_TOOLS_KEY]: tools }); return { tools };
+  });
+  if (message.type === 'get-local-backup') {
+    const tools = await readWorkspaceTools(chrome.storage.local);
+    const { config } = await autoCleanup.handle({ type: 'auto-get' }, owner);
+    return { protection: { sites: await readProtectedSites(), urls: tools.protectedUrls },
+      browsing: await readBrowsingPreferences(chrome.storage.local), tasks: validateLocalBackup({ tasks: config.rules.map(normalizeRule) }).tasks };
+  }
+  if (message.type === 'restore-local-backup') return withPolicyLock(async () => {
+    if (deletionRunning() || applyingUpdate) throw new Error('RULES_BUSY');
+    const config = validateSyncConfig(message.config), local = validateLocalBackup(message.localSettings);
+    if (!Array.isArray(message.sections) || !message.sections.length || message.sections.some(section => !['preferences', 'protection', 'browsing', 'tasks', 'connection'].includes(section))) throw new Error('INVALID_BACKUP');
+    const sections = new Set(message.sections);
+    for (const section of ['protection', 'browsing', 'tasks']) if (sections.has(section) && !Object.hasOwn(local, section)) throw new Error('INVALID_BACKUP');
+    const connection = sections.has('connection') ? validateConnection(message.connection) : undefined;
+    return queueCleanup(async () => {
+      const patch = {};
+      if (sections.has('preferences')) patch.launchMode = config.preferences.launchMode;
+      if (sections.has('connection')) patch[CONNECTION_KEY] = connection;
+      if (sections.has('protection')) {
+        const tools = await readWorkspaceTools(chrome.storage.local);
+        patch.protectedSites = local.protection.sites;
+        patch[WORKSPACE_TOOLS_KEY] = { ...tools, protectedUrls: local.protection.urls };
+      }
+      if (sections.has('browsing')) patch.browsingPreferences = local.browsing;
+      if (sections.has('tasks')) {
+        const { config: current } = await autoCleanup.handle({ type: 'auto-get' }, owner);
+        patch.autoCleanup = pausedTaskConfig(local.tasks, current.revision);
+      }
+      // One storage mutation applies the chosen categories; old live task state is never replayed.
+      await chrome.storage.local.set(patch);
+      const schedulePending = sections.has('tasks') && !await autoCleanup.configurationChanged().then(() => true, () => false);
+      return { schedulePending };
+    });
+  });
   if (message.type === 'claim-nameplate-reveal') return { nameplate: await nameplates.claimReveal() };
   if (message.type === 'get-nameplate') return { nameplate: await nameplates.issue() };
   if (message.type.startsWith('auto-')) {
@@ -237,7 +317,7 @@ async function handleMessage(message, sender, owner, modal = false) {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     return { hostname: websiteHost(tab?.url) };
   }
-  if (message.type === 'get-protection') return withPolicyLock(async () => ({ sites: await readProtectedSites() }));
+  if (message.type === 'get-protection') return withPolicyLock(async () => ({ sites: await readProtectedSites(), urls: await readProtectedUrls(chrome.storage.local) }));
   if (message.type === 'save-protection') {
     const sites = parseProtectedSites(message.input);
     return withPolicyLock(async () => {
@@ -256,12 +336,14 @@ async function handleMessage(message, sender, owner, modal = false) {
     return withPolicyLock(async () => {
       if (applyingUpdate) throw new Error('UPDATE_RELOADING');
       const sites = await readProtectedSites();
-      if (message.urls.some(url => isProtectedUrl(url, sites))) throw new Error('PROTECTED_URL');
+      const protectedUrls = new Set(await readProtectedUrls(chrome.storage.local));
+      if (message.urls.some(url => isProtectedUrl(url, sites) || protectedUrls.has(url))) throw new Error('PROTECTED_URL');
       // Capture privacy before deletion; a failed read must not risk logging a private cleanup.
       const { privateCleanup = false } = await chrome.storage.local.get('privateCleanup');
       if (typeof privateCleanup !== 'boolean') throw new Error('INVALID_CLEANUP_PREFERENCE');
       // The worker owns the operation, independent of the popup/message channel.
       const job = { id: crypto.randomUUID(), owner, total: new Set(message.urls).size, completed: 0, phase: 'deleting', remaining: [], privateCleanup };
+      await chrome.storage.local.set({ [MANUAL_CLEANUP_KEY]: { id: job.id, pending: true } });
       jobs.set(job.id, job);
       // Notify every view without making history deletion depend on update UI storage.
       await publishUpdateState().catch(() => {});
@@ -313,7 +395,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return handleMessage(message, sender, owner, modal);
   }).then(data => respond({ ok: true, data }), error => {
     const code = ['CURRENT_SITE_UNAVAILABLE', 'INVALID_TIME_RANGE', 'INVALID_PROTECTED_SITES', 'RULES_BUSY', 'PROTECTED_URL', 'UPDATE_BUSY', 'UPDATE_UNAVAILABLE', 'UPDATE_RELOADING',
-      'AUTO_INVALID_RULE', 'AUTO_CONFLICT', 'AUTO_STALE', 'AUTO_PREVIEW_REQUIRED', 'AUTO_PREVIEW_EXPIRED', 'AUTO_SCAN_INCOMPLETE', 'AUTO_FULLY_PROTECTED', 'AUTO_BUSY', 'AUTO_UNAVAILABLE', 'AUTO_ACTIVITY_FAILED'].includes(error.message) ? error.message : undefined;
+      'INVALID_WORKSPACE_SETTINGS', 'INVALID_BACKUP', 'LINK_UNAVAILABLE', 'AUTO_INVALID_RULE', 'AUTO_CONFLICT', 'AUTO_STALE', 'AUTO_PREVIEW_REQUIRED', 'AUTO_PREVIEW_EXPIRED', 'AUTO_SCAN_INCOMPLETE', 'AUTO_FULLY_PROTECTED', 'AUTO_BUSY', 'AUTO_UNAVAILABLE', 'AUTO_ACTIVITY_FAILED'].includes(error.message) ? error.message : undefined;
     respond({ ok: false, ...(code ? { code } : {}) });
   });
   return true;

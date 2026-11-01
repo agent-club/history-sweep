@@ -21,11 +21,13 @@ async function capture(page, name) {
   if (screenshotDir) await page.screenshot({ path: join(screenshotDir, `${name}.png`), fullPage: true });
 }
 let context;
-async function launch() {
+async function launch({ hasTouch = false } = {}) {
   context = await chromium.launchPersistentContext(profile, {
     executablePath: process.env.HISTORY_SWEEP_CHROMIUM,
     channel: process.env.HISTORY_SWEEP_CHROMIUM ? undefined : 'chromium', headless: true,
-    timezoneId: 'Asia/Shanghai', reducedMotion: 'reduce',
+    timezoneId: 'Asia/Shanghai', reducedMotion: 'reduce', hasTouch, isMobile:hasTouch,
+    // Playwright's headless defaults force a mouse pointer and override touchscreen media queries.
+    ignoreDefaultArgs: hasTouch ? ['--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4'] : undefined,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
   });
   context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
@@ -137,9 +139,38 @@ db.close()`, join(profile, 'Default', 'History'), String((Date.now() - 8 * day +
   assert.equal(await page.locator('#previewPanel').isHidden(), true, 'stale preview rows are hidden');
   await page.locator('#cancelEditor').click(); await page.locator('#confirmAccept').click();
   await page.waitForFunction(() => document.querySelector('#ruleEditor').hidden && !document.querySelector('#confirmDialog').open);
-  await page.locator('#reviewAll').click();
+  const runTask = page.locator('.auto-run-task').first();
+  const taskCard = page.locator('.auto-rule-card').first();
+  const taskTools = taskCard.locator('.auto-rule-tools');
+  const toolsVisible = () => taskTools.evaluate(node => getComputedStyle(node).opacity === '1' && getComputedStyle(node).pointerEvents === 'auto');
+  await page.locator('#newRule').focus(); await page.locator('.auto-section-heading').hover();
+  assert.equal(await toolsVisible(), false, 'task tools stay hidden while the row is inactive');
+  assert.equal(await taskCard.locator('.auto-switch').isVisible(), true, 'the schedule switch remains visible');
+  const idleRow = await taskCard.boundingBox();
+  await capture(page, 'run-now-tasks');
+  await taskCard.locator('.auto-rule-info').hover();
+  assert.equal(await toolsVisible(), true, 'hovering task information reveals both grouped actions');
+  assert.deepEqual(await taskCard.boundingBox(), idleRow, 'revealing tools leaves task geometry unchanged');
+  assert.equal(await taskTools.locator('img').evaluateAll(images => images.length === 2 && images.every(image => image.complete && image.naturalWidth > 0)), true, 'both official action icons load');
+  await capture(page, 'run-now-tasks-hover');
+  await page.locator('.auto-section-heading').hover();
+  assert.equal(await toolsVisible(), false, 'tools hide again when the pointer leaves');
+  await page.locator('#pauseAll').focus(); await page.keyboard.press('Tab');
+  assert.equal(await runTask.evaluate(node => node === document.activeElement), true, 'the hidden action remains reachable by Tab');
+  assert.equal(await toolsVisible(), true, 'keyboard focus reveals the action group');
+  await capture(page, 'run-now-tasks-focus');
+  await page.keyboard.press('Enter');
   await page.locator('#deletePreviewNow').waitFor({ state: 'visible' });
+  assert.match(await page.locator('#previewHeading').textContent(), new RegExp(host.replaceAll('.', '\\.')));
+  assert.match(await page.locator('#previewIntro').textContent(), /Only this task will run/);
+  await capture(page, 'run-now-preview');
   assert.equal((await visits(page, urls[0])).length, 1, 'review does not delete');
+  await page.locator('#closePreview').click();
+  assert.equal((await visits(page, urls[0])).length, 1, 'closing the task preview does not delete');
+  await taskCard.hover(); await runTask.click(); await page.locator('#deletePreviewNow').click();
+  await capture(page, 'run-now-confirm');
+  await page.locator('#confirmCancel').click();
+  assert.equal((await visits(page, urls[0])).length, 1, 'cancelling task confirmation does not delete');
   await page.locator('#deletePreviewNow').click(); await page.locator('#confirmAccept').click(); await settled(page);
   assert.equal((await visits(page, urls[0])).length, 0);
   assert.equal((await visits(page, urls[1])).length, 0);
@@ -151,6 +182,14 @@ db.close()`, join(profile, 'Default', 'History'), String((Date.now() - 8 * day +
   const activityDay = Object.values(afterRun.localActivity.days)[0];
   assert.equal(activityDay.automaticOperations, 1); assert.equal(activityDay.pages, 2);
   assert.doesNotMatch(JSON.stringify(afterRun), /https:|\/expired/);
+  await taskCard.hover(); await runTask.click(); await page.locator('#deletePreviewNow').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#deletePreviewNow').isDisabled(), true, 'an empty task preview cannot start deletion');
+  assert.match(await page.locator('#previewSummary').textContent(), /No pages currently match this task/);
+  await capture(page, 'run-now-empty');
+  await page.locator('#closePreview').click();
+  await page.locator('#reviewAll').click(); await page.locator('#deletePreviewNow').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#deletePreviewNow').isDisabled(), true, 'the existing all-task preview remains available');
+  await page.locator('#closePreview').click();
   // A native manual deletion shares the activity aggregate without changing its automatic count.
   await manager.evaluate(async url => {
     const job = await chrome.runtime.sendMessage({ type: 'start-delete', urls: [url] });
@@ -161,6 +200,7 @@ db.close()`, join(profile, 'Default', 'History'), String((Date.now() - 8 * day +
   await manager.locator('.activity-day[data-level]:not([data-level="0"])').first().click();
   assert.match(await manager.locator('#activityDetail').textContent(), /1 automatic \/ 1 manual/);
   await page.locator('#pauseAll').click(); await page.waitForFunction(() => document.querySelector('#statusHeading').textContent.includes('paused'));
+  assert.equal(await runTask.isDisabled(), true, 'global pause disables immediate execution');
   assert.equal(await page.evaluate(() => chrome.alarms.get('history-sweep-auto-cleanup')), undefined);
   await page.locator('#pauseAll').click(); await page.waitForFunction(() => document.querySelector('#statusHeading').textContent.includes('are on'));
   // Overdue restart catches up once using current history and no-op runs do not add activity.
@@ -266,8 +306,10 @@ db.close()`, join(profile, 'Default', 'History'), String((Date.now() - 2 * day +
   for (const original of [weekly, monthly]) assert.equal(finished.rules.find(task => task.id === original.id).nextRunAt, original.nextRunAt, 'not-due tasks retain their schedule');
   await page.reload(); await ready(page);
   assert.match(await page.locator('.auto-rule-card').filter({ hasText: 'once.example.test' }).innerText(), /Finished/);
+  assert.equal(await page.locator('.auto-rule-card').filter({ hasText: 'once.example.test' }).locator('.auto-run-task').isDisabled(), true, 'completed tasks cannot run immediately');
   await page.evaluate(() => { localStorage.setItem('language', 'zh-CN'); localStorage.setItem('theme', 'light'); });
   await page.reload(); await ready(page); await page.setViewportSize({ width: 1120, height: 900 });
+  await page.locator('.auto-rule-card').filter({ hasText: 'weekly.example.test' }).hover();
   await capture(page, 'cleanup-tasks');
   await page.locator('.auto-rule-card').filter({ hasText: 'weekly.example.test' }).getByRole('button', { name: '编辑', exact: true }).click();
   assert.equal(await page.locator('#scheduleWeekday').inputValue(), '5');
@@ -298,6 +340,12 @@ db.close()`, join(profile, 'Default', 'History'), String((Date.now() - 2 * day +
     assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${language}/${theme}: no horizontal overflow`);
     assert.doesNotMatch(await page.locator('body').innerText(), /error_AUTO_|previewNextRun|handoffNotice/);
+    assert.equal(await page.locator('.auto-rule-actions').evaluateAll(actions => actions.every(node => {
+      const card=node.closest('.auto-rule-card').getBoundingClientRect();
+      return [...node.querySelectorAll('button')].every(child => { const rect=child.getBoundingClientRect(); return rect.left>=card.left && rect.right<=card.right; });
+    })), true, `${language}/${theme}: task actions fit the narrow task row`);
+    await page.locator('.auto-rule-card').first().hover();
+    await capture(page, `run-now-tasks-${language}-${theme}-narrow`);
     await page.locator('#newRule').click();
     await page.locator('#ruleDomain').fill('a-very-long-website-name.for-cleanup-task-layout.example.test');
     await page.locator('#scheduleType').selectOption('once');
@@ -310,6 +358,17 @@ db.close()`, join(profile, 'Default', 'History'), String((Date.now() - 2 * day +
   await page.evaluate(() => { localStorage.setItem('language', 'en'); localStorage.setItem('theme', 'light'); });
   await page.reload(); await ready(page); await page.setViewportSize({ width: 1120, height: 900 });
   if (process.env.HISTORY_SWEEP_AUTO_SCREENSHOT) await page.screenshot({ path: process.env.HISTORY_SWEEP_AUTO_SCREENSHOT, fullPage: true });
+  await context.close(); context = null; ({ origin } = await launch({ hasTouch:true }));
+  page = await context.newPage(); await page.goto(`${origin}/auto-cleanup.html`); await ready(page);
+  await page.setViewportSize({ width:360, height:800 });
+  assert.equal(await page.evaluate(() => matchMedia('(hover:none)').matches), true, 'touch emulation activates the no-hover layout');
+  assert.equal(await page.locator('.auto-rule-tools').first().evaluate(node => getComputedStyle(node).opacity === '1' && getComputedStyle(node).pointerEvents === 'auto'), true, 'touch users see the action group without hover');
+  const touchRun = await page.locator('.auto-run-task').first().boundingBox();
+  assert.ok(touchRun.height >= 44, 'touch actions have a 44px hit target');
+  await capture(page, 'run-now-tasks-touch');
+  await page.locator('.auto-run-task').first().tap();
+  await page.locator('#deletePreviewNow').waitFor({ state: 'visible' });
+  await page.locator('#closePreview').click();
   assert.deepEqual(errors, []);
   console.log('Cleanup task native browser checks passed: once/daily/weekly/monthly, optional inactivity, per-task alarm, completion, unchanged manual schedules, preview, protection, private cleanup, pause, restart catch-up, keyboard, open dropdowns, EN/ZH and responsive layout.');
 } finally {

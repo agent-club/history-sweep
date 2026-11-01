@@ -5,6 +5,8 @@ import { readLanguage, saveLanguage, translate } from './i18n.mjs';
 import { view } from './view.mjs';
 import { mountNameplate } from './nameplate.mjs';
 import { setupSettingsSelects } from './settings-select.mjs';
+import { setupSettingsTabs } from './settings-tabs.mjs';
+import { workspaceText } from './workspace-copy.mjs';
 import { groupHistoryItems, groupHistoryByDate } from './history-groups.mjs';
 import { setupSuggestions, appendHighlighted } from './suggestions-ui.mjs';
 import { defaultTimeFilter, resolveTimeRange, filterByTime, parseProtectedSites, isProtectedUrl } from './history-filters.mjs';
@@ -15,23 +17,35 @@ import { animateBatchRemoval } from './batch-removal.mjs';
 import { readFrequencyHistory } from './history-frequency.mjs';
 import { browsingDefaults, readBrowsingPreferences, saveBrowsingPreferences } from './browsing-preferences.mjs';
 import { createUpdateChecker } from './update-check.mjs';
+import { createCleanupHint } from './cleanup-hint.mjs';
+import { mountRecommendationSettings } from './recommendation-settings-page.mjs';
+import { RECOMMENDATION_KEY } from './recommendation-settings.mjs';
+import { mountWorkspaceTools } from './workspace-page.mjs';
+import { WORKSPACE_TOOLS_KEY, MANUAL_CLEANUP_KEY, matchesConditions, validateConditions } from './workspace-tools.mjs';
 
 const compact = document.body.dataset.layout === 'popup';
 const modal = document.body.dataset.presentation === 'modal';
 const clientId = crypto.randomUUID();
 const pageSize = compact ? 40 : 100;
 const groupPreviewSize = 5;
+const groupPageSize = 20;
 let suggestions;
 let datePicker;
 let settingsSelects;
+let settingsTabs;
+let preferenceExit = null;
 let nameplateSurface;
 let cleanupSurface;
 let syncSurface;
+let recommendationSurface;
+let workspaceSurface;
+let websiteLabelSnapshot = '';
 let settingsSection = 'general';
 let layerEvents;
 let queryPlaceholder;
 let searchMotion;
 let backToTop;
+let resultLoading;
 let scopeSizes;
 let historyChanged = false;
 let historyRefreshTimer;
@@ -91,11 +105,15 @@ function showCompletion(count) {
     feedback.animate([{ opacity: 1, transform: 'translate(-50%, 0) scale(1)' }, { opacity: 0, transform: 'translate(-50%, 4px) scale(.98)' }], { duration: 160, fill: 'forwards' }).finished.then(dismissCompletion, () => {});
   }, 2200);
 }
-const state = { lang: readLanguage(), query: '', mode: 'smart', matches: [], groups: [], urlGroups: new Map(), grouping: 'website', dateGroups: [], expandedDates: new Set(), expanded: new Set(), groupShown: new Map(), groupLimit: pageSize, selected: new Set(), busy: false, scanned: false, status: ['rulesLoading', {}], pending: [], filters: { ...defaultTimeFilter(), range: '7days' }, dateExplicit: false, timeWindow: null, protectedSites: [], rulesReady: false, excluded: 0 };
+const state = { lang: readLanguage(), query: '', mode: 'smart', conditions: [], protectedUrls: new Set(), matches: [], groups: [], urlGroups: new Map(), grouping: 'website', dateGroups: [], expandedDates: new Set(), expanded: new Set(), groupShown: new Map(), groupLimit: pageSize, selected: new Set(), busy: false, scanned: false, status: ['rulesLoading', {}], pending: [], filters: { ...defaultTimeFilter(), range: '7days' }, dateExplicit: false, timeWindow: null, protectedSites: [], rulesReady: false, excluded: 0 };
+const selectable = item => !state.protectedUrls.has(item.url);
 const $ = (id) => document.getElementById(id);
 const t = (key, args) => translate(state.lang, key, args);
 const num = (n) => n.toLocaleString(state.lang);
 const activity = createActivityPanel({ compact, request, readHistory, t, language: () => state.lang });
+const cleanupHint = createCleanupHint({ request, storage: chrome.storage.local, t,
+  snapshot: () => ({ matches: state.matches.filter(selectable), protectedSites: state.protectedSites, scanned: state.scanned, busy: state.busy || !state.rulesReady || updateApplying, stale: draftChanged() }),
+});
 const dateHeaderSizes = new ResizeObserver(entries => {
   for (const entry of entries) {
     entry.target.parentElement.style.setProperty('--date-header-height', `${entry.borderBoxSize[0].blockSize}px`);
@@ -166,6 +184,37 @@ function setupBackToTop() {
   for (const node of [scroll, $('groups'), $('table')]) sizes.observe(node);
   return { destroy() { events.abort(); sizes.disconnect(); } };
 }
+function setupResultLoading() {
+  const scroll = $('resultScroll');
+  const events = new AbortController();
+  let frame;
+  function sync() {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      if (state.busy || !scroll.clientHeight) return;
+      const bounds = scroll.getBoundingClientRect();
+      // Date contents list websites; only the records inside a website stay manual.
+      const buttons = [...$('groups').querySelectorAll('.date-results > .group-load-more'), $('loadMore')];
+      for (const button of buttons) {
+        if (button.hidden || button.disabled || !button.getClientRects().length) continue;
+        const rect = button.getBoundingClientRect();
+        if (rect.bottom < bounds.top || rect.top > bounds.bottom + 120) continue;
+        const top = scroll.scrollTop;
+        button.click();
+        // A focused continuation button moves down as items are appended.
+        // Keep the reader's viewport anchored to the existing content instead.
+        scroll.scrollTop = top;
+        sync();
+        break;
+      }
+    });
+  }
+  scroll.addEventListener('scroll', sync, { passive: true, signal: events.signal });
+  const sizes = new ResizeObserver(sync);
+  for (const node of [scroll, $('groups'), $('table')]) sizes.observe(node);
+  return { sync, destroy() { events.abort(); sizes.disconnect(); cancelAnimationFrame(frame); } };
+}
 function setupScopeSize() {
   const scope = $('resultScope');
   let width = 0;
@@ -235,9 +284,9 @@ function setupSearchMotion(button) {
   sync();
   return { destroy() { events.abort(); clear(); } };
 }
-const allMatchesSelected = () => state.matches.length > 0 && state.matches.every(item => state.selected.has(item.url));
+const allMatchesSelected = () => state.matches.some(selectable) && state.matches.filter(selectable).every(item => state.selected.has(item.url));
 const timeDraft = () => ({ range: $('timeRange').value, startDate: $('startDate').value, endDate: $('endDate').value });
-const draftChanged = () => state.scanned && ($('query').value.trim() !== state.query || $('mode').value !== state.mode || JSON.stringify(timeDraft()) !== JSON.stringify(state.filters));
+const draftChanged = () => state.scanned && ($('query').value.trim() !== state.query || $('mode').value !== state.mode || JSON.stringify(timeDraft()) !== JSON.stringify(state.filters) || JSON.stringify(workspaceSurface?.draftConditions() || []) !== JSON.stringify(state.conditions));
 
 function renderUpdate(animate = false) {
   renderUpdateDetails();
@@ -326,7 +375,7 @@ function renderUpdateDetails() {
   const kind = updateState ? 'ready' : updateChecking ? 'checking' : updateReadFailed ? 'error' : checking ? 'checking' :
     updateCheck?.status === 'ready' ? 'published' :
     ['current', 'published', 'throttled', 'error', 'manual'].includes(updateCheck?.status) ? updateCheck.status : 'idle';
-  const dirty = $('preferencesDialog').open && preferenceBaseline && Object.keys(preferenceBaseline)
+  const dirty = recommendationSurface?.hasUnsavedChanges() || $('preferencesDialog').open && preferenceBaseline && Object.keys(preferenceBaseline)
     .some(key => JSON.stringify(preferenceDraft()[key]) !== JSON.stringify(preferenceBaseline[key]));
   const busy = updateState?.busy || state.busy || savingPreference;
   $('updateDialog').dataset.state = kind;
@@ -382,6 +431,7 @@ async function checkUpdateNow() {
 
 async function applyUpdate() {
   if (!updateState || updateState.busy || state.busy || savingPreference || updateApplying) return;
+  if (recommendationSurface?.isBusy() || recommendationSurface?.hasUnsavedChanges()) return;
   if ($('preferencesDialog').open && preferenceBaseline && Object.keys(preferenceBaseline)
     .some(key => JSON.stringify(preferenceDraft()[key]) !== JSON.stringify(preferenceBaseline[key]))) return;
   updateApplying = true; updateError = false; controls();
@@ -401,15 +451,15 @@ function positionTimeMenu() {
   if (!$('filters')?.open) return;
   const body = $('filters').querySelector('.filters-body');
   const anchor = $('filterToggle').getBoundingClientRect();
-  const width = Math.min(288, innerWidth - 24);
+  const width = Math.min(540, innerWidth - 24);
   body.style.width = `${width}px`;
   body.style.left = `${Math.max(12, Math.min(anchor.right - width, innerWidth - width - 12))}px`;
   const below = innerHeight - anchor.bottom - 12;
   const above = anchor.top - 12;
-  const upward = below < 300 && above > below;
+  const upward = below < 420 && above > below;
   body.style.top = upward ? 'auto' : `${anchor.bottom + 8}px`;
   body.style.bottom = upward ? `${innerHeight - anchor.top + 8}px` : '';
-  body.style.maxHeight = `${Math.max(80, Math.min(390, (upward ? above : below) - 7))}px`;
+  body.style.maxHeight = `${Math.max(80, (upward ? above : below) - 7)}px`;
 }
 
 function matchesForScan(items) {
@@ -418,8 +468,9 @@ function matchesForScan(items) {
   // Frequency candidates have already passed the same query before getVisits.
   const queried = state.query && state.grouping !== 'frequency' ? filterHistoryItems(items, state.query, state.mode) : items;
   const matches = (state.grouping === 'frequency' ? queried : filterByTime(queried, state.timeWindow)).filter(item => item.url);
-  const visible = matches.filter(item => !isProtectedUrl(item.url, state.protectedSites));
-  state.excluded = matches.length - visible.length;
+  const filtered = matches.filter(item => matchesConditions(item, state.conditions));
+  const visible = filtered.filter(item => !isProtectedUrl(item.url, state.protectedSites));
+  state.excluded = filtered.length - visible.length;
   const ordered = state.grouping === 'frequency' ? visible : sortByLastVisit(visible);
   scanMatches.set(items, { matches: ordered, excluded: state.excluded });
   return ordered;
@@ -569,7 +620,7 @@ function setMatches(matches, resetGroups = false) {
 
 function selectGroup(group, checked) {
   // Selection includes every matching URL in the group, even when its rows are hidden.
-  for (const item of group.items) checked ? state.selected.add(item.url) : state.selected.delete(item.url);
+  for (const item of group.items.filter(selectable)) checked ? state.selected.add(item.url) : state.selected.delete(item.url);
   controls();
 }
 function allGroupsExpanded() {
@@ -590,17 +641,18 @@ function expansionControl() {
 
 function resultControls(root) {
   const blocked = state.busy || !state.rulesReady || updateApplying || draftChanged();
-  for (const check of root.querySelectorAll('input[type=checkbox]')) {
-    check.disabled = blocked;
+  for (const check of root.querySelectorAll('.row-select, .group-select, .date-select')) {
+    check.disabled = blocked || check.classList.contains('row-select') && state.protectedUrls.has(check.dataset.url);
     if (check.classList.contains('row-select')) check.checked = state.selected.has(check.dataset.url);
   }
   const groups = [...root.querySelectorAll('.website-group, .date-group')];
   if (root.matches?.('.website-group, .date-group')) groups.unshift(root);
   for (const element of groups) {
     const count = element.historyItems.filter(item => state.selected.has(item.url)).length;
-    const total = Number(element.dataset.total);
+    const total = element.historyItems.filter(selectable).length;
     const check = element.querySelector(':scope > .group-header .group-select, :scope > .date-header .date-select');
-    check.checked = count === total;
+    check.checked = total > 0 && count === total;
+    check.disabled = blocked || total === 0;
     check.indeterminate = count > 0 && count < total;
     const selection = count === total ? 'all' : count ? 'partial' : 'none';
     if (element.dataset.selection !== selection) element.dataset.selection = selection;
@@ -610,7 +662,7 @@ function resultControls(root) {
     selectedLabel.hidden = !count;
     for (const button of element.querySelectorAll('button')) button.disabled = state.busy;
   }
-  for (const button of root.querySelectorAll('.row-delete')) button.disabled = blocked;
+  for (const button of root.querySelectorAll('.row-delete')) button.disabled = blocked || state.protectedUrls.has(button.closest('.history-row').querySelector('.row-select').dataset.url);
 }
 
 function autoSearchRule() {
@@ -648,10 +700,11 @@ function controls() {
   $('filterToggle').setAttribute('aria-expanded', String($('filters').open));
   $('filterToggle').dataset.active = String($('timeRange').value !== 'all' || state.protectedSites.length > 0);
   $('editProtection').textContent = t('keptSites', { n: num(state.protectedSites.length) });
+  $('protectionCounts').textContent = t('protectionCounts', { sites: num(state.protectedSites.length), urls: num(state.protectedUrls.size) });
   $('protectedCount').hidden = !state.excluded;
   $('protectedCount').textContent = t('protectedCount', { n: num(state.excluded) });
   for (const button of $('language').querySelectorAll('button')) button.disabled = state.busy || updateApplying;
-  $('selectAll').disabled = blocked || stale || !state.matches.length;
+  $('selectAll').disabled = blocked || stale || !state.matches.some(selectable);
   $('clear').disabled = state.busy || !state.selected.size;
   $('delete').disabled = blocked || stale || !state.selected.size;
   $('search').querySelector('span').textContent = t(stale ? 'updateResults' : 'scan');
@@ -661,7 +714,7 @@ function controls() {
   $('selected').textContent = `${num(state.selected.size)} ${t('selected')}`;
   $('selected').hidden = compact && !state.selected.size;
   const allSelected = allMatchesSelected();
-  $('selectAllLabel').textContent = allSelected ? t('deselectAll') : t(compact ? 'selectAllCompact' : 'selectAll', { n: num(state.matches.length) });
+  $('selectAllLabel').textContent = allSelected ? t('deselectAll') : t(compact ? 'selectAllCompact' : 'selectAll', { n: num(state.matches.filter(selectable).length) });
   $('selectAll').setAttribute('aria-pressed', String(allSelected));
   $('deleteLabel').textContent = state.selected.size ? t(compact ? 'deleteCountCompact' : 'deleteCount', { n: num(state.selected.size) }) : t('delete');
   $('clearQuery').hidden = !$('query').value;
@@ -693,8 +746,11 @@ function controls() {
   const [key, args] = stale ? [state.selected.size ? 'queryChangedSelected' : 'queryChanged', {}] : state.status;
   $('status').dataset.kind = key; $('status').textContent = t(key, args);
   // Counts, notices and wrapped labels can move the trigger without a scroll or resize.
+  cleanupHint.sync();
+  workspaceSurface?.sync();
   positionTimeMenu();
   scheduleHistoryRefresh();
+  resultLoading?.sync();
 }
 function historyRow(item) {
     // Intl formatters are expensive to construct; share them across one language's rows.
@@ -711,7 +767,8 @@ function historyRow(item) {
     row.addEventListener('click', event => { if (!event.target.closest('a, button, input') && !checkbox.disabled && !getSelection()?.toString()) checkbox.click(); });
     const page = document.createElement('td'); page.className = 'page-cell';
     const trail = document.createElement('span'); trail.className = 'row-hover-trail'; trail.setAttribute('aria-hidden', 'true'); page.append(trail);
-    const title = document.createElement('span'); title.className = 'page-title'; if (item.title) { appendHighlighted(title, item.title, state.query); title.title = item.title; page.append(title); }
+    const heading = document.createElement('span'); heading.className = 'page-heading'; page.append(heading);
+    const title = document.createElement('span'); title.className = 'page-title'; if (item.title) { appendHighlighted(title, item.title, state.query); title.title = item.title; heading.append(title); }
     const url = document.createElement('span'); url.className = 'page-url'; appendHighlighted(url, item.url, state.query); url.title = item.url;
     const address = document.createElement('span'); address.className = 'page-address';
     let protocol;
@@ -768,7 +825,8 @@ function historyRow(item) {
     const trash = document.createElement('img'); trash.className = 'ui-icon'; trash.src = 'icons/ui/trash.svg'; trash.alt = ''; trash.setAttribute('aria-hidden', 'true'); remove.append(trash);
     // Single-row actions must not replace or submit the existing batch selection.
     remove.addEventListener('click', () => openDeletionConfirm([item.url])); actions.append(remove);
-    row.append(cell, page, date, visits, actions); return row;
+    if (selectable(item)) cleanupHint.decorate(heading, [item]);
+    row.append(cell, page, date, visits, actions); workspaceSurface?.decorateRow(row, item); return row;
 }
 function websiteGroup(group, index, dayKey = '') {
     const expansionKey = dayKey ? `${dayKey}:${group.key}` : group.key;
@@ -793,20 +851,30 @@ function websiteGroup(group, index, dayKey = '') {
     const count = document.createElement('span'); count.className = 'group-count'; count.textContent = t('siteItems', { n: num(group.items.length) });
     const selected = document.createElement('span'); selected.className = 'group-selected';
     const chevron = document.createElement('span'); chevron.className = 'group-chevron'; chevron.textContent = '⌄'; chevron.setAttribute('aria-hidden', 'true');
-    toggle.append(host, count, selected, chevron);
+    toggle.append(host, count, selected);
+    cleanupHint.decorate(toggle, group.items.filter(selectable), true);
     toggle.addEventListener('click', () => {
       state.expanded.has(expansionKey) ? state.expanded.delete(expansionKey) : state.expanded.add(expansionKey);
       // Expansion changes this group's rows, not the search or selection summary.
       // Replacing those unchanged text nodes can visibly flash on the first paint.
       section.syncExpanded(); resultControls(section); expansionControl();
     });
-    header.append(checkbox, toggle);
+    const identity = document.createElement('div'); identity.className = 'group-identity'; identity.append(toggle);
+    header.append(checkbox, identity);
+    const actions = document.createElement('div'); actions.className = 'group-actions';
     if (pageUrl) {
-      const automatic = document.createElement('button'); automatic.type = 'button'; automatic.className = 'quiet group-auto-cleanup';
-      automatic.textContent = t('autoCleanupSet'); automatic.setAttribute('aria-label', `${t('autoCleanupSet')} · ${group.label}`);
+      const automatic = document.createElement('button'); automatic.type = 'button'; automatic.className = 'group-auto-cleanup';
+      const calendar = document.createElement('img'); calendar.className = 'ui-icon'; calendar.src = 'icons/ui/calendar.svg'; calendar.alt = ''; calendar.setAttribute('aria-hidden', 'true');
+      automatic.append(calendar, document.createTextNode(t('autoCleanupSet'))); automatic.setAttribute('aria-label', `${t('autoCleanupSet')} · ${group.label}`);
       automatic.addEventListener('click', () => { void openAutoCleanup({ domain: group.label, includeSubdomains: false }); });
-      header.append(automatic);
+      actions.append(automatic);
     }
+    workspaceSurface?.decorateGroup(identity, group, actions);
+    const collapse = document.createElement('button'); collapse.type = 'button'; collapse.className = 'group-collapse';
+    collapse.setAttribute('aria-label', t('toggleSite', { site: group.label })); collapse.setAttribute('aria-controls', `group-results-${index}`);
+    collapse.append(chevron);
+    collapse.addEventListener('click', () => toggle.click());
+    actions.append(collapse); header.append(actions);
     const results = document.createElement('div'); results.className = 'group-results'; results.id = `group-results-${index}`; results.hidden = !state.expanded.has(expansionKey);
     const populate = () => {
       const table = document.createElement('table'); table.className = 'group-table'; table.setAttribute('aria-label', group.label);
@@ -822,13 +890,15 @@ function websiteGroup(group, index, dayKey = '') {
       table.append(head, body); results.append(table);
       if (shown < group.items.length) {
         const more = document.createElement('button'); more.type = 'button'; more.className = 'quiet group-load-more';
-        more.textContent = t('showMoreSiteItems', { n: num(Math.min(pageSize, group.items.length - shown)) });
+        more.textContent = t('showMoreSiteItems', { n: num(Math.min(groupPageSize, group.items.length - shown)) });
         more.addEventListener('click', () => {
-          const next = Math.min(shown + pageSize, group.items.length);
+          const scrollTop = $('resultScroll').scrollTop;
+          const next = Math.min(shown + groupPageSize, group.items.length);
           appendRows(shown, next); shown = next; state.groupShown.set(expansionKey, shown);
           if (shown === group.items.length) { more.remove(); toggle.focus({ preventScroll: true }); }
-          else more.textContent = t('showMoreSiteItems', { n: num(Math.min(pageSize, group.items.length - shown)) });
+          else more.textContent = t('showMoreSiteItems', { n: num(Math.min(groupPageSize, group.items.length - shown)) });
           resultControls(section);
+          $('resultScroll').scrollTop = scrollTop;
         });
         results.append(more);
       }
@@ -837,7 +907,7 @@ function websiteGroup(group, index, dayKey = '') {
     // the entire scroll area every frame and fight browser scroll anchoring.
     section.syncExpanded = () => {
       const open = state.expanded.has(expansionKey);
-      toggle.setAttribute('aria-expanded', String(open)); results.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open)); collapse.setAttribute('aria-expanded', String(open)); results.hidden = !open;
       if (open && !results.firstChild) populate();
       else if (!open) results.replaceChildren();
     };
@@ -903,10 +973,11 @@ function renderGroups() {
         if (limit < day.groups.length) {
           const more = document.createElement('button'); more.type = 'button'; more.className = 'quiet group-load-more'; more.textContent = t('showMoreSites');
           more.addEventListener('click', () => {
+            const focused = document.activeElement === more;
             const next = Math.min(limit + pageSize, day.groups.length);
             more.remove(); appendSites(limit, next); limit = next; state.groupShown.set(`date:${day.key}`, limit);
-            if (limit < day.groups.length) { content.append(more); more.focus({ preventScroll: true }); }
-            else toggle.focus({ preventScroll: true });
+            if (limit < day.groups.length) { content.append(more); if (focused) more.focus({ preventScroll: true }); }
+            else if (focused) toggle.focus({ preventScroll: true });
             resultControls(section);
           }); content.append(more);
         }
@@ -1007,19 +1078,22 @@ function markHistoryChanged() {
 }
 function watchNextDay() {
   const now = new Date(); const next = new Date(now); next.setHours(24, 0, 0, 50);
-  setTimeout(() => { markHistoryChanged(); activity.invalidate(); watchNextDay(); }, next.getTime() - now.getTime());
+  setTimeout(() => { markHistoryChanged(); activity.invalidate(); void cleanupHint.refresh(); watchNextDay(); }, next.getTime() - now.getTime());
 }
 async function search() {
   if (state.busy || !state.rulesReady) return;
   dismissCompletion();
   const query = $('query').value.trim(); const mode = $('mode').value;
   const filters = timeDraft();
+  if (workspaceSurface && !workspaceSurface.validConditions()) return;
+  const conditions = validateConditions(workspaceSurface ? workspaceSurface.draftConditions() : []);
   // An unbounded empty query means recent browsing; explicit date filters stay authoritative.
   if (!state.dateExplicit) { filters.range = query ? 'all' : defaultBrowsing.range; writeTimeDraft(filters); }
   let range;
   try { range = resolveTimeRange(filters); } catch { return status('invalidTimeRange'); }
   if (query && mode.startsWith('host') && !parseHostnames(query).length) return status('invalidDomain');
-  state.query = query; state.mode = mode; state.filters = filters; state.timeWindow = range;
+  cleanupHint.newSearch();
+  state.query = query; state.mode = mode; state.filters = filters; state.timeWindow = range; state.conditions = conditions;
   invalidateViewScans();
   historyChanged = false;
   state.busy = true; renderRows(); status('scanning');
@@ -1048,15 +1122,18 @@ async function request(message) {
 }
 function openDeletionConfirm(urls) {
   if (state.busy || !state.rulesReady || updateApplying || draftChanged() || !urls.length) return;
+  if (urls.some(url => state.protectedUrls.has(url))) return;
   dismissCompletion(); state.pending = [...urls];
   $('confirmBody').textContent = t('confirmBody', { n: num(state.pending.length) });
   renderDeletionPreview(); $('confirmDialog').returnValue = ''; $('confirmDialog').showModal();
+  workspaceSurface?.prepareImpact(state.pending, state.timeWindow);
   // The modal frame omits autofocus; keep initial focus off the preview summaries.
   if (modal) $('confirmDialog').querySelector('[value="cancel"]').focus({ preventScroll: true });
 }
 async function deleteConfirmed() {
   if (state.busy || !state.rulesReady || draftChanged() || !state.pending.length) { state.pending = []; return; }
   invalidateViewScans();
+  cleanupHint.clearRemaining();
   suggestions.invalidate();
   const urls = [...state.pending]; state.pending = []; state.busy = true; controls();
   const attempted = new Set(urls);
@@ -1075,6 +1152,7 @@ async function deleteConfirmed() {
       job = await request({ type: 'delete-status', id: job.id });
     }
     if (job.phase === 'verifyFailed') return status('verifyFailed');
+    cleanupHint.verified(job.remaining);
     const activityRecorded = job.privateCleanup || await activity.refreshCleanup();
     if (job.privateCleanup) activity.invalidate('browsing');
     const all = await readScan(state.timeWindow);
@@ -1189,18 +1267,56 @@ function setSettingsSection(section) {
   $('preferencesForm').hidden=!general;
   $('cleanupSettingsContent').hidden=section!=='tasks'&&section!=='protection';
   $('syncSettingsContent').hidden=section!=='sync';
+  $('recommendationSettingsContent').hidden=section!=='recommendations';
+  if(section==='recommendations' && !recommendationSurface) {
+    recommendationSurface=mountRecommendationSettings($('recommendationSettingsContent'), {
+      lang:state.lang, t, storage:chrome.storage.local, request,
+      snapshot:()=>({matches:state.matches.filter(selectable),protectedSites:state.protectedSites,scanned:state.scanned,stale:draftChanged()}),
+      onSaved:()=>cleanupHint.refresh(), onProtection:()=>navigateSettings('protection'), onDirty:renderUpdate,
+      onPage:page=>visitSurfacePage('recommendation', page),
+      onPagesClosed:ids=>settingsTabs.forget(ids.map(id=>`recommendation-${id}`)),
+    });
+    void recommendationSurface.enter();
+  }
   if(section==='sync') {
-    if(!syncSurface) syncSurface=mountSyncSettings($('syncSettingsContent'),{lang:state.lang});
+    if(!syncSurface) syncSurface=mountSyncSettings($('syncSettingsContent'),{lang:state.lang,request});
     $('syncSettingsContent').querySelector('h1').focus({preventScroll:true});
   }
   document.querySelectorAll('[data-preference-page]').forEach(page=>{page.hidden=page.dataset.preferencePage!==section;});
   document.querySelectorAll('[data-settings-section]').forEach(button=>button.setAttribute('aria-current',button.dataset.settingsSection===section?'page':'false'));
   settingsSelects.close();
 }
+function settingsBusy() { return savingPreference || syncSurface?.isBusy() || recommendationSurface?.isBusy() || cleanupSurface?.isBusy(); }
+function ensureCleanupSurface() {
+  if(!cleanupSurface) cleanupSurface=mountAutoCleanup($('cleanupSettingsContent'), {
+    lang:state.lang,send:message=>chrome.runtime.sendMessage({...message,clientId}),onSection:setSettingsSection,
+    onPage:page=>visitSurfacePage('cleanup', page),
+    onPagesClosed:ids=>settingsTabs.forget(ids.map(id=>`cleanup-${id}`)),
+  });
+}
+function visitSurfacePage(owner, page) {
+  const surface = () => owner === 'cleanup' ? cleanupSurface : recommendationSurface;
+  settingsTabs.visit({ ...page, id:`${owner}-${page.id}`,
+    activate:()=>{setSettingsSection(page.section);surface().activatePage(page.id);},
+    close:done=>surface().closePage(page.id,ids=>done(ids.map(id=>`${owner}-${id}`))),
+  });
+}
+function visitPreferencePage(section) {
+  const title = document.querySelector(`[data-settings-section="${section}"] span`).textContent;
+  settingsTabs.visit({ id:section,title,panelId:section==='sync'?'syncSettingsContent':`settings-panel-${section}`,
+    activate:()=>navigateSettings(section), close:done=>closePreferencePage(section,()=>done([section])),
+  });
+}
 function navigateSettings(section, rule) {
-  if(syncSurface?.isBusy()) return;
-  if(!cleanupSurface) cleanupSurface=mountAutoCleanup($('cleanupSettingsContent'),{lang:state.lang,send:message=>chrome.runtime.sendMessage({...message,clientId}),onSection:setSettingsSection});
-  cleanupSurface.navigate(section,rule);
+  if(settingsBusy()) return;
+  if(rule) { ensureCleanupSurface(); cleanupSurface.navigate(section,rule); return; }
+  setSettingsSection(section);
+  if(section==='tasks'||section==='protection') {
+    ensureCleanupSurface();cleanupSurface.activatePage(section==='tasks'?'tasksPage':'protectionPage');
+  } else if(section==='recommendations') {
+    // A newly mounted surface emits its page after the initial read.
+    if(!recommendationSurface.isBusy()) recommendationSurface.activatePage('list');
+  } else visitPreferencePage(section);
 }
 async function openPreferences(section='general', rule) {
   const dialog = $('preferencesDialog');
@@ -1242,19 +1358,42 @@ function preferenceDraft() {
     privateCleanup: $('privateCleanup').checked, softPrivacy: $('softPrivacy').checked,
   };
 }
+function restorePreferenceSection(section) {
+  if(section==='privacy') { $('privateCleanup').checked=preferenceBaseline.privateCleanup; $('softPrivacy').checked=preferenceBaseline.softPrivacy; }
+  else {
+    $('preferencesForm').querySelector(`input[name=launchMode][value="${preferenceBaseline.launchMode}"]`).checked=true;
+    $('defaultView').value=preferenceBaseline.view; $('defaultRange').value=preferenceBaseline.range;
+    for(const view of preferenceBaseline.viewOrder) {
+      const row=$('viewChoices').querySelector(`[data-view-choice="${view}"]`);
+      row.querySelector('input').checked=!preferenceBaseline.hiddenViews.includes(view);$('viewChoices').append(row);
+    }
+    syncPreferenceViews();
+  }
+}
+function confirmPreferenceExit(discard, saved = discard) {
+  const confirmation=$('unsavedPreferencesDialog');
+  if(confirmation.open) return;
+  preferenceExit={discard,saved};
+  $('unsavedPreferencesStatus').hidden=true;$('preferencesDialog').dataset.confirming='';confirmation.showModal();
+}
+function closePreferencePage(section, done) {
+  if(settingsBusy()) return;
+  if(section==='sync'||!preferenceBaseline) { done();return; }
+  const keys=section==='privacy'?['privateCleanup','softPrivacy']:['launchMode','view','range','viewOrder','hiddenViews'];
+  const draft=preferenceDraft();
+  if(keys.every(key=>JSON.stringify(draft[key])===JSON.stringify(preferenceBaseline[key]))) { done();return; }
+  confirmPreferenceExit(()=>{restorePreferenceSection(section);done();},done);
+}
 function requestClosePreferences() {
-  if (savingPreference || syncSurface?.isBusy()) return;
+  if (savingPreference || syncSurface?.isBusy() || recommendationSurface?.isBusy()) return;
+  if(recommendationSurface?.hasUnsavedChanges()) { recommendationSurface.guardUnsaved(requestClosePreferences); return; }
   if(cleanupSurface?.hasUnsavedChanges()) { cleanupSurface.guardUnsaved(requestClosePreferences); return; }
   const draft = preferenceDraft();
   if (!preferenceBaseline || Object.keys(preferenceBaseline).every(key => JSON.stringify(draft[key]) === JSON.stringify(preferenceBaseline[key]))) {
     $('preferencesDialog').close();
     return;
   }
-  const confirmation = $('unsavedPreferencesDialog');
-  if (confirmation.open) return;
-  $('unsavedPreferencesStatus').hidden = true;
-  $('preferencesDialog').dataset.confirming = '';
-  confirmation.showModal();
+  confirmPreferenceExit(()=>$('preferencesDialog').close());
 }
 async function savePreferences(event) {
   event.preventDefault();
@@ -1276,8 +1415,10 @@ async function savePreferences(event) {
     activity.setSoftPrivacy(draft.softPrivacy);
     preferenceBaseline = draft;
     // Defaults take effect on reopening; preserve the current query, view and time range.
+    const afterSave = confirmation.open ? preferenceExit?.saved : null;
     if (confirmation.open) confirmation.close();
-    $('preferencesDialog').close();
+    if(afterSave) { savingPreference=false;afterSave(); }
+    else { savingPreference=false;requestClosePreferences(); }
   } catch {
     $('preferencesStatus').textContent = t('preferencesSaveFailed');
     if (confirmation.open) { $('unsavedPreferencesStatus').textContent = t('preferencesSaveFailed'); $('unsavedPreferencesStatus').hidden = false; }
@@ -1292,19 +1433,22 @@ async function savePreferences(event) {
 
 function topLayer() {
   if (settingsSelects?.isOpen()) return { consume: true, contains: target => settingsSelects.contains(target), close: () => settingsSelects.close(true) };
-  if (datePicker?.isOpen()) return { consume: true, contains: target => datePicker.contains(target), close: () => datePicker.close(true) };
+  if (settingsTabs?.isMenuOpen()) return { consume:true, contains:target=>settingsTabs.contains(target), close:()=>settingsTabs.closeMenu(true) };
   if ($('themeMenu')?.open) return { consume: true, contains: target => $('themeMenu').contains(target), close: () => { $('themeMenu').open = false; $('themeToggle').setAttribute('aria-expanded', 'false'); $('themeToggle').focus({ preventScroll: true }); } };
   const dialogs = [...document.querySelectorAll('dialog[open]')].filter(node => node.id !== 'datePicker');
   const dialog = dialogs.at(-1);
-  if (dialog) return { consume: true, contains: (target, event) => {
+  if (dialog) return { consume: !dialog.classList.contains('wt-anchored'), contains: (target, event) => {
     const box = dialog.getBoundingClientRect();
     return dialog.contains(target) && event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
   }, close: () => {
+    if (dialog.id === 'workspaceDialog') { workspaceSurface?.dismiss(); return; }
     if (dialog.classList.contains('auto-confirm-dialog')) { cleanupSurface?.dismiss(); return; }
-    if (dialog.id === 'preferencesDialog') { if(['tasks','protection'].includes(settingsSection) && cleanupSurface?.back()) return; if(settingsSection==='protection')navigateSettings('tasks');else requestClosePreferences(); return; }
+    if (dialog.id === 'preferencesDialog') { if(settingsSection==='recommendations' && recommendationSurface?.back()) return; if(['tasks','protection'].includes(settingsSection) && cleanupSurface?.back()) return; if(settingsSection==='protection')navigateSettings('tasks');else requestClosePreferences(); return; }
     if ((dialog.id === 'unsavedPreferencesDialog' && savingPreference) || (dialog.id === 'protectionDialog' && state.busy)) return;
     dialog.returnValue = ''; dialog.close();
   } };
+  const advancedFilters = document.querySelector('.wt-advanced[open]');
+  if (advancedFilters) return { contains: target => advancedFilters.contains(target), close: () => { advancedFilters.open = false; advancedFilters.querySelector('summary').focus({ preventScroll: true }); } };
   const help = document.querySelector('.search-help[open]');
   if (help) return { contains: target => help.contains(target), close: () => {
     const restoreFocus = help.contains(document.activeElement);
@@ -1343,25 +1487,59 @@ function setupLayerDismissal() {
   });
 }
 function mount() {
+  const conditionDraft = workspaceSurface ? workspaceSurface.draftConditions() : state.conditions;
   cancelAnimationFrame(mountFrame);
   groupViews.clear();
   dismissCompletion();
   suggestions?.destroy();
   datePicker?.destroy();
   settingsSelects?.destroy();
+  settingsTabs?.destroy();
   nameplateSurface?.destroy();
+  workspaceSurface?.destroy();
+  workspaceSurface = null;
   layerEvents?.abort();
   queryPlaceholder?.destroy();
   searchMotion?.destroy();
   backToTop?.destroy();
+  resultLoading?.destroy();
+  resultLoading = null;
   scopeSizes?.disconnect();
   document.documentElement.lang = state.lang; document.title = 'History Sweep';
   $('app').dataset.mounting = 'true';
   document.getElementById('app').innerHTML = view(t, compact, modal);
+  workspaceSurface = mountWorkspaceTools({ lang: state.lang, request,
+    snapshot: () => ({ ...state, query: $('query').value.trim(), mode: $('mode').value, filters: timeDraft(),
+      busy: state.busy || !state.rulesReady || updateApplying, stale: draftChanged() }),
+    onCriteriaInput: controls, onSearch: search, onDelete: openDeletionConfirm,
+    onChange: tools => {
+      const protectedChanged = JSON.stringify([...state.protectedUrls]) !== JSON.stringify(tools.protectedUrls);
+      const labelsChanged = websiteLabelSnapshot !== JSON.stringify(tools.labels);
+      websiteLabelSnapshot = JSON.stringify(tools.labels);
+      state.protectedUrls = new Set(tools.protectedUrls);
+      for (const url of state.protectedUrls) state.selected.delete(url);
+      if (protectedChanged) {
+        state.pending = [];
+        if ($('confirmDialog').open) { $('confirmDialog').returnValue = ''; $('confirmDialog').close(); }
+      }
+      if (protectedChanged || labelsChanged) { groupViews.clear(); groupRender = null; rowRender = null; renderRows(); }
+      else controls();
+    },
+    applySearch: async saved => {
+      if (defaultBrowsing.hiddenViews.includes(saved.view)) throw new Error('VIEW_HIDDEN');
+      $('query').value = saved.query; $('mode').value = saved.mode; state.dateExplicit = true;
+      writeTimeDraft({ range: saved.range, startDate: '', endDate: '' });
+      workspaceSurface.setConditions(saved.conditions); state.grouping = saved.view;
+      state.selected.clear(); await search();
+    },
+  });
+  workspaceSurface.setConditions(conditionDraft);
+  cleanupHint.mount();
   scopeSizes = setupScopeSize();
   applyViewPreferences();
   activity.mount();
   backToTop = setupBackToTop();
+  resultLoading = setupResultLoading();
   $('themeMenu').addEventListener('toggle', syncThemeControl);
   for (const choice of $('themeChoices').querySelectorAll('[data-theme-choice]')) choice.addEventListener('click', () => {
     document.dispatchEvent(new CustomEvent('history-sweep:set-theme', { detail: choice.dataset.themeChoice }));
@@ -1425,6 +1603,10 @@ function mount() {
     $('searchHelpToggle').focus({ preventScroll: true });
   });
   settingsSelects = setupSettingsSelects($('preferencesDialog'));
+  settingsTabs = setupSettingsTabs($('settingsTabs'), {
+    label:t('preferences'),moreLabel:workspaceText(state.lang,'visitedPages'),closeLabel:page=>workspaceText(state.lang,'closePage',{page}),
+    onEmpty:requestClosePreferences,isBusy:settingsBusy,
+  });
   $('viewChoices').addEventListener('change', syncPreferenceViews);
   const viewChoices = $('viewChoices');
   let draggedView = null;
@@ -1491,7 +1673,7 @@ function mount() {
   });
   datePicker = setupDatePicker({ lang: state.lang, t });
   suggestions = setupSuggestions({ input: $('query'), mode: $('mode'), panel: $('suggestionsPanel'), list: $('suggestionsList'), readHistory, onChoose: controls });
-  for (const choice of document.querySelectorAll('.time-range-radio')) choice.addEventListener('click', () => {
+  for (const choice of document.querySelectorAll('.time-range-radio')) choice.addEventListener('change', () => {
     if (!choice.checked) return;
     $('timeRange').value = choice.value;
     $('timeRange').dispatchEvent(new Event('change', { bubbles: true }));
@@ -1516,16 +1698,18 @@ function mount() {
   $('protectionDialog').addEventListener('cancel', event => { if (state.busy) event.preventDefault(); });
   $('currentSite')?.addEventListener('click', currentSite);
   cleanupSurface?.destroy(); cleanupSurface=null; syncSurface=null;
+  recommendationSurface?.destroy(); recommendationSurface=null;
   $('openPreferences').addEventListener('click', ()=>openPreferences());
   document.querySelectorAll('[data-settings-section]').forEach(button=>button.addEventListener('click',()=>navigateSettings(button.dataset.settingsSection)));
 
   $('autoFromSearch').addEventListener('click', () => { const rule = autoSearchRule(); if (rule) void openAutoCleanup(rule); });
   for (const id of ['closePreferences', 'dismissPreferences','backPreferences']) $(id).addEventListener('click', requestClosePreferences);
   $('keepEditingPreferences').addEventListener('click', () => $('unsavedPreferencesDialog').close());
-  $('discardPreferences').addEventListener('click', () => { $('unsavedPreferencesDialog').close(); $('preferencesDialog').close(); });
+  $('discardPreferences').addEventListener('click', () => { const action=preferenceExit?.discard; $('unsavedPreferencesDialog').close();action?.(); });
   $('saveUnsavedPreferences').addEventListener('click', savePreferences);
   $('unsavedPreferencesDialog').addEventListener('cancel', event => { if (savingPreference) event.preventDefault(); });
   $('unsavedPreferencesDialog').addEventListener('close', () => {
+    preferenceExit=null;
     delete $('preferencesDialog').dataset.confirming;
   });
   $('preferencesForm').addEventListener('submit', savePreferences);
@@ -1533,6 +1717,7 @@ function mount() {
   $('preferencesDialog').addEventListener('cancel', event => { event.preventDefault(); requestClosePreferences(); });
   $('preferencesDialog').addEventListener('close', async event => {
     settingsSelects.close();
+    settingsTabs.closeMenu();
     if (!modal) return;
     const dialog = event.target;
     // Keep the outer window close control hidden until this drawer has slid out.
@@ -1559,7 +1744,7 @@ function mount() {
     });
   }
   $('searchForm').addEventListener('submit', event => { event.preventDefault(); search(); });
-  $('selectAll').addEventListener('click', () => { state.selected = allMatchesSelected() ? new Set() : new Set(state.matches.map(item => item.url)); controls(); });
+  $('selectAll').addEventListener('click', () => { state.selected = allMatchesSelected() ? new Set() : new Set(state.matches.filter(selectable).map(item => item.url)); controls(); });
   $('clear').addEventListener('click', () => { state.selected.clear(); controls(); });
   for (const [id, grouping] of [['groupByDate', 'date'], ['groupBySite', 'website'], ['groupByFrequency', 'frequency']]) {
     $(id).addEventListener('click', () => { void changeGrouping(grouping); });
@@ -1612,18 +1797,23 @@ void requestUpdateFeedback({ type: 'check-for-update' }).then(refreshUpdate).cat
   renderUpdateDetails();
 });
 globalThis.chrome?.storage?.onChanged?.addListener((changes, area) => {
+  if (area === 'local' && (Object.hasOwn(changes, WORKSPACE_TOOLS_KEY) || Object.hasOwn(changes, MANUAL_CLEANUP_KEY))) void workspaceSurface?.refresh();
   if (area === 'session' && Object.hasOwn(changes, 'extensionUpdate')) void refreshUpdate();
   if (area === 'local' && Object.hasOwn(changes, 'extensionUpdateCheck')) void refreshUpdate();
-  if (area === 'local' && Object.hasOwn(changes, 'localActivity')) activity.invalidate('cleanup');
+  if (area === 'local' && Object.hasOwn(changes, 'localActivity')) { activity.invalidate('cleanup'); void cleanupHint.refresh(); }
+  if (area === 'local' && Object.hasOwn(changes, 'softPrivacy')) cleanupHint.setSoftPrivacy(changes.softPrivacy.newValue);
+  if (area === 'local' && Object.hasOwn(changes, RECOMMENDATION_KEY)) void cleanupHint.refresh();
   if (area === 'local' && Object.hasOwn(changes, 'softPrivacy')) activity.setSoftPrivacy(changes.softPrivacy.newValue === undefined ? false : changes.softPrivacy.newValue);
 });
 // Refresh idle results, but defer while the user edits, selects or confirms a deletion.
 globalThis.chrome?.history?.onVisited?.addListener(markHistoryChanged);
 globalThis.chrome?.history?.onVisitRemoved?.addListener(markHistoryChanged);
+globalThis.chrome?.history?.onVisited?.addListener(() => cleanupHint.clearRemaining());
 globalThis.chrome?.history?.onVisited?.addListener(() => activity.invalidate('browsing'));
 globalThis.chrome?.history?.onVisitRemoved?.addListener(() => activity.invalidate('browsing'));
 window.addEventListener('focus', markHistoryChanged);
 window.addEventListener('focus', () => activity.invalidate());
+window.addEventListener('focus', () => { void cleanupHint.refresh(); });
 window.addEventListener('focus', refreshShortcut);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void refreshShortcut(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) markHistoryChanged(); });
@@ -1631,7 +1821,11 @@ document.addEventListener('close', () => queueMicrotask(scheduleHistoryRefresh),
 watchNextDay();
 // Extension-local rules load before any selection or deletion becomes available.
 const initialNameplate = request({ type: 'claim-nameplate-reveal' }).then(data => data.nameplate).catch(() => null);
+// Optional recommendations must not hold up searching or the protected-site boundary.
+void cleanupHint.refresh();
 request({ type: 'get-protection' }).then(async data => {
+  if (!Array.isArray(data.urls)) throw new Error('BACKGROUND_UNAVAILABLE');
+  state.protectedUrls = new Set(data.urls);
   state.protectedSites = data.sites;
   try { defaultBrowsing = await readBrowsingPreferences(chrome.storage.local); }
   catch { status('preferencesLoadFailed'); controls(); return; }
@@ -1664,4 +1858,4 @@ globalThis.chrome?.storage?.onChanged?.addListener((changes, area) => {
   }).catch(() => { status('rulesUnavailable'); controls(); });
 });
 
-if(['general','privacy'].includes(initialSettings)) void openPreferences(initialSettings);
+if(['general','privacy','recommendations'].includes(initialSettings)) void openPreferences(initialSettings);

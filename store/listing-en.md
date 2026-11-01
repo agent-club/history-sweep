@@ -1,6 +1,6 @@
 # History Sweep
 
-Prepared for the v0.6.0 update; not a claim of current store availability.
+Prepared for the v0.7.0 candidate update; not a claim of current store availability.
 
 ## Summary (Chrome Web Store)
 Find, select, and delete browsing history in batches. A calmer, more private way to tidy up Chrome.
@@ -32,13 +32,16 @@ LOCAL ACTIVITY AND PRIVATE CLEANUP
 View local browsing and cleanup activity. Browsing history appears first; click Expand analysis or Collapse analysis to control the panel. Enable and save Private cleanup to stop new cleanups from saving counts or website details. Existing local activity is retained.
 
 SCHEDULED CLEANUP, ON THIS DEVICE
-Create exact-domain or subdomain tasks with a one-time, daily, weekly or monthly schedule, optionally requiring full days without a visit. Preview before enabling. Saving never deletes immediately. Kept websites take priority. Pause one task or all tasks. Chrome must be running; sleep or shutdown can delay execution. After restart, overdue tasks rescan once before continuing their schedule. Tasks and run summaries stay local and are excluded from sync and backup.
+Create exact-domain or subdomain tasks with a one-time, daily, weekly or monthly schedule, optionally requiring full days without a visit. Preview before enabling. Saving never deletes immediately. Kept websites take priority. Pause one task or all tasks. Chrome must be running; sleep or shutdown can delay execution. After restart, overdue tasks rescan once before continuing their schedule. Tasks and run summaries stay local. Task scopes can be explicitly included in encrypted disk backups; restored tasks remain paused. Run summaries are excluded.
 
 MAKE THE WORKSPACE YOURS
 Reorder or hide browsing views, copy a full URL from a result row, and hide cleanup activity without deleting it. Unsaved preferences ask before closing inside the extension. A local decorative nameplate has no account or monetary value. Quick start and offline release notes are available in Preferences.
 
+WORKSPACE TOOLS AND RECOMMENDATIONS
+Save searches and combine explicit AND filters. Protect exact URLs, inspect available visits and deletion impact, and add manual website labels with local colors or images. Preview a cleaned link before copying, or export selected URLs and CSV; exported files are not encrypted. Review local cleanup recommendations without automatic selection or deletion. Kept websites and URLs take priority. Clear existing Local activity explicitly; interrupted manual cleanup is reported without resuming it. Settings tabs preserve drafts when switching pages.
+
 MANUAL SETTINGS SYNC AND ENCRYPTED BACKUP
-In Preferences → Sync & disk backup, save an HTTPS WebDAV file URL to transfer language, appearance and opening preferences manually. Browsing history, cleanup activity, kept websites, browsing defaults and Private cleanup preferences are excluded. Request access only to your chosen host when testing or transferring. The provider can read remote JSON. Export a password-encrypted backup outside the extension folder for manual recovery after uninstall; Chrome removes extension storage on uninstall. Backups are manual snapshots, not automatic sync.
+In Preferences → Sync & disk backup, save an HTTPS WebDAV file URL to transfer language, appearance and opening preferences manually. Browsing history, cleanup activity, kept websites, browsing defaults and Private cleanup preferences are excluded. Request access only to your chosen host when testing or transferring. The provider can read remote JSON. Export a password-encrypted backup outside the extension folder for manual recovery after uninstall; Chrome removes extension storage on uninstall. Backups are manual snapshots, not automatic sync. Disk files can optionally include kept websites/URLs, browsing defaults and task scopes. Restoring tasks keeps them paused. These sections never enter WebDAV transfer. Saved searches, manual labels and label images are excluded.
 
 PRIVATE BY DESIGN
 History is processed in your browser and never uploaded by the extension. No account, analytics, or ads. The history permission lets it read and remove browsing history; activeTab supports user-invoked website searches and the in-page modal, scripting inserts the chosen modal host, contextMenus adds the website right-click entry, storage saves kept-domain rules, the opening preference, and daily cleanup counts with hostname/latest-title/last-visit summaries only on this device, without complete deleted URLs; alarms schedules the cleanup tasks you enable; favicon displays Chrome-provided website icons in group headings and local activity. It does not read website passwords, cookies, bookmarks, or webpage contents. WebDAV connection credentials you enter are saved locally and used only to authenticate to your selected server; backup files encrypt them. The optional HTTPS host access supports user-initiated WebDAV operations.

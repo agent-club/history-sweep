@@ -9,6 +9,11 @@ import { createActivityLog } from '../extension/activity-log.mjs';
 import { createUpdateChecker, isNewerVersion } from '../extension/update-check.mjs';
 import { createNameplateStore } from '../extension/nameplate-store.mjs';
 import { createAutoCleanup } from '../extension/auto-cleanup.mjs';
+import * as workspaceTools from '../extension/workspace-tools.mjs';
+import { validateLocalBackup, pausedTaskConfig } from '../extension/local-backup.mjs';
+import { readBrowsingPreferences } from '../extension/browsing-preferences.mjs';
+import { validateConfig as validateSyncConfig, validateConnection, CONNECTION_KEY } from '../extension/config-sync.mjs';
+import { normalizeRule } from '../extension/auto-cleanup-model.mjs';
 
 const source = (await readFile(new URL('../extension/background.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '');
 const sender = { id: 'fixture', frameId: 0, documentId: 'popup-document', url: 'chrome-extension://fixture/popup.html' };
@@ -31,7 +36,7 @@ function worker(history, sessions = {}, currentVersion = '0.3.1', updateOptions 
     action: { setPopup: async data => { popups.push(data.popup); }, onClicked: { addListener: callback => { actionClicked = callback; } } },
     scripting: { executeScript: async data => { injected.push(data); return [{ result: { opened: true } }]; } },
     storage: {
-      local: { get: async () => ({ ...saved }), set: async data => { Object.assign(saved, data); } },
+      local: { get: async () => ({ ...saved }), set: async data => { Object.assign(saved, data); }, remove: async key => { delete saved[key]; } },
       session: { get: async () => structuredClone(sessions), set: async data => { Object.assign(sessions, structuredClone(data)); }, remove: async key => { delete sessions[key]; } },
       onChanged: { addListener() {} },
     },
@@ -39,7 +44,7 @@ function worker(history, sessions = {}, currentVersion = '0.3.1', updateOptions 
     contextMenus: { create: menu => { menus.push(menu); }, onClicked: { addListener: callback => { menuClicked = callback; } } },
     runtime: { id: 'fixture', getManifest: () => ({ version: currentVersion }), reload: () => { reloads++; }, onUpdateAvailable: { addListener: callback => { updateAvailable = callback; } }, getURL: path => 'chrome-extension://fixture/' + path, onMessage: { addListener: value => { listener = value; } }, onInstalled: { addListener: callback => { installed.push(callback); } }, onStartup: { addListener() {} } },
   };
-  runInNewContext(source, { ...filters, createNameplateStore, createAutoCleanup, createLauncher, createActivityLog, createUpdateChecker: api => createUpdateChecker({ ...api, ...updateOptions }, { fetchVersion: updateOptions.fetchVersion }), isNewerVersion, chrome, URL, URLSearchParams, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date: updateOptions.Date || Date });
+  runInNewContext(source, { ...filters, ...workspaceTools, validateLocalBackup, pausedTaskConfig, readBrowsingPreferences, validateSyncConfig, validateConnection, CONNECTION_KEY, normalizeRule, createNameplateStore, createAutoCleanup, createLauncher, createActivityLog, createUpdateChecker: api => createUpdateChecker({ ...api, ...updateOptions }, { fetchVersion: updateOptions.fetchVersion }), isNewerVersion, chrome, URL, URLSearchParams, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date: updateOptions.Date || Date });
   return {
     opened, timers, saved, menus, injected, popups, sessions, updateAvailable: details => updateAvailable(details), get reloads() { return reloads; }, clickAction: tab => actionClicked(tab), install: (reason = 'install') => installed.forEach(callback => callback({ reason })), clickMenu: info => menuClicked(info), setActiveUrl: url => { activeUrl = url; },
     send: (message, from = sender) => new Promise(resolve => {
@@ -55,6 +60,34 @@ async function finished(w, id) {
   }
   throw new Error('Deletion did not finish');
 }
+
+test('exact kept URLs are worker-enforced and interruption metadata contains no target list', async () => {
+  const kept = 'https://retained.example/synthetic-keep';
+  const tools = workspaceTools.workspaceDefaults(); tools.protectedUrls = [kept];
+  const saved = { workspaceTools: tools };
+  const w = worker({ deleteUrl: async () => {}, getVisits: async () => [] }, {}, '0.6.0', { localState: saved });
+  assert.equal((await w.send({ type: 'start-delete', urls: [kept] })).code, 'PROTECTED_URL');
+  assert.equal(saved.manualCleanupState, undefined);
+  const started = await w.send({ type: 'start-delete', urls: ['https://retained.example/synthetic-other'] });
+  assert.equal(started.ok, true);
+  if (saved.manualCleanupState) assert.doesNotMatch(JSON.stringify(saved.manualCleanupState), /https:|synthetic-other/);
+  await finished(w, started.data.id);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(saved.manualCleanupState, undefined);
+  saved.manualCleanupState = { id: 'synthetic-interruption', pending: true };
+  assert.equal((await w.send({ type: 'get-workspace-tools' })).data.interrupted, true);
+  await w.send({ type: 'dismiss-cleanup-notice' }); assert.equal(saved.manualCleanupState, undefined);
+});
+
+test('sync options can read local backup scope but cannot use other trusted-page commands', async () => {
+  const w = worker({});
+  const syncSender = { ...sender, url: 'chrome-extension://fixture/sync.html' };
+  const result = await w.send({ type: 'get-local-backup' }, syncSender);
+  assert.equal(result.ok, true);
+  assert.deepEqual(Object.keys(result.data).sort(), ['browsing', 'protection', 'tasks']);
+  assert.equal((await w.send({ type: 'get-nameplate' }, syncSender)).ok, false);
+  assert.equal((await w.send({ type: 'get-local-backup' }, { ...sender, url: 'https://untrusted.example/' })).ok, false);
+});
 
 test('nameplates persist across trusted views and reject untrusted web senders', async () => {
   const w = worker({});

@@ -1,4 +1,6 @@
-// Configuration only: no history or activity log access.
+import { validateLocalBackup, MAX_BACKUP_BYTES } from './local-backup.mjs';
+
+// Remote transfer remains configuration-only. Optional local backup sections never enter WebDAV.
 export const CONFIG_KEY = 'syncMetadata';
 export const CONNECTION_KEY = 'syncConnection';
 export const MAX_CONFIG_BYTES = 128 * 1024;
@@ -134,26 +136,31 @@ async function backupKey(password, salt, usage) {
   return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' }, key, { name: 'AES-GCM', length: 256 }, false, [usage]);
 }
 
-export async function encryptBackup(connection, config, password) {
-  const body = JSON.stringify({ connection: connection === null ? null : validateConnection(connection), config: validateConfig(config) });
+export async function encryptBackup(connection, config, password, localSettings) {
+  const body = JSON.stringify({ connection: connection === null ? null : validateConnection(connection), config: validateConfig(config),
+    ...(localSettings === undefined ? {} : { localSettings: validateLocalBackup(localSettings) }) });
+  if (size(body) > MAX_BACKUP_BYTES / 2) fail('INVALID_BACKUP');
   const salt = crypto.getRandomValues(new Uint8Array(16)); const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await backupKey(password, salt, 'encrypt'), encoder.encode(body));
   const bytes = new Uint8Array(ciphertext); let binary = '';
   for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-  return JSON.stringify({ format: 'history-sweep-backup', version: 1, salt: base64(salt), iv: base64(iv), ciphertext: btoa(binary) });
+  return JSON.stringify({ format: 'history-sweep-backup', version: localSettings === undefined ? 1 : 2, salt: base64(salt), iv: base64(iv), ciphertext: btoa(binary) });
 }
 
 export async function decryptBackup(text, password) {
-  if (typeof text !== 'string' || size(text) > MAX_CONFIG_BYTES * 2) fail('INVALID_BACKUP');
+  if (typeof text !== 'string' || size(text) > MAX_BACKUP_BYTES) fail('INVALID_BACKUP');
   try {
     const value = JSON.parse(text);
-    if (!exactKeys(value, ['format', 'version', 'salt', 'iv', 'ciphertext']) || value.format !== 'history-sweep-backup' || value.version !== 1 ||
+    if (!exactKeys(value, ['format', 'version', 'salt', 'iv', 'ciphertext']) || value.format !== 'history-sweep-backup' || ![1, 2].includes(value.version) ||
         !['salt', 'iv', 'ciphertext'].every(key => typeof value[key] === 'string')) fail('INVALID_BACKUP');
+    if (value.version === 1 && size(text) > MAX_CONFIG_BYTES * 2) fail('INVALID_BACKUP');
     const salt = unbase64(value.salt); const iv = unbase64(value.iv);
     if (salt.length !== 16 || iv.length !== 12) fail('INVALID_BACKUP');
     const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, await backupKey(password, salt, 'decrypt'), unbase64(value.ciphertext));
+    if (decrypted.byteLength > MAX_BACKUP_BYTES / 2) fail('INVALID_BACKUP');
     const body = JSON.parse(new TextDecoder().decode(decrypted));
-    if (!exactKeys(body, ['connection', 'config'])) fail('INVALID_BACKUP');
-    return { connection: body.connection === null ? null : validateConnection(body.connection), config: validateConfig(body.config) };
+    if (!exactKeys(body, value.version === 1 ? ['connection', 'config'] : ['connection', 'config', 'localSettings'])) fail('INVALID_BACKUP');
+    return { connection: body.connection === null ? null : validateConnection(body.connection), config: validateConfig(body.config),
+      ...(value.version === 2 ? { localSettings: validateLocalBackup(body.localSettings) } : {}) };
   } catch { fail('INVALID_BACKUP'); }
 }

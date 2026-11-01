@@ -18,11 +18,37 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
 .settings-window-header h2, .settings-window-header > span { margin:0; font-size:12px; font-weight:500; color:var(--muted); }
 .settings-back { display:inline-flex; align-items:center; gap:7px; font-size:12px; text-decoration:none; }
 .settings-back .ui-icon { width:15px; height:15px; }
-.settings-layout { flex:1; min-height:0; display:grid; grid-template-columns:188px minmax(0,1fr); }
+/* The fixed header owns the tabs; only the page beneath it scrolls. */
+#preferencesDialog .settings-tabs-header { display:grid; grid-template-columns:220px minmax(0,1fr) 32px; gap:0; padding-left:0; min-height:60px; }
+.settings-tabs-header .settings-back { justify-self:start; margin-left:25px; }
+.settings-tabs { position:relative; display:flex; align-items:center; min-width:0; margin:0 16px 0 38px; }
+.settings-tabs-list { display:flex; align-items:center; gap:6px; min-width:0; flex:1; overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain; touch-action:pan-x; scrollbar-width:none; padding:3px; }
+.settings-tabs-list::-webkit-scrollbar { display:none; }
+.settings-tab { display:flex; align-items:center; flex:0 0 auto; height:28px; max-width:210px; border:1px solid var(--line); border-radius:6px; background:var(--surface); color:var(--muted); }
+.settings-tab[data-active=true] { background:var(--mist-strong); border-color:transparent; color:var(--ink); }
+.settings-tab-select, .settings-tab-close, .settings-tabs-more, .settings-tabs-menu-page { font:inherit; cursor:pointer; border:0; background:transparent; color:inherit; }
+.settings-tab-select { min-width:0; min-height:0; height:26px; padding:0 7px 0 12px; font-size:12px; line-height:26px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:5px; }
+.settings-tab[data-active=true] .settings-tab-select { font-weight:600; }
+.settings-tab-close { display:grid; place-items:center; flex:0 0 24px; width:24px; height:24px; min-height:0; padding:0; margin-right:3px; border-radius:4px; color:var(--muted); }
+.settings-tab-close .ui-icon { width:12px; height:12px; filter:var(--icon-accent); opacity:.65; }
+.settings-tab-close:hover { background:var(--mist); color:var(--ink); }
+.settings-tab-close:hover .ui-icon { opacity:1; }
+.settings-tabs-more { flex:0 0 28px; display:grid; place-items:center; height:28px; min-height:0; padding:0; margin-left:4px; border-radius:6px; color:var(--muted); font-size:18px; line-height:1; }
+.settings-tabs-more:hover, .settings-tabs-more[aria-expanded=true] { background:var(--mist); color:var(--ink); }
+.settings-tabs-menu { position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:280px; max-width:calc(100vw - 32px); max-height:min(320px,60vh); overflow-y:auto; padding:5px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); box-shadow:var(--panel-shadow); }
+.settings-tabs-menu-row { display:flex; align-items:center; border-radius:5px; }
+.settings-tabs-menu-row:hover { background:var(--mist); }
+.settings-tabs-menu-page { flex:1; min-width:0; min-height:34px; padding:8px 9px; text-align:left; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.settings-tabs-menu-page[aria-checked=true] { font-weight:600; background:var(--mist); border-radius:5px; }
+.settings-tabs :focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.settings-nav-title { margin:0 12px 7px; color:var(--muted); font-size:11px; }
+#preferencesDialog .auto-breadcrumb { display:none; }
+.settings-layout { flex:1; min-height:0; display:grid; grid-template-columns:220px minmax(0,1fr); }
 .settings-nav { display:flex; flex-direction:column; gap:6px; padding:25px 14px 20px; background:var(--canvas); border-right:1px solid var(--line-soft); }
-.settings-nav > button, .settings-nav > a { display:flex; align-items:center; gap:10px; width:100%; min-height:40px; border:0; border-radius:7px; padding:10px 12px; background:transparent; color:var(--muted); font:inherit; font-size:12px; text-align:left; text-decoration:none; }
+/* Keep label metrics fixed so selecting a section cannot reflow the navigation. */
+.settings-nav > button, .settings-nav > a { display:flex; align-items:center; gap:10px; width:100%; min-height:40px; border:0; border-radius:7px; padding:10px 12px; background:transparent; color:var(--muted); font:inherit; font-size:12px; font-weight:500; white-space:nowrap; text-align:left; text-decoration:none; }
 .settings-nav .ui-icon { width:16px; height:16px; opacity:.75; }
-.settings-nav > [aria-current=page] { background:var(--mist-strong); color:var(--ink); font-weight:600; }
+.settings-nav > [aria-current=page] { background:var(--mist-strong); color:var(--ink); }
 .settings-nav > button:hover, .settings-nav > a:hover { color:var(--ink); background:var(--mist); }
 .settings-brand { margin-top:auto; padding:20px 12px 0; font-size:11px; font-weight:600; }
 .settings-brand small { display:block; margin-top:6px; color:var(--muted); font-size:10px; font-weight:400; }
@@ -69,8 +95,20 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
 .auto-rule-info p { display:inline; margin:0; font-size:10px; color:var(--muted); }
 .auto-rule-info p + p::before { content:' · '; white-space:pre; }
 .auto-rule-badge { font-size:10px; white-space:nowrap; color:var(--muted); padding:2px 6px; border-radius:4px; background:var(--mist); }
-.auto-rule-actions { display:flex; align-items:center; gap:15px; }
-.auto-rule-actions .quiet { font-size:11px; padding:6px 0; }
+.auto-rule-actions { display:flex; flex-shrink:0; align-items:center; gap:15px; }
+.auto-rule-tools { display:flex; align-items:center; padding:2px; border-radius:9px; background:var(--canvas); }
+.auto-task-action { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:30px; padding:6px 10px; border:0; border-radius:7px; background:transparent; color:var(--ink); font:inherit; font-size:11px; font-weight:500; line-height:18px; white-space:nowrap; }
+.auto-task-action .ui-icon { flex:0 0 14px; width:14px; height:14px; filter:var(--icon-accent); }
+.auto-task-action:hover:not(:disabled) { background:var(--mist-strong); }
+.auto-edit-task::before { content:''; position:absolute; top:8px; bottom:8px; left:0; width:1px; background:var(--line); }
+/* Keep the reserved space and tab stops so revealing tools never moves the task or hides keyboard access. */
+@media (hover:hover) and (pointer:fine) {
+ .auto-rule-tools { opacity:0; pointer-events:none; }
+ .auto-rule-card:hover .auto-rule-tools, .auto-rule-card:focus-within .auto-rule-tools { opacity:1; pointer-events:auto; }
+}
+@media (hover:none), (pointer:coarse) {
+ .auto-task-action { min-height:44px; }
+}
 .auto-switch { position:relative; width:30px; height:18px; flex:0 0 30px; padding:0; border:0; border-radius:12px; background:var(--line); font-size:0; }
 .auto-switch::after { content:''; position:absolute; width:12px; height:12px; border-radius:50%; top:3px; left:3px; background:var(--surface); }
 .auto-switch[aria-checked=true] { background:var(--accent); }
@@ -161,7 +199,9 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
  .auto-field select option::checkmark { order:1; flex:0 0 auto; margin-left:auto; }
 }
 @media(max-width:760px) {
- .settings-layout { grid-template-columns:145px minmax(0,1fr); }
+ #preferencesDialog .settings-tabs-header { grid-template-columns:205px minmax(0,1fr) 32px; }
+ .settings-tabs { margin-left:24px; }
+ .settings-layout { grid-template-columns:205px minmax(0,1fr); }
  .settings-nav { padding-inline:10px; }
  .settings-nav > button, .settings-nav > a { padding-inline:10px; gap:7px; }
  .auto-scroll, #preferencesDialog .preferences-content, .update-content { padding:25px 24px; }
@@ -175,6 +215,15 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
  .auto-section-heading > button { padding-inline:10px; }
 }
 @media(max-width:580px) {
+ #preferencesDialog .settings-tabs-header { grid-template-columns:auto minmax(0,1fr) 28px; gap:10px; min-height:52px; padding:8px 12px; }
+ .settings-tabs-header .settings-back { width:28px; height:28px; overflow:hidden; margin:0; padding:0; font-size:0; gap:0; justify-content:center; }
+ .settings-tabs-header .settings-back .ui-icon { flex:0 0 16px; }
+ .settings-tabs { margin:0; }
+ .settings-tab { max-width:190px; }
+ .settings-nav-title { display:none; }
+ .auto-rule-card { flex-wrap:wrap; }
+ .auto-rule-head { flex-basis:100%; }
+ .auto-rule-actions { margin-left:47px; }
  #preferencesDialog, #updateDialog, .settings-standalone { width:100%; height:100dvh; margin:0; border:0; border-radius:0; }
  .settings-window-header, #updateDialog .update-heading { min-height:55px; padding:10px 16px; }
  .settings-layout { display:flex; flex-direction:column; }
@@ -191,3 +240,6 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
  .auto-status-line > button { margin-left:14px; }
  .auto-page-status { left:20px; right:20px; }
 }
+
+.auto-cleanup-root .auto-breadcrumb { display:inline-flex; align-items:center; gap:8px; min-height:36px; padding:0 11px; border:1px solid var(--line); border-radius:8px; color:var(--ink); background:var(--surface); }
+.auto-cleanup-root .auto-breadcrumb > .ui-icon { width:17px; height:17px; filter:var(--icon-accent); }

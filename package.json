@@ -1,6 +1,6 @@
 {
   "name": "history-sweep",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -23,7 +23,11 @@
     "deploy:site": "wrangler deploy site --name history-sweep --domain sweep.agentclub.dev --compatibility-date 2026-09-18",
     "test:release": "node scripts/verify-release.mjs",
     "test:updates": "node scripts/verify-updates.mjs",
-    "test:packages": "node scripts/verify-packages.mjs"
+    "test:packages": "node scripts/verify-packages.mjs",
+    "test:workspace-tools": "node scripts/verify-workspace-tools.mjs",
+    "test:design-refinements": "node scripts/verify-design-refinements.mjs",
+    "test:ui-row-actions": "python3 scripts/check-ui-row-actions.py",
+    "test:ui-row-actions:regression": "node scripts/verify-ui-row-actions-regression.mjs"
   },
   "devDependencies": {
     "@remotion/bundler": "4.0.532",

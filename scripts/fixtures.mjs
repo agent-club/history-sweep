@@ -1,15 +1,3 @@
-import { readFile } from 'node:fs/promises';
-const nameplateSource = (await readFile(new URL('../extension/nameplate-store.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
-const backgroundSource = (await readFile(new URL('../extension/background.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '');
-const autoScheduleSource = (await readFile(new URL('../extension/auto-cleanup-schedule.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
-const autoModelSource = (await readFile(new URL('../extension/auto-cleanup-model.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '').replace(/\bexport /g, '');
-const autoCleanupSource = (await readFile(new URL('../extension/auto-cleanup.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '').replace(/\bexport /g, '');
-const updateCheckSource = (await readFile(new URL('../extension/update-check.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
-const activityLogSource = (await readFile(new URL('../extension/activity-log.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
-const filterSource = (await readFile(new URL('../extension/history-filters.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
-const launcherSource = (await readFile(new URL('../extension/launcher.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '').replace(/\bexport /g, '');
-const modalHostSource = (await readFile(new URL('../extension/modal-host.mjs', import.meta.url), 'utf8')).replace(/\bexport /g, '');
-
 export const demoHistory = Array.from({ length: 124 }, (_, index) => ({
   id: String(index), url: 'https://x.com/' + ['studio_notes', 'design_archive', 'weekend_reads', 'daily_inspiration'][index % 4] + '/status/' + (100000 + index),
   title: ['Studio notes / X', 'A few things worth keeping / X', 'Weekend reading list / X', 'A quieter corner of the internet / X'][index % 4],
@@ -49,7 +37,8 @@ export async function installMock(page, records = demoHistory) {
         onMessage: { addListener: listener => { window.__backgroundListener = listener; } },
         onInstalled: { addListener: () => {} },
         onStartup: { addListener: () => {} },
-        sendMessage: message => {
+        sendMessage: async message => {
+          await window.__backgroundReady;
           window.__messages.push(message);
           if (window.__backgroundUnavailable) return Promise.reject(new Error('Could not establish connection. Receiving end does not exist.'));
           if (window.__failMessage) return Promise.reject(new Error('fixture'));
@@ -70,6 +59,7 @@ export async function installMock(page, records = demoHistory) {
       storage: {
         local: {
           get: async key => {
+            if (['workspaceTools', 'manualCleanupState'].includes(key)) { const value = localStorage.getItem('fixture-' + key); return value === null ? {} : { [key]: JSON.parse(value) }; }
             if (key === 'nameplate') { const value = localStorage.getItem('fixture-nameplate'); return value === null ? {} : { nameplate: JSON.parse(value) }; }
             if (key === 'extensionUpdateCheck') { const value = localStorage.getItem('fixture-update-check'); return value === null ? {} : { extensionUpdateCheck: JSON.parse(value) }; }
             if (key === 'activityScrollHint') { const value = localStorage.getItem('fixture-activity-scroll-hint'); return value === null ? {} : { activityScrollHint: JSON.parse(value) }; }
@@ -81,9 +71,13 @@ export async function installMock(page, records = demoHistory) {
             if (key === 'privateCleanup') { if (window.__failPrivacyRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-private-cleanup'); return value === null ? {} : { privateCleanup: JSON.parse(value) }; }
             if (key === 'softPrivacy') { if (window.__failSoftPrivacyRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-soft-privacy'); return value === null ? {} : { softPrivacy: JSON.parse(value) }; }
             if (key === 'launchMode') { const launchMode = localStorage.getItem('fixture-launch-mode'); return launchMode === null ? {} : { launchMode }; }
+            if (['cleanupRecommendationSettings', 'cleanupRecommendationCue'].includes(key)) { if (key === 'cleanupRecommendationSettings' && window.__failRecommendationRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-' + key); return value === null ? {} : { [key]: JSON.parse(value) }; }
             if (window.__failRulesRead) throw new Error('fixture'); const value = localStorage.getItem('fixture-kept-sites'); return value === null ? {} : { protectedSites: JSON.parse(value) };
           },
+          remove: async key => { localStorage.removeItem('fixture-' + key); changed({ [key]: {} }); },
           set: async data => {
+            for (const key of ['workspaceTools', 'manualCleanupState']) if (Object.hasOwn(data, key)) { localStorage.setItem('fixture-' + key, JSON.stringify(data[key])); changed({ [key]: { newValue: data[key] } }); }
+            for (const key of ['cleanupRecommendationSettings', 'cleanupRecommendationCue']) if (Object.hasOwn(data, key)) { if (key === 'cleanupRecommendationSettings' && window.__failRecommendationSave) throw new Error('fixture'); localStorage.setItem('fixture-' + key, JSON.stringify(data[key])); changed({ [key]: { newValue: data[key] } }); }
             if (Object.hasOwn(data, 'nameplate')) localStorage.setItem('fixture-nameplate', JSON.stringify(data.nameplate));
             if (Object.hasOwn(data, 'extensionUpdateCheck')) { localStorage.setItem('fixture-update-check', JSON.stringify(data.extensionUpdateCheck)); changed({ extensionUpdateCheck: { newValue: data.extensionUpdateCheck } }); }
             if (Object.hasOwn(data, 'activityScrollHint')) { localStorage.setItem('fixture-activity-scroll-hint', JSON.stringify(data.activityScrollHint)); changed({ activityScrollHint: { newValue: data.activityScrollHint } }); }
@@ -108,6 +102,9 @@ export async function installMock(page, records = demoHistory) {
       },
     };
   }, records);
-  // Exercise the production message handler rather than a second implementation.
-  await page.addInitScript(modalHostSource + '\n' + launcherSource + '\n' + filterSource + '\n' + activityLogSource + '\n' + updateCheckSource + '\n' + autoScheduleSource + '\n' + autoModelSource + '\n' + autoCleanupSource + '\n' + nameplateSource + '\n' + backgroundSource);
+  // Load the real module graph so new worker dependencies cannot silently disappear
+  // from the fixture. Message dispatch waits for listener registration.
+  await page.addInitScript(() => {
+    window.__backgroundReady = import(new URL('/extension/background.mjs', location.href).href);
+  });
 }

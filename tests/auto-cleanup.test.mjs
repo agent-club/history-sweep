@@ -18,6 +18,7 @@ function harness(options = {}) {
   const visits = new Map(options.visits || []);
   const activities = [];
   let protectedSites = options.protectedSites || [];
+  let protectedUrls = options.protectedUrls || [];
   let searchItems = options.items || [];
   let clock = options.now ?? now;
   let cleanup;
@@ -45,6 +46,7 @@ function harness(options = {}) {
   };
   cleanup = createAutoCleanup(api, {
     readProtectedSites: async () => protectedSites,
+    readProtectedUrls: async () => protectedUrls,
     recordActivity: async (...args) => { if (!args[2] || await args[2]()) activities.push(args.slice(0, 2)); },
     runExclusive: fn => fn(),
     isBusy: () => false,
@@ -54,6 +56,7 @@ function harness(options = {}) {
     cleanup, saved, alarms, alarmCalls, deleted, searchCalls, visits, activities,
     setItems(value) { searchItems = value; },
     setProtectedSites(value) { protectedSites = value; },
+    setProtectedUrls(value) { protectedUrls = value; },
     setNow(value) { clock = value; },
     async state() { return (await cleanup.handle({ type: 'auto-get' }, 'owner')); },
   };
@@ -431,6 +434,50 @@ test('manual cleanup keeps once and recurring schedules unchanged', async () => 
   assert.ok(after.every(task => task.enabled && !task.completed));
 });
 
+test('running one saved task previews and deletes only its matches without changing schedules', async () => {
+  const first = old(now - 8 * DAY_MS);
+  const other = { url: 'https://other.example.com/old', lastVisitTime: now - 8 * DAY_MS };
+  const h = harness({ items: [first, other], visits: [
+    [first.url, [{ visitTime: first.lastVisitTime }]], [other.url, [{ visitTime: other.lastVisitTime }]],
+  ] });
+  await saveRule(h, { schedule: { type: 'once', at: now + DAY_MS } });
+  await saveRule(h, { domain: 'other.example.com', schedule: { type: 'daily', time: '09:00' } });
+  const before = (await h.state()).config;
+  const id = before.rules[0].id;
+  const proof = await h.cleanup.handle({ type: 'auto-preview', all: true, id }, 'owner');
+  assert.deepEqual(proof.items.map(item => item.url), [first.url]);
+  assert.equal(proof.rule.domain, 'example.com');
+  await h.cleanup.handle({ type: 'auto-run', id, previewId: proof.previewId, revision: before.revision }, 'owner');
+  await waitFor(() => !h.cleanup.busy());
+  assert.deepEqual(h.deleted, [first.url]);
+  assert.equal(h.visits.has(other.url), true);
+  assert.deepEqual((await h.state()).config, before);
+});
+
+test('a task-specific run requires its matching preview and an enabled, unpaused task', async () => {
+  const h = harness({ items: [old(now - 8 * DAY_MS)] });
+  await saveRule(h);
+  await saveRule(h, { domain: 'other.example.com' });
+  const config = (await h.state()).config;
+  const [first, other] = config.rules;
+  const proof = await h.cleanup.handle({ type: 'auto-preview', all: true, id: first.id }, 'owner');
+  for (const id of [undefined, other.id]) {
+    await assert.rejects(h.cleanup.handle({ type: 'auto-run', id, previewId: proof.previewId, revision: config.revision }, 'owner'), /AUTO_STALE/);
+  }
+  await assert.rejects(h.cleanup.handle({ type: 'auto-run', id: first.id, previewId: proof.previewId, revision: config.revision }, 'another-owner'), /AUTO_STALE/);
+  const draft = await h.cleanup.handle({ type: 'auto-preview', id: first.id, rule: first }, 'owner');
+  await assert.rejects(h.cleanup.handle({ type: 'auto-run', id: first.id, previewId: draft.previewId, revision: config.revision }, 'owner'), /AUTO_STALE/);
+  const all = await h.cleanup.handle({ type: 'auto-preview', all: true }, 'owner');
+  await assert.rejects(h.cleanup.handle({ type: 'auto-run', id: first.id, previewId: all.previewId, revision: config.revision }, 'owner'), /AUTO_STALE/);
+  await assert.rejects(h.cleanup.handle({ type: 'auto-preview', all: true, id: 'missing' }, 'owner'), /AUTO_UNAVAILABLE/);
+  await h.cleanup.handle({ type: 'auto-toggle', id: first.id, enabled: false, revision: config.revision }, 'owner');
+  await assert.rejects(h.cleanup.handle({ type: 'auto-preview', all: true, id: first.id }, 'owner'), /AUTO_UNAVAILABLE/);
+  const pausedProof = await h.cleanup.handle({ type: 'auto-preview', all: true, id: other.id }, 'owner');
+  await h.cleanup.handle({ type: 'auto-pause', paused: true, revision: config.revision + 1 }, 'owner');
+  await assert.rejects(h.cleanup.handle({ type: 'auto-run', id: other.id, previewId: pausedProof.previewId, revision: config.revision + 2 }, 'owner'), /AUTO_UNAVAILABLE/);
+  assert.deepEqual(h.deleted, []);
+});
+
 test('no-retention tasks delete known past visits but keep unknown, future and protected pages', async () => {
   const recent = 'https://example.com/recent';
   const unknown = 'https://example.com/unknown';
@@ -522,4 +569,29 @@ test('interrupted one-time runs rescan current history and never replay stored U
   assert.deepEqual(h.deleted, [current]);
   assert.doesNotMatch(JSON.stringify(h.saved.autoCleanupRuntime), /https:|stale-once-url/);
   assert.equal(h.saved.autoCleanup.rules[0].completed, true);
+});
+
+test('exact kept URLs override both scheduled scans and final retry eligibility', async () => {
+  const kept = 'https://example.com/kept', eligible = 'https://example.com/eligible';
+  const lastVisitTime = now - 8 * DAY_MS;
+  const h = harness({ protectedUrls: [kept], items: [{ url: kept, lastVisitTime }, { url: eligible, lastVisitTime }],
+    visits: [[kept, [{ visitTime: lastVisitTime }]], [eligible, [{ visitTime: lastVisitTime }]]] });
+  const configured = await saveRule(h);
+  assert.deepEqual(configured.preview.items.map(item => item.url), [eligible]);
+  h.setNow(now + DAY_MS); await h.cleanup.checkDue(); await waitFor(() => !h.cleanup.busy());
+  assert.deepEqual(h.deleted, [eligible]); assert.equal(h.visits.has(kept), true);
+
+  let retry;
+  retry = harness({ items: [{ url: eligible, lastVisitTime }], visits: [[eligible, [{ visitTime: lastVisitTime }]]],
+    getVisits: async (url, visits) => { retry.setProtectedUrls([eligible]); return visits.get(url); } });
+  await saveRule(retry); retry.setNow(now + DAY_MS); await retry.cleanup.checkDue(); await waitFor(() => !retry.cleanup.busy());
+  assert.deepEqual(retry.deleted, [], 'protection added while visits are pending blocks the destructive call');
+});
+
+test('changing exact URL protection invalidates an already reviewed cleanup scope', async () => {
+  const h = harness();
+  const pending = await h.cleanup.handle({ type: 'auto-preview', rule: rule() }, 'owner');
+  h.setProtectedUrls(['https://example.com/kept']);
+  await assert.rejects(h.cleanup.handle({ type: 'auto-save', rule: rule(), enabled: true, revision: 0, previewId: pending.previewId }, 'owner'), /AUTO_STALE/);
+  assert.deepEqual(h.deleted, []);
 });

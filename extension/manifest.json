@@ -6,7 +6,7 @@
     "type": "module"
   },
   "name": "History Sweep",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "default_locale": "en",
   "options_ui": { "page": "sync.html", "open_in_tab": true },
   "optional_host_permissions": ["https://*/*"],

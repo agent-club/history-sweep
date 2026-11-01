@@ -1,5 +1,7 @@
+@import url('./workspace.css');
 .sync-page { display: block; min-width: 0; height: auto; overflow: auto; background: var(--canvas); color: var(--ink); }
 .sync-page main { width: min(720px, calc(100% - 40px)); margin: 44px auto; }
+.sync-root { position: relative; }
 .sync-root header { display: flex; align-items: center; gap: 14px; margin-bottom: 32px; }
 .sync-root header img { width: 42px; height: 42px; }
 .sync-root h1 { font-size: 25px; margin: 0 0 5px; }
@@ -8,13 +10,22 @@
 .sync-root h2 { font-size: 18px; margin: 0 0 12px; }
 .sync-root p { font-size: 13px; line-height: 1.7; color: var(--muted, #666); }
 .sync-root label { display: grid; gap: 7px; font-size: 13px; margin: 17px 0; }
-.sync-root input, .sync-root select { width: 100%; min-width: 0; padding: 10px 12px; height: auto; border: 1px solid var(--line, #ccc); border-radius: 8px; color: inherit; background: var(--surface, #fff); font: inherit; }
+.sync-root input:not([type="checkbox"]), .sync-root select { width: 100%; min-width: 0; padding: 10px 12px; height: auto; border: 1px solid var(--line, #ccc); border-radius: 8px; color: inherit; background: var(--surface, #fff); font: inherit; }
+.sync-root .sync-password-field { margin-bottom: 7px; }
+.sync-root .sync-password-help { display: grid; gap: 4px; margin: 0 0 20px; font-size: 12px; line-height: 1.6; color: var(--muted); }
 .sync-root fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .sync-root fieldset[hidden] { display: none; }
-.sync-root .sync-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+#webdavFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+#webdavFields > label:first-child { grid-column: 1 / -1; }
+#webdavFields > label { min-width: 0; }
+.sync-root .sync-connection-actions, .sync-root .sync-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line-soft); }
+.sync-root #connectionForm button.primary, .sync-root .sync-actions > button { width: auto; min-width: 0; max-width: 100%; height: 36px; min-height: 36px; padding: 0 16px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+.sync-root .sync-actions { margin-top: 18px; }
 .sync-root button { min-height: 38px; padding: 9px 15px; }
 .sync-root button:not(.primary) { border: 1px solid var(--line); border-radius: 8px; background: var(--mist); color: var(--ink); }
 .sync-root button:not(.primary):not(:disabled):hover { background: var(--mist-strong); }
+.sync-root .sync-actions > button { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+.sync-root .sync-actions > button:not(:disabled):hover { border-color: var(--primary-hover); background: var(--primary-hover); }
 .sync-root button:disabled { opacity: .45; }
 .sync-root .sync-file-field > label { margin-bottom: 8px; }
 .sync-root .sync-file-picker { position: relative; display: flex; align-items: center; gap: 14px; min-height: 84px; padding: 16px; border: 1px dashed var(--control-line); border-radius: 12px; background: var(--field); transition: border-color .15s, background .15s, box-shadow .15s; }
@@ -29,14 +40,19 @@
 .sync-root .sync-file-picker input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
 .sync-root .sync-file-picker[data-disabled="true"] { opacity: .5; }
 .sync-root .sync-file-picker input:disabled { cursor: not-allowed; }
-.sync-root .sync-note { border-left: 3px solid var(--line, #bbb); padding-left: 14px; }
+.sync-root .sync-note { border:0; padding-left:0; }
 .sync-root #syncStatus { position: sticky; bottom: 12px; padding: 12px 16px; border: 1px solid var(--line, #ddd); border-radius: 10px; background: var(--surface, #fff); color: inherit; overflow-wrap: anywhere; }
 .sync-root #syncStatus:empty { display: none; }
 .sync-root #syncStatus[data-error="true"] { color: var(--danger, #b33939); }
+.sync-root .settings-notice { z-index: 2; top: 20px; right: 38px; max-width: min(330px, 52%); }
+.sync-root .settings-notice[hidden] { display: none; }
+.sync-root .settings-notice .settings-notice-close { margin:0; padding:0; border:0; background:transparent url('icons/ui/x.svg') center / 14px 14px no-repeat; }
+.sync-root .settings-notice[data-error="true"] { border-color:var(--danger); color:var(--danger); }
 .sync-root #restoreSummary { white-space: pre-line; overflow-wrap: anywhere; }
 .sync-root dialog { max-width: min(480px, calc(100% - 32px)); }
 .sync-root dialog button { margin: 5px; }
 .sync-root :focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+@media (max-width: 520px) { #webdavFields { grid-template-columns: minmax(0, 1fr); } #webdavFields > label:first-child { grid-column: auto; } .sync-root .settings-notice { top:20px; right:20px; max-width:148px; } .sync-root h1 { font-size:22px; width:fit-content; max-width:100%; } }
 @media (max-width: 480px) { .sync-page main { width: calc(100% - 24px); margin: 24px auto; } .sync-root section { padding: 18px; } }
 
 #syncSettingsContent { height:100%; min-height:0; overflow:auto; overscroll-behavior:contain; padding:30px 38px; }
@@ -54,3 +70,12 @@
   #syncSettingsContent .sync-file-copy { flex-basis:calc(100% - 38px); }
   #syncSettingsContent .sync-file-action { margin-left:38px; }
 }
+.sync-root input::placeholder { color:var(--muted); opacity:1; }
+/* Keep local feedback in the heading's overlay when the form scrolls to Save. */
+.sync-root > .sync-heading { position:sticky; top:0; z-index:5; min-height:56px; background:var(--surface); }
+.sync-root > .sync-heading > .settings-notice { top:0; right:0; max-width:min(330px, 50%); }
+.sync-root { scroll-padding-top:72px; }
+@media(max-width:520px) {
+ .sync-root > .sync-heading > .settings-notice { max-width:180px; }
+}
+#syncSettingsContent > .sync-heading { box-shadow:0 -32px 0 var(--surface); }

@@ -30,6 +30,12 @@ export function createActivityLog(storage, now = () => new Date()) {
   }
   return {
     read: () => serial(async () => ({ log: await readLog(), recordingFailed })),
+    clear: () => serial(async () => {
+      const fresh = { version: 1, startedOn: dateKey(now()), days: {} };
+      await storage.set({ localActivity: fresh });
+      recordingFailed = false;
+      return { log: fresh, recordingFailed };
+    }),
     record: (pages, items = [], source = 'manual', canRecord = () => true) => serial(async () => {
       try {
         if (!Number.isSafeInteger(pages) || pages < 0) throw new Error('INVALID_ACTIVITY_COUNT');

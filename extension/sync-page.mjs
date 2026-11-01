@@ -1,26 +1,30 @@
 import { readLanguage, translate } from './i18n.mjs';
-import { validateConnection, permissionOrigin, createRemote, encryptBackup, decryptBackup, MAX_CONFIG_BYTES } from './config-sync.mjs';
+import { validateConnection, permissionOrigin, createRemote, encryptBackup, decryptBackup } from './config-sync.mjs';
 import { createConfigStore } from './config-store.mjs';
+import { mountLocalBackup } from './backup-page.mjs';
+import { MAX_BACKUP_BYTES } from './local-backup.mjs';
+import { workspaceText } from './workspace-copy.mjs';
 
-export function mountSyncSettings(root, { lang = readLanguage() } = {}) {
+export function mountSyncSettings(root, { lang = readLanguage(), request } = {}) {
 const embedded = root.dataset.embedded === 'true';
 root.classList.add('sync-root');
 const t = (key, values) => translate(lang, key, values);
 const $ = id => root.querySelector(`#${id}`);
 const field = (id, label, type = 'text', placeholder = '') => `<label for="${id}">${label}<input id="${id}" type="${type}" ${placeholder ? `placeholder="${placeholder}"` : ''} autocomplete="off" spellcheck="false" maxlength="4096"></label>`;
-root.innerHTML = `<header class="sync-heading">${embedded ? '' : '<img src="icons/mark.svg" alt="">'}<div><h1 tabindex="-1">${t('syncTitle')}</h1>${embedded ? '' : '<p>History Sweep</p>'}</div></header>
+root.innerHTML = `<header class="sync-heading">${embedded ? '' : '<img src="icons/mark.svg" alt="">'}<div><h1 tabindex="-1">${t('syncSettings')}</h1>${embedded ? '' : '<p>History Sweep</p>'}</div><div id="connectionNotice" class="settings-notice" role="status" aria-live="polite" hidden><span></span><button class="settings-notice-close" type="button" aria-label="${t('syncNoticeDismiss')}">×</button></div></header>
   <p class="sync-note">${t('syncPersistence')}</p>
   <section aria-labelledby="connectionTitle"><h2 id="connectionTitle">${t('syncConnection')}</h2><p>${t('syncConnectionHint')}</p>
     <form id="connectionForm"><fieldset id="connectionFields" disabled>
       <fieldset id="webdavFields">${field('davUrl', t('syncFileUrl'), 'url', 'https://dav.example.com/folder/history-sweep.json')}${field('davUser', t('syncUsername'), 'text', t('syncUsernamePlaceholder'))}${field('davPassword', t('syncAuthLabel'), 'password', t('syncPasswordPlaceholder'))}</fieldset>
-      <button class="primary" type="submit">${t('syncSave')}</button>
-    </fieldset></form><p id="connectionState" role="status"></p>
+      <div class="sync-connection-actions"><button class="primary" type="submit">${t('syncSave')}</button></div>
+    </fieldset></form>
   </section>
   <section aria-labelledby="transferTitle"><h2 id="transferTitle">${t('syncTransfer')}</h2><p>${t('syncScope')}</p><p>${t('syncManual')}</p>
     <div class="sync-actions"><button id="testConnection" disabled>${t('syncTest')}</button><button id="uploadConfig" disabled>${t('syncUpload')}</button><button id="downloadConfig" disabled>${t('syncDownload')}</button></div>
   </section>
   <section aria-labelledby="backupTitle"><h2 id="backupTitle">${t('syncBackup')}</h2><p>${t('syncBackupHint')}</p>
-    ${field('backupPassword', t('syncPassphraseLabel'), 'password', t('syncPassphrasePlaceholder'))}
+    <label for="backupPassword" class="sync-password-field">${t('syncPassphraseLabel')}<input id="backupPassword" type="password" placeholder="${t('syncPassphrasePlaceholder')}" autocomplete="off" spellcheck="false" maxlength="4096" aria-describedby="backupPasswordHelp"></label>
+    <div id="backupPasswordHelp" class="sync-password-help"><span>${t('syncPassphraseExportHint')}</span><span>${t('syncPassphraseImportHint')}</span><span>${t('syncPassphraseKeepHint')}</span></div>
     <div class="sync-file-field"><label for="backupFile">${t('syncBackupFile')}</label>
       <div id="backupFilePicker" class="sync-file-picker">
         <svg class="sync-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
@@ -32,6 +36,13 @@ root.innerHTML = `<header class="sync-heading">${embedded ? '' : '<img src="icon
     <div class="sync-actions"><button id="exportBackup" disabled>${t('syncExport')}</button><button id="importBackup" disabled>${t('syncImport')}</button></div>
   </section><p id="syncStatus" role="status" aria-live="polite"></p>
   <dialog id="restoreDialog" aria-labelledby="restoreTitle"><h2 id="restoreTitle">${t('syncRestoreTitle')}</h2><p id="restoreSummary"></p><form method="dialog"><button value="cancel" autofocus>${t('preferencesCancel')}</button><button value="confirm" class="primary">${t('syncRestore')}</button></form></dialog>`;
+
+const clientId = crypto.randomUUID();
+const localBackup = mountLocalBackup(root, { lang, request: request || (async message => {
+  const response = await chrome.runtime.sendMessage({ ...message, clientId });
+  if (!response?.ok) throw new Error(response?.code || 'BACKGROUND_UNAVAILABLE');
+  return response.data;
+}) });
 
 let store;
 let busy = false;
@@ -50,6 +61,7 @@ function fillConnection(value) {
   for (const [key, id] of davFields) $(id).value = value[key];
 }
 function controls() {
+  localBackup.setBusy(!ready || busy);
   $('connectionFields').disabled = !ready || busy;
   for (const id of operations) $(id).disabled = !ready || busy || savedConnection === null;
   for (const id of ['exportBackup', 'importBackup', 'backupPassword', 'backupFile']) $(id).disabled = !ready || busy;
@@ -61,8 +73,19 @@ function cleanConnection() {
   return savedConnection;
 }
 function hasUnsavedConnection() {
-  if (savedConnection) return JSON.stringify(formConnection()) !== JSON.stringify(savedConnection);
-  return davFields.some(([, id]) => $(id).value !== '');
+  const values = Object.fromEntries(davFields.map(([key, id]) => [key, $(id).value]));
+  if (savedConnection === null) return davFields.some(([, id]) => $(id).value !== '');
+  try { return JSON.stringify(formConnection()) !== JSON.stringify(savedConnection); }
+  catch { return davFields.some(([key]) => values[key] !== savedConnection[key]); }
+}
+let noticeTimer;
+function connectionNotice(message, { error = false, duration = 0 } = {}) {
+  const notice = $('connectionNotice');
+  clearTimeout(noticeTimer);
+  notice.querySelector('span').textContent = message;
+  notice.dataset.error = String(error);
+  notice.hidden = !message;
+  if (duration > 0) noticeTimer = setTimeout(() => { notice.hidden = true; }, duration);
 }
 async function run(operation) {
   if (!ready || busy) return;
@@ -82,17 +105,30 @@ function confirmRestore(config, connection) {
 async function apply(config, connection) {
   if (!await confirmRestore(config, connection)) { status('syncCancelled'); return; }
   await store.apply(config, connection);
-  if (connection) { savedConnection = connection; fillConnection(connection); $('connectionState').textContent = t('syncSaved'); }
+  if (connection) { savedConnection = connection; fillConnection(connection); connectionNotice(''); }
   document.dispatchEvent(new CustomEvent('history-sweep:set-theme', { detail: config.preferences.theme }));
   status('syncRestored');
 }
 
 $('connectionForm').addEventListener('submit', event => {
   event.preventDefault();
-  void run(async () => {
-    const config = formConnection(); await store.saveConnection(config); savedConnection = config;
-    $('connectionState').textContent = t('syncSaved'); status('syncSaved');
-  });
+  if (!ready || busy) return;
+  busy = true; controls(); connectionNotice('');
+  void (async () => {
+    try {
+      const config = formConnection();
+      await store.saveConnection(config); savedConnection = config;
+      connectionNotice(t('syncSaveSuccess'), { duration: 2800 });
+    } catch (error) {
+      const key = `syncError_${error.message}`;
+      connectionNotice(t(t(key) === key ? 'syncSaveFailure' : key), { error: true });
+    } finally { busy = false; controls(); }
+  })();
+});
+root.querySelector('.settings-notice-close').addEventListener('click', () => connectionNotice(''));
+for (const [, id] of davFields) $(id).addEventListener('input', () => {
+  if (hasUnsavedConnection()) connectionNotice(t('syncUnsavedConnection'));
+  else connectionNotice('');
 });
 for (const id of operations) $(id).addEventListener('click', () => {
   if (!ready || busy) return;
@@ -112,16 +148,23 @@ for (const id of operations) $(id).addEventListener('click', () => {
 });
 $('exportBackup').addEventListener('click', () => void run(async () => {
   if (hasUnsavedConnection()) throw new Error('UNSAVED_CONNECTION');
-  const text = await encryptBackup(savedConnection, await store.read(), $('backupPassword').value);
+  const text = await encryptBackup(savedConnection, await store.read(), $('backupPassword').value, await localBackup.readExtra());
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   const link = document.createElement('a'); link.href = url; link.download = 'history-sweep-backup.json'; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 30_000); $('backupPassword').value = ''; status('syncExported');
 }));
 $('importBackup').addEventListener('click', () => void run(async () => {
   const file = $('backupFile').files[0];
-  if (!file || file.size > MAX_CONFIG_BYTES * 2) throw new Error('INVALID_BACKUP');
+  if (!file || file.size > MAX_BACKUP_BYTES) throw new Error('INVALID_BACKUP');
   const backup = await decryptBackup(await file.text(), $('backupPassword').value);
-  $('backupPassword').value = ''; await apply(backup.config, backup.connection);
+  $('backupPassword').value = '';
+  if (backup.localSettings !== undefined) {
+    const result = await localBackup.restore(backup);
+    if (!result.restored) { status('syncCancelled'); return; }
+    if (result.connectionRestored) { savedConnection = backup.connection; fillConnection(savedConnection); connectionNotice(''); }
+    if (result.schedulePending) { $('syncStatus').textContent = workspaceText(lang, 'schedulePending'); return; }
+    status('syncRestored');
+  } else await apply(backup.config, backup.connection);
 }));
 $('backupFile').addEventListener('change', () => {
   const file = $('backupFile').files[0];
@@ -138,7 +181,6 @@ try {
   // Keep import and editing available if an existing saved document is corrupt.
   ready = true;
   savedConnection = await store.connection(); fillConnection(savedConnection); await store.read();
-  $('connectionState').textContent = t(savedConnection ? 'syncSaved' : 'syncNotConfigured');
 } catch (error) { status(error.message === 'EXTENSION_REQUIRED' ? 'syncError_EXTENSION_REQUIRED' : 'syncError_GENERIC', true); }
 controls();
 

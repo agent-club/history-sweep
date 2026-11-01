@@ -1,8 +1,13 @@
 import en from './locales/en.mjs';
 import zh from './locales/zh-CN.mjs';
 export const dictionaries = { en, 'zh-CN': zh };
+export function selectCountForms(message, values) {
+  // Expand count forms before interpolation; callers may pass locale-formatted counts.
+  return message.replace(/\{(\w+):([^{}:]+):([^{}:]+)\}/g, (_, name, one, other) =>
+    `{${name}} ${String(values[name]) === '1' ? one : other}`);
+}
 export function translate(lang, key, values = {}) {
-  return (dictionaries[lang]?.[key] ?? en[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? ''));
+  return selectCountForms(dictionaries[lang]?.[key] ?? en[key] ?? key, values).replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? ''));
 }
 export function readLanguage() {
   try { return localStorage.getItem('language') === 'zh-CN' ? 'zh-CN' : 'en'; } catch { return 'en'; }

@@ -82,6 +82,7 @@ try {
       check(await page.locator('#updateDialog .release-record').count() === releaseNotes.length, 'all package records are available offline');
       const published = page.locator('#updateDialog [data-release="0.6.0"]');
       check(await published.getAttribute('open') !== null && await published.locator('[data-status="published"]').count() === 1, 'installed release presets Published and starts expanded');
+      check(await page.locator('#updateDialog [data-release="0.7.0"] [data-status="candidate"]').count() === 1, 'the new package is marked as a candidate offline');
       const previous = page.locator('#updateDialog [data-release="0.5.0"]');
       check(await previous.locator('[data-status="published"]').count() === 1 && await previous.getAttribute('open') === null, 'previous published release starts collapsed');
       await previous.locator('summary').click();
@@ -112,6 +113,7 @@ try {
     await page.reload();
     check(await page.locator('#quickStartHint').isHidden(), 'explicit dismissal persists without opening help');
     await page.locator('#searchHelpToggle').click();
+    await fits(page.locator('#searchHelpPanel'), '320px search help');
     await page.locator('#openQuickStartSearch').click();
     await fits(page.locator('#quickStartDialog'), '320px guide');
     await page.screenshot({ path: `${output}/narrow-guide.png` });
@@ -130,6 +132,7 @@ try {
       }
       check(await page.locator('[data-release="0.6.0"] [data-status="published"]').count() === 1, 'website presets v0.6.0 as Published too');
       check(await page.locator('[data-release="0.6.0"]').getAttribute('open') !== null, 'website expands v0.6.0');
+      check(await page.locator('[data-release="0.7.0"] [data-status="candidate"]').count() === 1, 'website keeps the new package distinct from published records');
       await fits(page.locator('body'), `${width}px website/${language}`);
       await page.screenshot({ path: `${output}/site-${width}-${language}.png`, fullPage: true });
     }
