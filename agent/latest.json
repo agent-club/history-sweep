@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "files": [
+    {
+      "path": "metadata.mjs",
+      "size": 297,
+      "sha256": "351c2ef81f054213867831c958543d123e90d4440bb0f830f2ce4169fe8de8b5",
+      "url": "https://sweep.agentclub.dev/agent/releases/0.1.0/metadata.mjs"
+    },
+    {
+      "path": "protocol.mjs",
+      "size": 1951,
+      "sha256": "3eca30346cf0214e0ad4832b2cf2eea6d99724a5f2a43720eabd2291f3763296",
+      "url": "https://sweep.agentclub.dev/agent/releases/0.1.0/protocol.mjs"
+    },
+    {
+      "path": "native-host.mjs",
+      "size": 5287,
+      "sha256": "3d9f405e33e14dfa30ca94afba0464e226740425652930ffe4742ba038b32512",
+      "url": "https://sweep.agentclub.dev/agent/releases/0.1.0/native-host.mjs"
+    },
+    {
+      "path": "client.mjs",
+      "size": 2588,
+      "sha256": "b5f59cb75da2cc7fbaba3c5b341f1b09ef9ab5f4da5490b53dc05a585b2816ea",
+      "url": "https://sweep.agentclub.dev/agent/releases/0.1.0/client.mjs"
+    },
+    {
+      "path": "mcp.mjs",
+      "size": 7284,
+      "sha256": "6a280bb2467659dead9eeaf93aff2148f029e22e6cc9ec23bdef4514eb9e15b2",
+      "url": "https://sweep.agentclub.dev/agent/releases/0.1.0/mcp.mjs"
+    },
+    {
+      "path": "install.mjs",
+      "size": 13876,
+      "sha256": "b1fca72dcc8954f7f540b446e39abbd7304f6aa825ea7b2dcb97897afe95d775",
+      "url": "https://sweep.agentclub.dev/agent/releases/0.1.0/install.mjs"
+    },
+    {
+      "path": "manage.mjs",
+      "size": 2966,
+      "sha256": "7ad710c9e7517d4dc5c097f17f3640638aa797d00fb0b2d30583a35dba326e44",
+      "url": "https://sweep.agentclub.dev/agent/releases/0.1.0/manage.mjs"
+    },
+    {
+      "path": "updates.mjs",
+      "size": 18610,
+      "sha256": "e26514a3505f3c4610e12537f0a51950842a5605b8739db2a7f2b8acf43b327b",
+      "url": "https://sweep.agentclub.dev/agent/releases/0.1.0/updates.mjs"
+    },
+    {
+      "path": "skills/history-sweep/SKILL.md",
+      "size": 4052,
+      "sha256": "2807caec2127e28fc96995715b755cb7fa0a916ce17724b4f2c7fe91a989132c",
+      "url": "https://sweep.agentclub.dev/agent/releases/0.1.0/skills/history-sweep/SKILL.md"
+    }
+  ]
+}
