@@ -121,7 +121,8 @@ function animateCard(section, t) {
   const hover = { inside: false, x: 0, y: 0, amount: 0, tiltX: 0, tiltY: 0, lightX: 0, lightY: 0 };
   let yaw = -9, pitch = -5, velocityX = 0, velocityY = 0, turnTo = null, idleUntil = 0;
   let pointer = null, lastX, lastY, startX, startY, lastMove, moved = false, suppressClick = false;
-  let rotating = !reduced.matches, frame = 0, previous = 0, destroyed = false;
+  let motionReduced = reduced.matches;
+  let rotating = !motionReduced, frame = 0, previous = 0, destroyed = false;
   let visibleFace;
   const reveal = createNameplateReveal(section, reduced);
   function clearHover(immediate = false) {
@@ -202,13 +203,26 @@ function animateCard(section, t) {
     event.preventDefault(); clearHover(true); turnTo = null; yaw += change[0]; pitch = clamp(pitch + change[1], -65, 65);
     velocityX = velocityY = 0; idleUntil = performance.now() + 4000; draw(); wake();
   });
-  listen(reduced, 'change', () => { if (reduced.matches) { rotating = false; velocityX = velocityY = 0; if (turnTo !== null) yaw = turnTo; turnTo = null; clearHover(true); renderMotion(); draw(); } wake(); });
+  function syncMotionPreference() {
+    if (motionReduced === reduced.matches) return;
+    motionReduced = reduced.matches;
+    if (!motionReduced) return;
+    rotating = false;
+    velocityX = velocityY = 0;
+    if (turnTo !== null) yaw = turnTo;
+    turnTo = null;
+    clearHover(true);
+    renderMotion();
+  }
+  listen(reduced, 'change', () => { syncMotionPreference(); draw(); wake(); });
   listen(window, 'blur', () => { clearHover(); wake(); });
   // Stop the frame loop when closed, hidden, paused and settled, or restored from page cache.
   function wake() { if (!destroyed && !document.hidden && !frame) { previous = performance.now(); frame = requestAnimationFrame(animate); } }
   function animate(now) {
     frame = 0;
     if (destroyed || document.hidden) return;
+    // The new media state can be visible to the reveal before its change event is delivered.
+    syncMotionPreference();
     const dt = Math.min((now - previous) / 1000, .05); previous = now;
     const active = hover.inside && !reduced.matches && pointer === null && turnTo === null;
     const ease = 1 - Math.exp(-dt * 10);

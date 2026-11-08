@@ -1,6 +1,8 @@
-# Workspace tools — v0.7.0 candidate
+# Workspace tools
 
-These capabilities are included in the v0.7.0 candidate and the current unpacked `extension/` source. They are absent from the preserved v0.6.0 archives. Local preparation does not establish store submission, website deployment or publication.
+The workspace tools described below are included in v0.7.0 and later packages.
+
+v1.0.0 extends cleaned-link copying with explicit opening, a website-rule editor, parameter and path exceptions, and optional per-site automatic cleanup. See [usage, encoding limits and verification](link-cleanup.md).
 
 ## Entry points and behavior
 

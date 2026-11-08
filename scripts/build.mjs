@@ -1,4 +1,4 @@
-import { mkdir, readFile, copyFile, readdir, cp, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, copyFile, readdir, cp, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,7 @@ import { generateReleaseNotes } from './generate-release-notes.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const sharp=dependency('sharp');
 const manifest=JSON.parse(await readFile(root+'extension/manifest.json','utf8'));
-if(JSON.stringify(manifest.permissions)!=='["history","activeTab","scripting","contextMenus","storage","favicon","alarms"]') throw new Error('Unexpected permissions');
+if(JSON.stringify(manifest.permissions)!=='["history","activeTab","scripting","contextMenus","storage","favicon","alarms","declarativeNetRequestWithHostAccess"]') throw new Error('Unexpected permissions');
 for(const [file,w,h,allowAlpha=false] of [['icon-128.png',128,128,true],['promo-small-440x280.png',440,280],['promo-marquee-1400x560.png',1400,560],['screenshot-workspace-en-1280x800.png',1280,800],['screenshot-workspace-zh-1280x800.png',1280,800],['screenshot-popup-1280x800.png',1280,800]]){
  const meta=await sharp(root+'store/assets/'+file).metadata();
  if(meta.width!==w||meta.height!==h) throw new Error('Invalid dimensions: '+file);
@@ -17,22 +17,27 @@ for(const [file,w,h,allowAlpha=false] of [['icon-128.png',128,128,true],['promo-
 await generateReleaseNotes();
 await mkdir(root+'dist',{recursive:true});await mkdir(root+'site/downloads',{recursive:true});
 const extensionZip=root+'dist/history-sweep-'+manifest.version+'.zip';
-const entries=['manifest.json','background.mjs','update-check.mjs','launcher.mjs','modal-host.mjs','modal.html','modal.mjs','popup.html','manager.html','app.css','app.mjs','view.mjs','release-notes.mjs','nameplate.mjs','nameplate-reveal.mjs','nameplate-store.mjs','nameplate.css','settings-select.mjs','theme.js','startup.js','i18n.mjs','history-utils.mjs','history-filters.mjs','history-frequency.mjs','browsing-preferences.mjs','calendar-dates.mjs','date-picker.mjs','history-groups.mjs','history-suggestions.mjs','search-text.mjs','suggestions-ui.mjs','suggestions-worker.mjs','activity-calendar.mjs','activity-log.mjs','activity-panel.mjs','activity-reveal.mjs','row-removal.mjs','batch-removal.mjs','sync.html','sync.css','sync-page.mjs','config-sync.mjs','config-store.mjs','vendor','locales','_locales','icons'];
+const entries=['manifest.json','background.mjs','update-check.mjs','launcher.mjs','modal-host.mjs','modal.html','modal.mjs','popup.html','manager.html','app.css','app.mjs','view.mjs','release-notes.mjs','nameplate.mjs','nameplate-reveal.mjs','nameplate-store.mjs','nameplate.css','settings-select.mjs','preference-help.mjs','preference-help.css','theme.js','startup.js','i18n.mjs','history-utils.mjs','history-filters.mjs','history-frequency.mjs','browsing-preferences.mjs','calendar-dates.mjs','date-picker.mjs','history-groups.mjs','history-suggestions.mjs','search-text.mjs','suggestions-ui.mjs','suggestions-worker.mjs','activity-calendar.mjs','activity-log.mjs','activity-panel.mjs','activity-reveal.mjs','row-removal.mjs','batch-removal.mjs','sync.html','sync.css','sync-page.mjs','config-sync.mjs','config-store.mjs','vendor','locales','_locales','icons'];
 entries.push('cleanup-hint.css','cleanup-hint.mjs','cleanup-recommendations.mjs');
 entries.push('settings-tabs.mjs');
+entries.push('agent.html','agent.css','agent-page.mjs','agent-view.mjs','agent-copy.mjs','agent-access.mjs','agent-bridge.mjs','agent-motion.mjs','agent-installers.mjs','agent-release.mjs');
+entries.push('agent-dance-asset.mjs');
 entries.push('workspace-tools.mjs','workspace-copy.mjs','workspace-page.mjs','workspace.css','label-appearance.mjs','local-backup.mjs','backup-page.mjs');
+entries.push('link-cleanup-copy.mjs','link-cleanup-page.mjs','link-cleanup.css','automatic-link-cleanup.mjs');
 entries.push('recommendation-settings.mjs','recommendation-settings-page.mjs','recommendation-settings-view.mjs','recommendation-copy.mjs','recommendation-settings.css');
 entries.push('auto-cleanup-view.mjs','auto-cleanup.html','auto-cleanup-page.mjs','auto-cleanup.css','auto-cleanup-copy.mjs','auto-cleanup.mjs','auto-cleanup-model.mjs','auto-cleanup-schedule.mjs','time-picker.mjs');
 const temporary=await mkdtemp(join(tmpdir(),'history-sweep-build-'));
 try {
  const staged=join(temporary,'extension'); await mkdir(staged);
  for(const entry of entries) await cp(root+'extension/'+entry,join(staged,entry),{recursive:true});
- // v0.7.0 adds recommendation rules, workspace tools and selective local recovery.
- // Preserve the source entry point, optional host permissions and HTTPS CSP.
- if(manifest.version!=='0.7.0') throw new Error('Confirm the release scope before packaging a new version');
+ // The explicit version gate keeps the reviewed package scope tied to this release.
+ if(manifest.version!=='1.0.0') throw new Error('Confirm the release scope before packaging a new version');
+ await copyFile(root+'LICENSE',join(staged,'LICENSE'));
+ await writeFile(join(staged,'SOURCE.txt'), `History Sweep ${manifest.version} source code and license notices:\nhttps://github.com/agent-club/history-sweep/tree/v${manifest.version}\n`);
+ entries.push('LICENSE','SOURCE.txt');
  // Start fresh so a previously built archive cannot retain deferred or obsolete files.
  const candidate=join(temporary,'extension.zip');
- execFileSync('zip',['-q','-r',candidate,...entries,'-x','*/.DS_Store'],{cwd:staged});
+ execFileSync('zip',['-q','-r',candidate,...entries,'-x','*/.DS_Store','icons/agent-dance-motion.webp'],{cwd:staged});
  execFileSync('unzip',['-t',candidate]);
  await copyFile(candidate,extensionZip);
  await copyFile(candidate,root+'site/downloads/history-sweep-'+manifest.version+'.zip');

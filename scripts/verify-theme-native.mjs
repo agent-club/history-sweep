@@ -45,13 +45,23 @@ try {
   await frame.locator('#themeToggle').click(); await host.mouse.click(3, 3);
   await frame.waitForFunction(() => !document.querySelector('#themeMenu').open);
   assert.ok(await frame.locator('#query').isVisible(), 'outer backdrop dismisses appearance menu without closing modal');
+  await frame.locator('#themePresetToggle').click(); await host.mouse.click(3, 3);
+  await frame.waitForFunction(() => !document.querySelector('#themePresetMenu').open);
+  assert.ok(await frame.locator('#query').isVisible(), 'outer backdrop dismisses the theme menu without closing modal');
   const choose = async (target, mode) => { await target.locator('#themeToggle').click(); await target.locator(`[data-theme-choice="${mode}"]`).click(); };
+  const choosePreset = async (target, preset) => {
+    await target.locator('#themePresetToggle').click();
+    await target.locator(`[data-theme-preset-choice="${preset}"]`).click();
+  };
   const before = await frame.locator('html').getAttribute('data-theme');
   await choose(frame, 'dark');
   const after = await frame.locator('html').getAttribute('data-theme');
   assert.notEqual(after, before, `real modal must react to the theme icon (before=${before}, after=${after})`);
   assert.equal(after, 'dark');
   await control.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  assert.equal(await frame.locator('html').getAttribute('data-theme-preset'), 'classic', 'legacy mode works with the default preset');
+  await choosePreset(frame, 'mist-blue');
+  await control.waitForFunction(() => document.documentElement.dataset.themePreset === 'mist-blue');
   await choose(frame, 'light');
   await control.waitForFunction(() => document.documentElement.dataset.theme === 'light');
   await choose(frame, 'system');
@@ -60,13 +70,20 @@ try {
   assert.equal(await frame.locator('html').getAttribute('data-theme-preference'), 'system');
   await control.reload(); await ready(control);
   assert.equal(await control.locator('html').getAttribute('data-theme-preference'), 'system', 'native extension saves automatic preference');
+  assert.equal(await control.locator('html').getAttribute('data-theme-preset'), 'mist-blue', 'native extension saves the preset independently');
   await control.emulateMedia({ colorScheme: 'dark' });
   await control.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
   const popup = await context.newPage(); await popup.goto(`chrome-extension://${id}/popup.html`); await ready(popup);
   await choose(popup, 'light');
   await frame.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+  const settings = await context.newPage();
+  await settings.goto(`chrome-extension://${id}/sync.html`);
+  assert.equal(await settings.locator('body').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(232, 238, 246)', 'standalone settings use the saved palette');
+  await choosePreset(popup, 'classic');
+  await frame.waitForFunction(() => document.documentElement.dataset.themePreset === 'classic' && document.documentElement.dataset.themePreference === 'light');
+  await settings.waitForFunction(() => getComputedStyle(document.body).backgroundColor === 'rgb(242, 242, 242)');
   assert.deepEqual(errors, []);
-  console.log('Native theme check passed: real modal, popup and manager; dark/light/automatic; persistence and cross-view synchronization. Disposable profile only.');
+  console.log('Native theme check passed: real modal, popup, manager and settings; presets, modes, persistence and cross-view synchronization. Disposable profile only.');
 } finally {
   await context?.close(); await new Promise(resolve => server.close(resolve)); await rm(profile, { recursive: true, force: true });
 }

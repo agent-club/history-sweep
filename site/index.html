@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="home.css">
   <link rel="stylesheet" href="features.css">
   <link rel="stylesheet" href="question-intro.css">
+  <link rel="stylesheet" href="browser-update.css">
   <link rel="stylesheet" href="display-type.css">
   <link rel="stylesheet" href="hero-demo.css">
   <link rel="stylesheet" href="comparison.css">
@@ -46,12 +47,51 @@
   <div class="intro-question-copy" aria-live="polite" aria-atomic="true"><p class="intro-kicker" data-zh="你是否也有过这样的困扰？">SOUND FAMILIAR?</p><div class="intro-question" data-intro-question="0"><p data-zh="记录越积越多，<br>想找的却找不到？">History piling up.<br>Still can’t find that page?</p></div><div class="intro-question" data-intro-question="1" hidden><p data-zh="只想清理一个网站，<br>却担心一键清空？">One site to clean.<br>Why clear everything?</p></div><div class="intro-question" data-intro-question="2" hidden><p data-zh="想删掉一批记录，<br>又想留下重要的几页？">A batch to remove.<br>A few pages to keep?</p></div><p class="intro-answer" hidden data-zh="找到。核对。清理。">Find it. Review it. Sweep it.</p></div>
   <div class="intro-bottom" aria-hidden="true"><span class="intro-counter">01 / 03</span><div class="intro-progress"><i></i><i></i><i></i></div><span>YOUR HISTORY. YOUR CALL.</span></div>
 </dialog>
+<dialog id="browser-update" class="browser-update" data-minimum-chrome="110" aria-labelledby="browser-update-title" aria-describedby="browser-update-copy">
+  <div class="browser-update-head">
+    <span class="browser-update-brand">
+      <svg width="20" height="20" viewBox="0 0 40 40" fill="currentColor" aria-hidden="true"><path d="M0 34 7.8 18.1C9.2 16.1 13.2 18 18 14L9.6 34Z M11.5 34 22 12.7c2.5-2.3 3.7-3.2 3.8-6 3.1-1.9 6 .9 4.7 6L20 34Z M23.8 30 32.7 13H40l-7.6 17Z"/></svg>
+      History Sweep
+    </span>
+    <span class="browser-update-symbol" aria-hidden="true">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="2.75" y="3.75" width="18.5" height="16.5" rx="3.25"/><path d="M3 8.2h18 M12 17.4V11.2m-2.7 2.7 2.7-2.7 2.7 2.7"/></svg>
+    </span>
+  </div>
+  <h2 id="browser-update-title" class="browser-update-title" tabindex="-1" autofocus data-zh="更新 Chrome 后，<br>就能继续使用">Update Chrome<br>to use History Sweep</h2>
+  <p id="browser-update-copy" class="browser-update-copy" data-zh="当前版本低于 History Sweep 的最低要求。<br>更新后，就可以安装或重新打开扩展。">Your browser is below the minimum version for History Sweep. After updating, you can install or reopen the extension.</p>
+  <dl class="browser-update-versions">
+    <div>
+      <dt class="browser-update-label" data-zh="当前浏览器">Your browser</dt>
+      <dd class="browser-update-value" data-current-browser></dd>
+    </div>
+    <div class="browser-update-required">
+      <dt class="browser-update-label" data-zh="最低要求">Minimum required</dt>
+      <dd class="browser-update-value" data-required-browser></dd>
+    </div>
+  </dl>
+  <details class="browser-update-details">
+    <summary class="browser-update-toggle">
+      <span data-zh="查看更新步骤">See how to update</span>
+      <svg class="browser-update-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+    </summary>
+    <ol class="browser-update-steps">
+      <li data-zh="打开 Chrome 右上角的菜单。">Open the menu in the top right of Chrome.</li>
+      <li data-zh="选择「帮助」里的「关于 Google Chrome」。">Choose Help, then About Google Chrome.</li>
+      <li data-zh="更新后重启 Chrome，再安装或打开 History Sweep。">Relaunch Chrome after updating, then install or open History Sweep.</li>
+    </ol>
+    <a class="browser-update-help" href="https://support.google.com/chrome/answer/95414" target="_blank" rel="noopener noreferrer" data-zh="Chrome 官方更新帮助 ↗">Chrome’s official update guide ↗</a>
+  </details>
+  <form method="dialog" class="browser-update-dismiss">
+    <button class="browser-update-continue" type="submit" data-zh="继续浏览官网">Continue to the website</button>
+  </form>
+</dialog>
 <a class="skip-link" href="#main" data-zh="跳至主要内容">Skip to content</a>
 <header class="nav wrap">
   <a class="brand" href="./"><img src="assets/product-mark.png" width="34" height="34" alt="">History Sweep</a>
-  <nav class="nav-links" aria-label="Main navigation"><a href="#features" data-zh="功能与玩法">Explore</a><a href="#how" data-zh="使用方式">How it works</a><a href="#compare" data-zh="工具对比">Compare</a><a class="release-nav-link" href="releases.html" data-zh="更新记录">Release notes</a><a href="privacy.html" data-zh="隐私">Privacy</a><a href="https://github.com/agent-club/history-sweep">GitHub</a></nav>
+  <nav id="home-navigation" class="nav-links" aria-label="Main navigation"><a href="#features" data-zh="功能与玩法">Explore</a><a href="#how" data-zh="使用方式">How it works</a><a href="#compare" data-zh="工具对比">Compare</a><a class="release-nav-link" href="releases.html" data-zh="更新记录">Release notes</a><a href="privacy.html" data-zh="隐私">Privacy</a><a href="https://github.com/agent-club/history-sweep">GitHub</a></nav>
   <div class="nav-actions">
     <div id="language" class="language-switch" role="group" aria-label="Language"><button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="true">EN</button><button type="button" data-language="zh-CN" lang="zh-CN" aria-label="简体中文" aria-pressed="false">中文</button></div>
+    <button class="nav-menu-toggle" type="button" aria-label="Open navigation" aria-controls="home-navigation" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     <a class="button nav-cta" href="https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm"><span data-zh="添加至 Chrome">Add to Chrome</span><img class="icon light" src="assets/ui/arrow-square-out.svg" alt="" width="16" height="16"></a>
   </div>
 </header>
@@ -180,12 +220,12 @@
 
 </main>
 <footer class="footer wrap"><a class="brand" href="./"><img src="assets/product-mark.png" width="28" height="28" alt="">History Sweep</a><span data-zh="为清爽的数字生活而造。">A small tool for a lighter digital life.</span><div><a href="https://github.com/agent-club/history-sweep">GitHub</a><a href="privacy.html" data-zh="隐私">Privacy</a><a href="https://github.com/agent-club/history-sweep/issues" data-zh="反馈">Feedback</a></div></footer>
-  <section class="support wrap" id="next-release" aria-label="Current release">
-    <details class="support-details"><summary><span data-zh="当前版本 · v0.6.0">Current release · v0.6.0</span><img class="icon" src="assets/ui/caret-right.svg" width="20" height="20" alt=""></summary><div class="support-content">
-      <div><p data-zh="另有 v0.7.0 本地候选包：推荐清理、检索与筛选、网址保护、标签、导出及选择性加密备份。尚未确认商店提供。">A v0.7.0 local candidate adds recommendations, search tools, URL protection, labels, export and selective encrypted backups. Store availability is not confirmed.</p><h3 data-zh="定时清理，按习惯使用。">Cleanup on your schedule.</h3><p data-zh="v0.6.0 新增本机定时清理任务、视图顺序与展示、复制网址、软隐私和铭牌；快速开始与离线更新记录也已加入。任务启用前先预览，保留网站优先，关闭浏览器可能延迟执行。">v0.6.0 adds local scheduled cleanup, view order and visibility, URL copying, soft privacy and nameplates, alongside Quick start and offline release notes. Preview tasks before enabling; kept websites take priority and browser shutdown can delay runs.</p><p><a href="releases.html" data-zh="查看 v0.6.0 更新记录">Read the v0.6.0 release notes</a></p></div>
+  <section class="support wrap" id="next-release" aria-label="Current package">
+    <details class="support-details"><summary><span data-zh="当前安装包 · v1.0.0">Current package · v1.0.0</span><img class="icon" src="assets/ui/caret-right.svg" width="20" height="20" alt=""></summary><div class="support-content">
+      <div><p data-zh="v1.0.0 安装包加入 Agent 接入、按网站配置的链接净化、推荐清理操作和分步引导。商店可安装版本以其页面为准。">The v1.0.0 package adds Agent access, per-site link cleanup, actions for cleanup recommendations and a guided Quick start. See the Chrome Web Store for its currently available version.</p><h3 data-zh="定时清理，按习惯使用。">Cleanup on your schedule.</h3><p data-zh="v0.6.0 新增本机定时清理任务、视图顺序与展示、复制网址、软隐私和铭牌；快速开始与离线更新记录也已加入。任务启用前先预览，保留网站优先，关闭浏览器可能延迟执行。">v0.6.0 adds local scheduled cleanup, view order and visibility, URL copying, soft privacy and nameplates, alongside Quick start and offline release notes. Preview tasks before enabling; kept websites take priority and browser shutdown can delay runs.</p><p><a href="releases.html" data-zh="查看 v0.6.0 更新记录">Read the v0.6.0 release notes</a></p></div>
       <div><h3 data-zh="按频次查看，默认近一个星期。">Visit frequency. A week by default.</h3><p data-zh="按所选期间的实际访问次数排序，同次数按期间最后访问排序。首次默认按网站浏览今天及之前六个本地自然日，也可保存默认视图和时间。关键词搜索仍默认全部时间，除非明确选择范围；自定义日期仅用于临时查看。">Rank pages by actual visits within the selected period, breaking ties by their last visit in that period. First use opens By website for today and the previous six local dates. Save your preferred default view and range. Keyword searches still use all time unless you choose dates; custom dates are temporary.</p><p data-zh="日期与网站视图按网址的最后访问时间筛选。频次视图可以包含期间访问过、之后又访问过的页面。删除仍移除选中网址的全部访问，无法撤销。">Date and website views filter by each URL’s last visit. Frequency can include pages visited in the period and again afterward. Deletion still removes every visit to a selected URL and cannot be undone.</p></div>
       <div><h3 data-zh="配置能带走，清理由你决定。">Carry your settings. Choose what to record.</h3><p data-zh="无痕清理可停止记录新清理的次数和网站明细，已有活动保留。新增返回顶部、快捷键设置入口和默认浮窗，已有打开方式保留。活动面板优先展示浏览记录，点击“展开分析／收起分析”控制开合。">Private cleanup stops saving new cleanup counts and website details; existing activity remains. Back to top, shortcut settings and a first-use modal help navigation while preserving saved opening choices. Local activity opens with Browsing history; click Expand analysis or Collapse analysis to control the panel.</p><p data-zh="WebDAV 仅手动传输语言、外观和打开方式，不上传浏览历史、清理活动或保留网站；可导出密码加密备份，在卸载后手动恢复。只有主动测试或传输时才请求所选主机权限。远端 JSON 可由服务商读取，备份不是自动快照。">WebDAV manually transfers language, appearance and opening preferences, excluding history, cleanup activity and kept websites. Export a password-encrypted backup for manual recovery after uninstall. Access is requested for the selected host only when testing or transferring. The provider can read remote JSON; backups are manual snapshots.</p><img src="assets/candidate-manager-sync-en.png" width="1280" height="800" style="width:100%;height:auto" alt="WebDAV configuration in v0.5.0, with no saved connection" data-zh-alt="v0.5.0 安装包中的 WebDAV 配置页面，未保存任何连接信息" loading="lazy"></div>
-      <div><h3 data-zh="来自 v0.5.0 的界面">Inside v0.5.0</h3><img src="assets/candidate-manager-frequency-en.png" width="1280" height="800" style="width:100%;height:auto" alt="v0.5.0 frequency browsing with synthetic history" data-zh-alt="使用虚构历史数据的 v0.5.0 频次浏览界面" loading="lazy"><p data-zh="合成数据，非用户真实历史。截图对应 v0.5.0，下方提供 v0.7.0 本地候选包。上方视频展示 v0.4.0 的操作流程。">Synthetic data, never personal history. These screenshots show v0.5.0; the v0.7.0 local candidate is available below. The videos above demonstrate the v0.4.0 workflow.</p></div>
+      <div><h3 data-zh="来自 v0.5.0 的界面">Inside v0.5.0</h3><img src="assets/candidate-manager-frequency-en.png" width="1280" height="800" style="width:100%;height:auto" alt="v0.5.0 frequency browsing with synthetic history" data-zh-alt="使用虚构历史数据的 v0.5.0 频次浏览界面" loading="lazy"><p data-zh="合成数据，非用户真实历史。截图对应 v0.5.0，下方提供 v1.0.0 安装包。上方视频展示 v0.4.0 的操作流程。">Synthetic data, never personal history. These screenshots show v0.5.0; the v1.0.0 package is available below. The videos above demonstrate the v0.4.0 workflow.</p></div>
       <div><h3 data-zh="由 Chrome 提供更新">Updates delivered by Chrome</h3><p data-zh="官方商店安装版打开时，最多每 15 分钟请求一次公开版本提示，适用时再由 Chrome 检查更新。只接收 JSON，不下载远程脚本；不发送浏览历史、搜索词或配置，托管方仍接收标准连接信息。删除或复查时不能通过更新按钮重新加载。解压安装版跳过此检查。">On opening, the official store installation requests public version hints at most once per 15 minutes and asks Chrome to check when appropriate. It receives JSON, not remote scripts. No history, search terms or configuration is sent; the host still receives standard connection information. The update button cannot reload during deletion or verification. Unpacked installations skip this check.</p><a class="text-link" href="https://github.com/agent-club/history-sweep/issues/8" data-zh="频次浏览与默认设置的需求范围">Frequency browsing and default-setting scope</a></div>
     </div></details>
   </section>
@@ -194,7 +234,7 @@
       <div><h3 data-zh="删除后能恢复吗？">Can I undo a deletion?</h3><p data-zh="不能。删除一个网址会移除其全部访问记录，包括所选日期之外的访问。请先检查选中内容。Chrome 可能将删除同步至其他已登录设备。">No. Deleting a URL removes all of its visits, including those outside your date range. Review your selection first. Chrome may sync deletions across signed-in devices.</p></div>
       <div><h3 data-zh="需要哪些权限？">What permissions does it need?</h3><p data-zh="history 用于搜索和删除；favicon 显示网站图标；activeTab 和 scripting 用于你主动发起的当前网站入口及页面内浮窗；contextMenus 提供右键入口；storage 保存本机偏好；alarms 调度你启用的清理任务。不读取密码或 Cookie。">History supports search and deletion; favicon displays website icons. ActiveTab and scripting support user-invoked website entries and the in-page modal. ContextMenus adds right-click access; storage saves local preferences; alarms schedules the cleanup tasks you enable. No access to passwords or cookies.</p></div>
       <div><h3 data-zh="会搜索全部记录吗？">Does it search every record?</h3><p data-zh="每次最多读取最近访问的 100,000 个不同网址。达到上限时会提示，更早的记录可能未包含。">Each search reads up to 100,000 distinct URLs by last visit. A notice appears at the limit; older records may be outside the results.</p></div>
-      <div class="install"><h3 data-zh="想手动安装？">Prefer a manual install?</h3><p><a href="downloads/history-sweep-0.7.0.zip" download data-zh="下载 v0.7.0 本地候选包">Download the v0.7.0 local candidate</a></p><ol><li data-zh="解压下载的 ZIP 文件。">Unzip the downloaded ZIP.</li><li><span data-zh="打开 ">Open </span><code>chrome://extensions</code><span data-zh=" 并启用开发者模式。"> and enable Developer mode.</span></li><li data-zh="选择“加载已解压的扩展程序”，打开解压后的文件夹。">Choose “Load unpacked” and select the extracted folder.</li></ol><p data-zh="Chrome 应用商店与本地安装包的版本可能不同。">The Chrome Web Store and local package may serve different versions.</p></div>
+      <div class="install"><h3 data-zh="想手动安装？">Prefer a manual install?</h3><p><a href="downloads/history-sweep-1.0.0.zip" download data-zh="下载 v1.0.0 安装包">Download the v1.0.0 package</a></p><ol><li data-zh="解压下载的 ZIP 文件。">Unzip the downloaded ZIP.</li><li><span data-zh="打开 ">Open </span><code>chrome://extensions</code><span data-zh=" 并启用开发者模式。"> and enable Developer mode.</span></li><li data-zh="选择“加载已解压的扩展程序”，打开解压后的文件夹。">Choose “Load unpacked” and select the extracted folder.</li></ol><p data-zh="Chrome 应用商店与本地安装包的版本可能不同。">The Chrome Web Store and local package may serve different versions.</p></div>
       <a class="text-link" href="releases.html" data-zh="查看每个版本的更新记录">See what changed in each version</a>
       <a class="text-link" href="https://github.com/agent-club/history-sweep/blob/main/docs/comparison-2026-10.md" data-zh="阅读工具对比与测试边界">Read the tool comparison and testing limits</a>
     </div></details>

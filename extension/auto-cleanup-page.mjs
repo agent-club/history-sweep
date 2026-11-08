@@ -4,10 +4,19 @@ import { translateAutoCleanup as t } from './auto-cleanup-copy.mjs';
 import { normalizeRule, rulesOverlap } from './auto-cleanup-model.mjs';
 import { normalizeSchedule, nextOccurrence } from './auto-cleanup-schedule.mjs';
 import { setupTimePicker } from './time-picker.mjs';
+import { agentCopy } from './agent-copy.mjs';
+import { mountAgentPage } from './agent-page.mjs';
+import { addPreferenceHelp, setupPreferenceHelp } from './preference-help.mjs';
 
-export function mountAutoCleanup(root, { lang = readLanguage(), send = message => chrome.runtime.sendMessage(message), onSection = () => {}, onPage = () => {}, onPagesClosed = () => {} } = {}) {
+export function mountAutoCleanup(root, { lang = readLanguage(), send = message => chrome.runtime.sendMessage(message), onSection = () => {}, onPage = () => {}, onPagesClosed = () => {}, onAgent = () => {} } = {}) {
 root.classList.add('auto-cleanup-root');
 root.innerHTML = autoCleanupView(root.dataset.embedded === 'true' ? 'cleanup-' : '');
+const agentLink = document.createElement('button');
+agentLink.type = 'button';
+agentLink.className = 'auto-protection-link auto-agent-entry';
+agentLink.textContent = agentCopy(lang).title;
+agentLink.addEventListener('click', onAgent);
+root.querySelector('[data-auto-id="manageProtection"]').after(agentLink);
 const nodes = new Map([...root.querySelectorAll('[data-auto-id]')].map(node=>[node.dataset.autoId,node]));
 const $ = id => nodes.get(id);
 // A suspended page's confirmation must remain visible outside its hidden panel.
@@ -73,6 +82,12 @@ let disposed = false;
 
 root.querySelectorAll('[data-copy]').forEach((node) => { node.textContent = tr(node.dataset.copy); });
 root.querySelectorAll('[data-copy-label]').forEach((node) => { node.setAttribute('aria-label', tr(node.dataset.copyLabel)); });
+const pageCopy = (page, key) => $(page).querySelector(`[data-copy="${key}"]`);
+addPreferenceHelp(pageCopy('tasksPage', 'title'), lang, tr('title'), pageCopy('tasksPage', 'rulesIntro'), pageCopy('tasksPage', 'previewFirst'));
+addPreferenceHelp($('editorHeading'), lang, tr('editorNew'), ...['editorIntro', 'scheduleHelp', 'previewFirst', 'saveDoesNotDelete'].map(key => pageCopy('ruleEditor', key)));
+const previewHelp = addPreferenceHelp($('previewHeading'), lang, tr('previewHeading'), $('previewSaveNote'));
+const previewHelpTrigger = previewHelp.previousElementSibling;
+addPreferenceHelp($('protectionHeading'), lang, tr('protectionHeading'), pageCopy('protectionPage', 'protectionIntro'), pageCopy('protectionPage', 'local'));
 
 const labels = { pauseAll: 'pause', reviewAll: 'reviewAll', newRule: 'addRule', editorHeading: 'editorNew', previewHeading: 'previewHeading', closePreview: 'closePreview', previewRule: 'previewRule', saveDisabled: 'saveDisabled', saveEnabled: 'saveEnabled', cancelEditor: 'cancel', emptyRules: 'emptyRules', confirmCancel: 'confirmCancel', saveProtection: 'saveProtection', deletePreviewNow: 'deleteNow' };
 Object.entries(labels).forEach(([id, key]) => { if(id !== 'emptyRules') $(id).textContent = tr(key); });
@@ -309,7 +324,7 @@ function renderPreviewGroups(data) {
 }
 function preparePreview(all) {
   $('saveEnabled').hidden=all; $('deletePreviewNow').hidden=true;
-  $('previewSaveNote').hidden=all; $('previewPanel').querySelector('.auto-steps').hidden=all;
+  previewHelpTrigger.hidden=all; $('previewPanel').querySelector('.auto-steps').hidden=all;
   for(const id of ['previewIntro','previewScope','previewSchedule']) $(id).textContent='';
   $('protectedSummary').hidden=true; $('fullyProtected').hidden=true;
 }
@@ -339,7 +354,7 @@ function showPreview(data, {all=false,rule=null,label=''}={}) {
   else { allPreview=null; preview=data; previewKey=signature(rule || ruleValue()); }
   showPage('previewPanel'); $('previewSummary').textContent=all?tr(data.items.length?'confirmReviewCount':'confirmNoMatches',{count:data.items.length,excluded:data.excluded}):tr(data.items.length?'previewItems':'previewNoItems',{count:data.items.length});
   $('deletePreviewNow').hidden=!all; $('deletePreviewNow').disabled=!data.items.length;
-  $('saveEnabled').hidden=all; $('previewSaveNote').hidden=all;
+  $('saveEnabled').hidden=all; previewHelpTrigger.hidden=all;
   $('previewPanel').querySelector('.auto-steps').hidden=all;
   $('previewIntro').textContent=all?tr(data.rule?'confirmTaskReviewBody':'confirmReviewBody',{domain:data.rule?.domain}):'';
   if(all && data.rule && !data.items.length) $('previewSummary').textContent=tr('confirmTaskNoMatches');
@@ -471,10 +486,41 @@ return { navigate, activatePage, closePage, guardUnsaved, hasUnsavedChanges, bac
 if (document.body.classList.contains('auto-cleanup-page')) {
 const lang=readLanguage(), tr=(key)=>t(lang,key);
 const shell=document.getElementById('cleanupSettings');
-shell.innerHTML=`<header class="settings-window-header"><a class="settings-back" href="manager.html"><img class="ui-icon" src="icons/ui/arrow-left.svg" alt="">${tr('backToHistory')}</a><span>${tr('eyebrow')}</span></header><div class="settings-layout"><nav class="settings-nav"><a href="manager.html#settings=general">${tr('general')}</a><a href="manager.html#settings=privacy">${tr('privacy')}</a><button type="button" data-section="tasks">${tr('title')}</button><button type="button" data-section="protection">${tr('protectionHeading')}</button><div class="settings-brand">History Sweep<small>${tr('local')}</small></div></nav><div id="standaloneTasks"></div></div>`;
-const cleanup=mountAutoCleanup(document.getElementById('standaloneTasks'),{onSection:section=>shell.querySelectorAll('[data-section]').forEach(button=>button.setAttribute('aria-current',button.dataset.section===section?'page':'false'))});
+shell.innerHTML=`<header class="settings-window-header"><a class="settings-back" href="manager.html"><img class="ui-icon" src="icons/ui/arrow-left.svg" alt=""><span>${tr('backToHistory')}</span></a><span>${tr('eyebrow')}</span></header><div class="settings-layout"><nav class="settings-nav">
+  <a href="manager.html#settings=general">${tr('general')}</a>
+  <a href="manager.html#settings=privacy">${tr('privacy')}</a>
+  <button type="button" data-section="tasks">${tr('title')}</button>
+  <button type="button" data-section="agent">${agentCopy(lang).title}</button>
+  <button type="button" data-section="protection">${tr('protectionHeading')}</button>
+  <div class="settings-brand">History Sweep<small>${tr('local')}</small></div>
+</nav><div id="standaloneTasks"></div><section class="agent-page agent-embedded" hidden></section></div>`;
+const tasks = document.getElementById('standaloneTasks');
+const agentPanel = shell.querySelector('.agent-page');
+const back = shell.querySelector('.settings-back');
+const backLabel = back.querySelector('span');
+let disposeAgent;
+function showSection(section) {
+  const showAgent = section === 'agent';
+  const enteringAgent = showAgent && agentPanel.hidden;
+  tasks.hidden = showAgent;
+  agentPanel.hidden = !showAgent;
+  back.href = showAgent ? 'auto-cleanup.html' : 'manager.html';
+  backLabel.textContent = showAgent ? agentCopy(lang).back : tr('backToHistory');
+  shell.querySelectorAll('[data-section]').forEach(button=>button.setAttribute('aria-current',button.dataset.section===section?'page':'false'));
+  if (showAgent && !disposeAgent) {
+    disposeAgent = mountAgentPage(agentPanel, { lang });
+  }
+  if (enteringAgent) agentPanel.querySelector('h1').focus({ preventScroll: true });
+}
+const cleanup=mountAutoCleanup(tasks,{onSection:showSection,onAgent:()=>showSection('agent')});
+setupPreferenceHelp(shell, { standalone: true });
 shell.querySelectorAll('[data-section]').forEach(button=>button.addEventListener('click',()=>cleanup.navigate(button.dataset.section)));
-shell.querySelector('.settings-back').addEventListener('click',event=>{event.preventDefault();cleanup.guardUnsaved(()=>location.assign('manager.html'));});
+back.addEventListener('click', event => {
+  event.preventDefault();
+  if (agentPanel.hidden) { cleanup.guardUnsaved(() => location.assign('manager.html')); return; }
+  cleanup.navigate('tasks');
+  tasks.querySelector('.auto-agent-entry').focus({ preventScroll: true });
+});
 const fragment=new URLSearchParams(location.hash.slice(1));
 cleanup.navigate('tasks',fragment.get('domain')?{domain:fragment.get('domain'),includeSubdomains:fragment.get('subdomains')==='1'}:null);
 }

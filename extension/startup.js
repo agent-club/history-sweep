@@ -57,4 +57,8 @@
   motion.addEventListener('change', motionChanged);
   // A slow or failed module must not leave the workspace permanently covered.
   const deadline = setTimeout(reveal, 5000);
+  if (document.body.dataset.presentation === 'modal') {
+    // This parser-blocking script runs after the startup surface's stylesheets.
+    window.parent.postMessage({ type: 'history-sweep:startup-surface-ready' }, '*');
+  }
 })();

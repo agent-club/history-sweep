@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dependency } from './runtime.mjs';
 import { createServer } from './serve.mjs';
+import { enterWorkspace } from './native-workspace.mjs';
 
 const { chromium } = dependency('playwright');
 const extension = fileURLToPath(new URL('../extension/', import.meta.url));
@@ -45,6 +46,7 @@ try {
   assert.equal(evidence.latestBeyondEnd, true);
   assert.equal(evidence.boundedIncludesRevisited, true, 'bounded native search includes a URL visited again afterward');
   assert.deepEqual(evidence.result, [{ url: evidence.a, count: 2 }, { url: evidence.b, count: 1 }]);
+  await enterWorkspace(page);
   await page.locator('#openPreferences').click();
   await page.waitForFunction(() => !document.querySelector('#launchChoices').disabled);
 
@@ -52,6 +54,7 @@ try {
   await page.locator('#savePreferences').click();
   await page.waitForFunction(() => !document.querySelector('#preferencesDialog').open);
   await page.goto(`chrome-extension://${id}/popup.html`);
+  await enterWorkspace(page);
   await page.waitForFunction(() => !document.querySelector('#search').disabled && document.querySelector('#groupByFrequency').getAttribute('aria-pressed') === 'true');
   assert.equal(await page.locator('#timeRange').inputValue(), 'today');
   await page.locator('#query').fill('frequency.example'); await page.locator('#search').click();

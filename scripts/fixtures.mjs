@@ -8,9 +8,14 @@ export async function installMock(page, records = demoHistory) {
     const history = new Map(items.map(item => [item.url, item])); window.__deleted = []; window.__opened = []; window.__messages = [];
     const listeners = [];
     const updateListeners = [];
+    const tabUpdateListeners = [];
     const sessions = {};
     const changed = (changes, area = 'local') => listeners.forEach(listener => listener(changes, area));
     window.__updateAvailable = version => updateListeners.forEach(listener => listener({ version }));
+    window.__changeActiveUrl = url => {
+      window.__activeUrl = url;
+      tabUpdateListeners.forEach(listener => listener(1, { status: 'complete' }, { active: true, url }));
+    };
     window.addEventListener('storage', event => { if (event.key === 'fixture-kept-sites') changed({ protectedSites: {} }); });
     window.chrome = {
       history: {
@@ -51,7 +56,12 @@ export async function installMock(page, records = demoHistory) {
           });
         },
       },
-      tabs: { create: async ({url}) => { window.__opened.push(url); }, query: async () => [{ url: window.__activeUrl || 'https://x.com/current' }], onRemoved: { addListener: () => {} } },
+      tabs: {
+        create: async ({url}) => { window.__opened.push(url); },
+        query: async () => [{ url: window.__activeUrl || 'https://x.com/current' }],
+        onRemoved: { addListener: () => {} },
+        onUpdated: { addListener: listener => { tabUpdateListeners.push(listener); } },
+      },
       action: { setPopup: async ({ popup }) => { window.__actionPopup = popup; }, onClicked: { addListener: callback => { window.__actionClicked = callback; } } },
       scripting: { executeScript: async () => { throw new Error('Injection requires a host-page fixture'); } },
       i18n: { getMessage: () => 'Find this website in History Sweep' },
@@ -59,7 +69,7 @@ export async function installMock(page, records = demoHistory) {
       storage: {
         local: {
           get: async key => {
-            if (['workspaceTools', 'manualCleanupState'].includes(key)) { const value = localStorage.getItem('fixture-' + key); return value === null ? {} : { [key]: JSON.parse(value) }; }
+            if (['workspaceTools', 'manualCleanupState', 'ratingInviteShown'].includes(key)) { const value = localStorage.getItem('fixture-' + key); return value === null ? {} : { [key]: JSON.parse(value) }; }
             if (key === 'nameplate') { const value = localStorage.getItem('fixture-nameplate'); return value === null ? {} : { nameplate: JSON.parse(value) }; }
             if (key === 'extensionUpdateCheck') { const value = localStorage.getItem('fixture-update-check'); return value === null ? {} : { extensionUpdateCheck: JSON.parse(value) }; }
             if (key === 'activityScrollHint') { const value = localStorage.getItem('fixture-activity-scroll-hint'); return value === null ? {} : { activityScrollHint: JSON.parse(value) }; }
@@ -76,7 +86,7 @@ export async function installMock(page, records = demoHistory) {
           },
           remove: async key => { localStorage.removeItem('fixture-' + key); changed({ [key]: {} }); },
           set: async data => {
-            for (const key of ['workspaceTools', 'manualCleanupState']) if (Object.hasOwn(data, key)) { localStorage.setItem('fixture-' + key, JSON.stringify(data[key])); changed({ [key]: { newValue: data[key] } }); }
+            for (const key of ['workspaceTools', 'manualCleanupState', 'ratingInviteShown']) if (Object.hasOwn(data, key)) { localStorage.setItem('fixture-' + key, JSON.stringify(data[key])); changed({ [key]: { newValue: data[key] } }); }
             for (const key of ['cleanupRecommendationSettings', 'cleanupRecommendationCue']) if (Object.hasOwn(data, key)) { if (key === 'cleanupRecommendationSettings' && window.__failRecommendationSave) throw new Error('fixture'); localStorage.setItem('fixture-' + key, JSON.stringify(data[key])); changed({ [key]: { newValue: data[key] } }); }
             if (Object.hasOwn(data, 'nameplate')) localStorage.setItem('fixture-nameplate', JSON.stringify(data.nameplate));
             if (Object.hasOwn(data, 'extensionUpdateCheck')) { localStorage.setItem('fixture-update-check', JSON.stringify(data.extensionUpdateCheck)); changed({ extensionUpdateCheck: { newValue: data.extensionUpdateCheck } }); }

@@ -5,6 +5,36 @@ import './hero-demo.mjs';
 import {initializePixelSweep} from './pixel-sweep.mjs';
 
 const navigation = document.querySelector('.nav');
+const navigationMenu = document.getElementById('home-navigation');
+const navigationToggle = navigation.querySelector('.nav-menu-toggle');
+const compactNavigation = matchMedia('(max-width: 1200px)');
+function setNavigationOpen(open, returnFocus = false) {
+  navigation.toggleAttribute('data-menu-open', open);
+  navigationToggle.setAttribute('aria-expanded', String(open));
+  const zh = document.documentElement.lang === 'zh-CN';
+  navigationToggle.setAttribute('aria-label', zh
+    ? (open ? '关闭导航' : '打开导航')
+    : (open ? 'Close navigation' : 'Open navigation'));
+  if (returnFocus) navigationToggle.focus({ preventScroll: true });
+}
+navigationToggle.addEventListener('click', event => {
+  const open = navigationToggle.getAttribute('aria-expanded') !== 'true';
+  setNavigationOpen(open);
+  if (open && event.detail === 0) navigationMenu.querySelector('a').focus();
+});
+navigationMenu.addEventListener('click', event => {
+  if (compactNavigation.matches && event.target.closest('a')) setNavigationOpen(false, true);
+});
+document.addEventListener('click', event => {
+  if (!navigation.contains(event.target)) setNavigationOpen(false);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && navigationToggle.getAttribute('aria-expanded') === 'true') {
+    event.preventDefault();
+    setNavigationOpen(false, true);
+  }
+});
+compactNavigation.addEventListener('change', () => setNavigationOpen(false));
 const updateNavigationDivider = () => navigation.toggleAttribute('data-scrolled', scrollY > 8);
 addEventListener('scroll', updateNavigationDivider, {passive: true});
 updateNavigationDivider();
@@ -44,7 +74,7 @@ function updateControls() {
   end.textContent = '/ 00:20';
   timer.append(end);
   demo.style.setProperty('--film-progress', String(time / duration));
-  const active = chapters.findLastIndex(button => time >= Number(button.dataset.chapter));
+  const active = chapters.reduce((last, button, index) => time >= Number(button.dataset.chapter) ? index : last, -1);
   for (const [index, chapter] of chapters.entries()) {
     chapter.setAttribute('aria-pressed', String(active === index));
   }
@@ -69,6 +99,7 @@ function renderLanguage() {
   const nextLanguage = document.documentElement.lang;
   if (nextLanguage === currentLanguage) return;
   const zh = nextLanguage === 'zh-CN';
+  setNavigationOpen(navigationToggle.getAttribute('aria-expanded') === 'true');
   seekTime = currentLanguage ? video.currentTime : 0;
   currentLanguage = nextLanguage;
   failed = false;
@@ -76,7 +107,7 @@ function renderLanguage() {
   document.querySelector('.film-chapters').setAttribute('aria-label', zh ? '选择功能演示章节' : 'Explore the demonstration');
   document.querySelector('.nav-links').setAttribute('aria-label', zh ? '主要导航' : 'Main navigation');
   document.querySelector('.workflow-steps').setAttribute('aria-label', zh ? '历史清理流程' : 'Cleanup workflow');
-  document.querySelector('.support').setAttribute('aria-label', zh ? '帮助与安装' : 'Help and installation');
+  document.getElementById('next-release').setAttribute('aria-label', zh ? '当前安装包' : 'Current package');
   pixelSweep.renderLanguage();
   document.querySelector('.manager-frame img').src = `assets/product-still-${zh ? 'zh' : 'en'}.png`;
   video.poster = `assets/product-demo-${zh ? 'zh' : 'en'}.png`;

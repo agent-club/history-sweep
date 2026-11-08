@@ -18,8 +18,10 @@ try {
   }
   const released = JSON.parse(await readFile(join(temporary, 'extension/manifest.json'), 'utf8'));
   assert.deepEqual(released, manifest, 'the release manifest includes the source entries and permissions');
-  assert.equal(released.version, '0.7.0');
-  assert.ok(released.permissions.includes('alarms'), 'cleanup scheduling permission ships in the candidate');
+  assert.equal(released.version, '1.0.0');
+  assert.ok(released.permissions.includes('alarms'), 'cleanup scheduling permission ships in the release');
+  assert.deepEqual(await readFile(join(temporary, 'extension/LICENSE')), await readFile(root + 'LICENSE'));
+  assert.ok((await readFile(join(temporary, 'extension/SOURCE.txt'), 'utf8')).includes(`https://github.com/agent-club/history-sweep/tree/v${manifest.version}\n`));
   assert.ok((await readdir(join(temporary, 'extension'))).includes('update-check.mjs'), 'official update checker is packaged');
   assert.match(await readFile(join(temporary, 'site/_headers'), 'utf8'), /Access-Control-Allow-Origin: \*/);
   assert.deepEqual(JSON.parse(await readFile(join(temporary, 'site/extension-updates.json'), 'utf8')),
@@ -32,7 +34,7 @@ try {
     for (const entry of await readdir(packed, { withFileTypes: true })) {
       const file = join(packed, entry.name), original = join(source, entry.name);
       if (entry.isDirectory()) { await compareTree(file, original, extension); continue; }
-      if (extension && entry.name === 'manifest.json') continue;
+      if (extension && ['manifest.json', 'LICENSE', 'SOURCE.txt'].includes(entry.name)) continue;
       const wanted = await readFile(original);
       assert.deepEqual(await readFile(file), wanted, `${file}: packaged content matches its release source`);
       compared++;

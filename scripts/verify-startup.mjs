@@ -4,6 +4,7 @@ import { createServer } from './serve.mjs';
 import { installMock } from './fixtures.mjs';
 
 const { chromium } = dependency('playwright');
+const sharp = dependency('sharp');
 const server = createServer();
 await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
 const origin = `http://127.0.0.1:${server.address().port}`;
@@ -32,6 +33,49 @@ async function open({ layout = 'popup', theme = 'light', reduced = false } = {})
 
 try {
   browser = await chromium.launch({ headless: true, ...(process.env.HISTORY_SWEEP_CHROME ? { executablePath: process.env.HISTORY_SWEEP_CHROME } : {}) });
+
+  for (const reducedMotion of ['no-preference', 'reduce']) {
+    const host = await browser.newPage({ viewport: { width: 1200, height: 900 }, reducedMotion });
+    const releaseTheme = Promise.withResolvers();
+    const releaseStyle = Promise.withResolvers();
+    try {
+      await host.route('**/startup-host', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body style="background:white">Synthetic host</body>' }));
+      await host.route('**/extension/theme.js', async route => {
+        await releaseTheme.promise;
+        await route.continue();
+      });
+      await host.route('**/extension/app.css', async route => {
+        await releaseStyle.promise;
+        await route.continue();
+      });
+      await host.goto(`${origin}/startup-host`);
+      const backdropPixel = async () => sharp(await host.screenshot({ clip: { x: 4, y: 4, width: 1, height: 1 } })).raw().toBuffer();
+      const before = await backdropPixel();
+      const modalUrl = `${origin}/extension/modal.html`;
+      await Promise.all([
+        host.waitForRequest('**/extension/theme.js', { timeout: 5000 }),
+        host.evaluate(async url => {
+          const { injectModal } = await import('/extension/modal-host.mjs');
+          injectModal(url);
+        }, modalUrl),
+      ]);
+      check((await backdropPixel()).equals(before), `${reducedMotion}: the page stays visually unchanged while the modal theme loads`);
+      const modal = host.frame({ url: modalUrl });
+      releaseTheme.resolve();
+      await modal.waitForFunction(() => !!document.documentElement.dataset.theme);
+      // Wait beyond the opening fade to detect a blank panel revealed by the theme message alone.
+      await host.waitForTimeout(200);
+      check((await backdropPixel()).equals(before), `${reducedMotion}: the page stays unchanged while the modal stylesheet loads`);
+      releaseStyle.resolve();
+      await modal.waitForFunction(() => !document.body.dataset.startup);
+      check(!(await backdropPixel()).equals(before), `${reducedMotion}: the backdrop appears with the modal`);
+    } finally {
+      releaseTheme.resolve();
+      releaseStyle.resolve();
+      await host.close();
+    }
+  }
+
   for (const layout of ['popup', 'manager']) for (const theme of ['light', 'dark']) {
     const { context, page, release } = await open({ layout, theme });
     const first = await page.evaluate(() => ({ theme: document.documentElement.dataset.theme, background: getComputedStyle(document.querySelector('#startup')).backgroundColor, app: getComputedStyle(document.querySelector('#app')).visibility, inert: document.querySelector('#app').inert, logo: document.querySelector('.startup-mark').naturalWidth }));
@@ -110,7 +154,7 @@ try {
   check(await denied.evaluate(() => !window.__messages.some(message => message.type === 'get-protection')), 'rejected modal never initializes history access');
   await denied.close();
   check(errors.length === 0, `no browser errors: ${errors.join(', ')}`);
-  console.log(`Startup checks passed: ${checks}; theme before modules, real loading dependencies, error recovery, reduced motion, language remount and rejected modal.`);
+  console.log(`Startup checks passed: ${checks}; modal backdrop, theme before modules, real loading dependencies, error recovery, reduced motion, language remount and rejected modal.`);
 } finally {
   await browser?.close();
   await new Promise(resolve => server.close(resolve));

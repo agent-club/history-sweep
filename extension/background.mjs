@@ -4,11 +4,14 @@ import { createActivityLog } from './activity-log.mjs';
 import { createNameplateStore } from './nameplate-store.mjs';
 import { createUpdateChecker, isNewerVersion } from './update-check.mjs';
 import { createAutoCleanup, AUTO_CLEANUP_ALARM } from './auto-cleanup.mjs';
-import { WORKSPACE_TOOLS_KEY, MANUAL_CLEANUP_KEY, readWorkspaceTools, readProtectedUrls, validateSavedSearch, validateProtectedUrls, validateLinkRule, validateWebsiteLabel, websiteHostname } from './workspace-tools.mjs';
+import { WORKSPACE_TOOLS_KEY, MANUAL_CLEANUP_KEY, readWorkspaceTools, readProtectedUrls, validateSavedSearch, validateProtectedUrls, validateLinkRule, validateWebsiteLabel, websiteHostname, cleanLink } from './workspace-tools.mjs';
 import { validateLocalBackup, pausedTaskConfig } from './local-backup.mjs';
 import { readBrowsingPreferences } from './browsing-preferences.mjs';
 import { validateConfig as validateSyncConfig, validateConnection, CONNECTION_KEY } from './config-sync.mjs';
 import { normalizeRule } from './auto-cleanup-model.mjs';
+import { createAutomaticLinkCleanup } from './automatic-link-cleanup.mjs';
+import { installAgentBridge, isAgentMessage } from './agent-bridge.mjs';
+import { agentError } from './agent-access.mjs';
 
 const launcher = createLauncher(chrome);
 void launcher.register().catch(() => {});
@@ -23,6 +26,7 @@ let policyQueue = Promise.resolve();
 let applyingUpdate = false;
 let cleanupQueue = Promise.resolve();
 let queuedCleanups = 0;
+let agentBridge;
 
 function withPolicyLock(operation) {
   const result = policyQueue.then(operation);
@@ -46,8 +50,15 @@ const autoCleanup = createAutoCleanup(chrome, {
   recordActivity: (pages, items, canRecord) => activityLog.record(pages, items, 'automatic', canRecord),
   runExclusive: queueCleanup,
   isBusy: () => applyingUpdate || queuedCleanups > 0,
-  onStateChange: () => { void withPolicyLock(publishUpdateState).catch(() => {}); },
+  onStateChange: () => {
+    void withPolicyLock(publishUpdateState).catch(() => {});
+    void agentBridge?.reconcile().catch(() => {});
+  },
 });
+const automaticLinks = createAutomaticLinkCleanup(chrome);
+// Chrome only exposes connectNative after the user grants nativeMessaging.
+// The Agent panel still needs state and settings before the first grant.
+if (chrome.permissions) agentBridge = installAgentBridge(chrome, autoCleanup);
 
 async function readUpdateState() {
   const installedVersion = chrome.runtime.getManifest().version;
@@ -174,6 +185,18 @@ async function runDeletion(job, urls, details) {
 
 async function handleMessage(message, sender, owner, modal = false) {
   if (new URL(sender.url).pathname === '/sync.html' && !['get-local-backup', 'restore-local-backup'].includes(message.type)) throw new Error('Invalid page');
+  if (isAgentMessage(message)) return agentBridge?.handle(message);
+  if (message.type === 'get-link-cleanup-state') return automaticLinks.reconcile();
+  if (message.type === 'set-link-cleanup-automatic') return withPolicyLock(() => automaticLinks.setAutomatic(message.hostname, message.enabled));
+  if (message.type === 'pause-link-cleanup') return withPolicyLock(() => automaticLinks.pause(message.paused));
+  if (message.type === 'open-cleaned-link') {
+    const result = cleanLink(message.url, message.rule);
+    if (!result.removed.length) throw new Error('LINK_UNAVAILABLE');
+    // A foreground tab closes Chrome's toolbar popup and loses its in-memory selection.
+    const background = new URL(sender.url).pathname === '/popup.html';
+    await chrome.tabs.create({ url: result.url, active: !background });
+    return { background };
+  }
   if (message.type === 'get-workspace-tools') {
     const tools = await readWorkspaceTools(chrome.storage.local);
     const marker = (await chrome.storage.local.get(MANUAL_CLEANUP_KEY))[MANUAL_CLEANUP_KEY];
@@ -188,7 +211,7 @@ async function handleMessage(message, sender, owner, modal = false) {
     if (deletionRunning()) throw new Error('RULES_BUSY');
     return queueCleanup(() => activityLog.clear());
   });
-  if (['save-workspace-search', 'remove-workspace-search', 'save-url-protection', 'save-link-rule', 'save-website-label'].includes(message.type)) return withPolicyLock(async () => {
+  if (['save-workspace-search', 'remove-workspace-search', 'save-url-protection', 'save-link-rule', 'remove-link-rule', 'save-website-label'].includes(message.type)) return withPolicyLock(async () => {
     if (applyingUpdate || (message.type === 'save-url-protection' && deletionRunning())) throw new Error('RULES_BUSY');
     const tools = await readWorkspaceTools(chrome.storage.local);
     if (message.type === 'save-workspace-search') {
@@ -199,17 +222,30 @@ async function handleMessage(message, sender, owner, modal = false) {
       const [url] = validateProtectedUrls([message.url]);
       if (typeof message.protected !== 'boolean') throw new Error('INVALID_WORKSPACE_SETTINGS');
       tools.protectedUrls = message.protected ? [...new Set([...tools.protectedUrls, url])] : tools.protectedUrls.filter(item => item !== url);
-    } else if (message.type === 'save-link-rule') {
-      const hostname = websiteHostname(message.rule?.hostname);
-      if (!Array.isArray(message.rule.parameters)) throw new Error('INVALID_WORKSPACE_SETTINGS');
-      tools.linkRules = tools.linkRules.filter(rule => rule.hostname !== hostname);
-      if (message.rule.parameters.length) tools.linkRules.push(validateLinkRule(message.rule));
+    } else if (message.type === 'save-link-rule' || message.type === 'remove-link-rule') {
+      const hostname = websiteHostname(message.type === 'remove-link-rule' ? message.hostname : message.rule?.hostname);
+      const previous = message.previousHostname == null ? hostname : websiteHostname(message.previousHostname);
+      const current = tools.linkRules.find(rule => rule.hostname === previous);
+      // A stale editor must not overwrite a rule saved in another extension window.
+      if (Object.hasOwn(message, 'expectedRule') && JSON.stringify(current || null) !== JSON.stringify(message.expectedRule === null ? null : validateLinkRule(message.expectedRule))) throw new Error('LINK_RULE_CHANGED');
+      if (hostname !== previous && tools.linkRules.some(rule => rule.hostname === hostname)) throw new Error('LINK_RULE_CHANGED');
+      if (message.type === 'save-link-rule' && !Array.isArray(message.rule.parameters)) throw new Error('INVALID_WORKSPACE_SETTINGS');
+      const next = message.type === 'save-link-rule' && message.rule.parameters.length ? validateLinkRule(message.rule) : null;
+      tools.linkRules = tools.linkRules.filter(rule => rule.hostname !== previous);
+      if (next) tools.linkRules.push(next);
     } else {
       const hostname = websiteHostname(message.hostname), label = validateWebsiteLabel(message.label);
       if (['__proto__', 'constructor', 'prototype'].includes(hostname)) throw new Error('INVALID_WORKSPACE_SETTINGS');
       if (label.values.length) tools.labels[hostname] = label; else delete tools.labels[hostname];
     }
-    await chrome.storage.local.set({ [WORKSPACE_TOOLS_KEY]: tools }); return { tools };
+    await chrome.storage.local.set({ [WORKSPACE_TOOLS_KEY]: tools });
+    if (message.type === 'save-link-rule' || message.type === 'remove-link-rule') {
+      if (message.type === 'remove-link-rule' || !message.rule.parameters.length || message.rule.enabled === false || message.previousHostname && message.previousHostname !== message.rule.hostname) {
+        await automaticLinks.setAutomatic(message.previousHostname || message.hostname || message.rule.hostname, false);
+      }
+      await automaticLinks.reconcile();
+    }
+    return { tools };
   });
   if (message.type === 'get-local-backup') {
     const tools = await readWorkspaceTools(chrome.storage.local);
@@ -283,6 +319,16 @@ async function handleMessage(message, sender, owner, modal = false) {
     try { chrome.runtime.reload(); } catch (error) { applyingUpdate = false; throw error; }
     return {};
   });
+  if (message.type === 'claim-rating-invite') {
+    if (!modal && !['/manager.html', '/popup.html'].includes(new URL(sender.url).pathname)) throw new Error('Invalid page');
+    return withPolicyLock(async () => {
+      const { ratingInviteShown } = await chrome.storage.local.get('ratingInviteShown');
+      if (ratingInviteShown) return { show: false };
+      // Claim once across all workspace views, without retaining the deletion details.
+      await chrome.storage.local.set({ ratingInviteShown: true });
+      return { show: true };
+    });
+  }
   if (message.type === 'claim-activity-scroll-hint') return withPolicyLock(async () => {
     const { activityScrollHint: hint } = await chrome.storage.local.get('activityScrollHint');
     // Older installations have no reliable install date; updates must not restart onboarding.
@@ -394,8 +440,9 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (!trusted) throw new Error('Invalid modal session');
     return handleMessage(message, sender, owner, modal);
   }).then(data => respond({ ok: true, data }), error => {
+    if (isAgentMessage(message)) { respond({ ok: false, code: agentError(error) }); return; }
     const code = ['CURRENT_SITE_UNAVAILABLE', 'INVALID_TIME_RANGE', 'INVALID_PROTECTED_SITES', 'RULES_BUSY', 'PROTECTED_URL', 'UPDATE_BUSY', 'UPDATE_UNAVAILABLE', 'UPDATE_RELOADING',
-      'INVALID_WORKSPACE_SETTINGS', 'INVALID_BACKUP', 'LINK_UNAVAILABLE', 'AUTO_INVALID_RULE', 'AUTO_CONFLICT', 'AUTO_STALE', 'AUTO_PREVIEW_REQUIRED', 'AUTO_PREVIEW_EXPIRED', 'AUTO_SCAN_INCOMPLETE', 'AUTO_FULLY_PROTECTED', 'AUTO_BUSY', 'AUTO_UNAVAILABLE', 'AUTO_ACTIVITY_FAILED'].includes(error.message) ? error.message : undefined;
+      'INVALID_WORKSPACE_SETTINGS', 'INVALID_BACKUP', 'LINK_UNAVAILABLE', 'LINK_RULE_CHANGED', 'LINK_AUTO_UNSUPPORTED', 'INVALID_LINK_AUTOMATIC', 'AUTO_INVALID_RULE', 'AUTO_CONFLICT', 'AUTO_STALE', 'AUTO_PREVIEW_REQUIRED', 'AUTO_PREVIEW_EXPIRED', 'AUTO_SCAN_INCOMPLETE', 'AUTO_FULLY_PROTECTED', 'AUTO_BUSY', 'AUTO_UNAVAILABLE', 'AUTO_ACTIVITY_FAILED'].includes(error.message) ? error.message : undefined;
     respond({ ok: false, ...(code ? { code } : {}) });
   });
   return true;

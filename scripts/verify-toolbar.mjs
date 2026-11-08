@@ -86,8 +86,9 @@ try {
       await cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id: ++sequence, method: 'Input.dispatchMouseEvent', params: { type, ...point, ...(type === 'mouseMoved' ? {} : { button: 'left', clickCount: 1 }) } }) });
     }
   }
+  const workspaceReady = 'Boolean(document.getElementById("query")) && !document.getElementById("query").disabled && !document.getElementById("app").inert';
   const popup = await popupSession();
-  await waitFor(popup, 'Boolean(document.getElementById("query")) && !document.getElementById("query").disabled');
+  await waitFor(popup, workspaceReady);
   // Test actual pointer input in the browser action popup, rather than only programmatic clicks.
   await evaluate(popup, `(() => {
     window.testNativeSearch = chrome.history.search;
@@ -99,6 +100,8 @@ try {
     ];
     document.getElementById('searchForm').requestSubmit(); return true;
   })()`);
+  await waitFor(popup, 'document.querySelectorAll(".website-group").length === 2 && !document.getElementById("search").disabled');
+  await clickPopup(popup, '#groupByDate');
   await waitFor(popup, 'document.querySelectorAll(".date-group").length === 2 && !document.getElementById("search").disabled');
   await clickPopup(popup, '#groupBySite');
   await waitFor(popup, 'document.getElementById("groupBySite").getAttribute("aria-pressed") === "true" && document.querySelectorAll(".date-group").length === 0 && document.querySelectorAll(".website-group").length === 2');
@@ -128,7 +131,7 @@ try {
   await page.waitForFunction(async url => (await chrome.history.getVisits({ url })).length === 0, removedUrl);
   assert.equal(await page.evaluate(async url => (await chrome.history.getVisits({ url })).length > 0, keptUrl), true, 'unselected visit stays');
   const nextPopup = await popupSession();
-  await waitFor(nextPopup, 'Boolean(document.getElementById("query")) && !document.getElementById("query").disabled');
+  await waitFor(nextPopup, workspaceReady);
   const fullPagePromise = context.waitForEvent('page');
   await evaluate(nextPopup, 'document.getElementById("query").value="127.0.0.1";document.getElementById("mode").value="host-exact";document.getElementById("openFull").click();true');
   const fullPage = await fullPagePromise;
@@ -138,7 +141,7 @@ try {
   assert.equal(await fullPage.locator('#mode').inputValue(), 'host-exact');
   await page.goto(keptUrl);
   const websitePopup = await popupSession(true);
-  await waitFor(websitePopup, 'Boolean(document.getElementById("query")) && !document.getElementById("query").disabled');
+  await waitFor(websitePopup, workspaceReady);
   await evaluate(websitePopup, 'document.getElementById("currentSite").click();true');
   // Programmatic openPopup does not grant activeTab; the unavailable state must stay safe.
   await waitFor(websitePopup, 'document.getElementById("status").dataset.kind === "currentSiteUnavailable"');

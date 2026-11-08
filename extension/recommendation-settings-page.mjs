@@ -2,6 +2,7 @@ import { readRecommendationSettings, saveRecommendationSettings, validateRecomme
 import { cleanupRecommendations } from './cleanup-recommendations.mjs';
 import { recommendationSettingsView } from './recommendation-settings-view.mjs';
 import { translateRecommendationSettings } from './recommendation-copy.mjs';
+import { addPreferenceHelp } from './preference-help.mjs';
 
 export function mountRecommendationSettings(root, { lang, t, storage, request, snapshot, onSaved, onProtection, onDirty, onPage = () => {}, onPagesClosed = () => {} }) {
   const tr = (key, values) => translateRecommendationSettings(lang, key, values);
@@ -9,6 +10,30 @@ export function mountRecommendationSettings(root, { lang, t, storage, request, s
   root.innerHTML = recommendationSettingsView(tr);
   const nodes = new Map([...root.querySelectorAll('[id]')].map(node=>[node.id,node]));
   const $ = name => nodes.get(`recommendation-${name}`);
+  for (const section of root.querySelectorAll('.auto-page')) {
+    const title = section.querySelector('h1');
+    const intro = section.querySelector('.auto-description');
+    addPreferenceHelp(title, lang, title.id === 'recommendation-siteTitle' ? tr('websites') : title.textContent,
+      intro, ...section.querySelectorAll('[data-page-help]'));
+  }
+  const habitRow = root.querySelector('.recommendation-row');
+  const habitTitle = habitRow.querySelector('.recommendation-copy > strong');
+  addPreferenceHelp(habitTitle, lang, habitTitle.textContent, tr('habitIntro'));
+  const typeRow = habitRow.nextElementSibling;
+  const typeTitle = typeRow.querySelector('.recommendation-copy > strong');
+  addPreferenceHelp(typeTitle, lang, typeTitle.textContent, typeRow.querySelector('.recommendation-source'));
+  const frequency = root.querySelector('.recommendation-frequency');
+  const frequencyTitle = frequency.querySelector('strong');
+  addPreferenceHelp(frequencyTitle, lang, frequencyTitle.textContent, frequency.querySelector('p'));
+  addPreferenceHelp($('protection'), lang, tr('protection'), tr('scope'), tr('protectionNote'));
+  addPreferenceHelp($('websitesTitle'), lang, tr('websites'), tr('noSitesHint'));
+  const domainLabel = root.querySelector(`label[for="recommendation-domain"]`);
+  const domainHint = root.querySelector('#recommendation-domainHint');
+  const domainHintPanel = addPreferenceHelp(domainLabel, lang, tr('domain'), domainHint);
+  root.querySelector('#recommendation-domain').setAttribute('aria-describedby', domainHintPanel.id);
+  addPreferenceHelp($('conditionTitle'), lang, tr('when'), ...['always', 'inactive'].map(key => `${tr(key)}. ${tr(`${key}Hint`)}`));
+  const counting = root.querySelector('.recommendation-counting');
+  addPreferenceHelp(counting.querySelector('strong'), lang, counting.querySelector('strong').textContent, ...[...counting.querySelectorAll('p')]);
   // Confirming a background tab must not depend on that page being displayed.
   const confirmationHost = root.closest('#preferencesDialog');
   if(confirmationHost) confirmationHost.append($('confirm'));
@@ -95,8 +120,10 @@ export function mountRecommendationSettings(root, { lang, t, storage, request, s
     $('habitSummary').textContent = habitSummary(draft.habit);
     for (const type of ['extension', 'application']) $(type).checked = draft.types[type];
     $('cue').value = draft.cue;
-    $('siteCount').textContent = tr('ruleCount', { n: draft.sites.length });
-    $('empty').hidden = draft.sites.length > 0;
+    const ruleCount = draft.sites.length;
+    $('siteCount').textContent = tr('ruleCount', { n: ruleCount });
+    $('siteCount').hidden = ruleCount === 0;
+    $('empty').hidden = ruleCount > 0;
     $('sites').replaceChildren();
     draft.sites.forEach((site, index) => {
       const row = document.createElement('div'); row.className = 'recommendation-row';

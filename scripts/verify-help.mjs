@@ -33,7 +33,7 @@ try {
       await page.addInitScript(language => {
         localStorage.setItem('language', language);
         localStorage.setItem('theme', language === 'en' ? 'dark' : 'light');
-        chrome.runtime.getManifest = () => ({ version: '0.6.0' });
+        chrome.runtime.getManifest = () => ({ version: '1.0.0' });
       }, language);
       if (layout === 'modal') await page.route('**/extension/manager.html', async route => {
         const response = await route.fetch();
@@ -42,48 +42,81 @@ try {
       await page.goto(`${origin}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`);
       await page.locator('#selectAll:not(:disabled)').waitFor();
       check(await page.locator('dialog[open]').count() === 0, `${layout}/${language}: help never opens automatically`);
+      check(await page.locator('#quickStartDialog').isHidden(), 'tour remains opt-in on page load');
       check(await page.locator('#quickStartHint').isVisible(), 'first-use hint is optional and visible');
       await page.locator('#query').fill('example.org');
       await page.locator('#query').press('Enter');
       await page.locator('#selectAll:not(:disabled)').waitFor();
+      check(await page.locator('#quickStartHint').isHidden(), 'first successful search dismisses the first-use hint');
       await page.locator('#selectAll').click();
       const selection = await page.locator('#deleteLabel').textContent();
-      await page.locator('#openQuickStartHint').click();
-      check(await page.locator('#quickStartDialog').isVisible(), 'hint opens the guide');
-      check(await page.locator('.quick-start-steps > li').count() === 3, 'guide explains three actions');
-      await fits(page.locator('#quickStartDialog'), `${layout}/${language} guide`);
-      await page.screenshot({ path: `${output}/${layout}-${language}-guide.png` });
+      await page.locator('#searchHelpToggle').click();
+      await page.locator('#openQuickStartSearch').click();
+      check(await page.locator('#quickStartDialog').isVisible(), 'search help opens the guide after the hint is gone');
+      check(await page.locator('#quickStartDialog').getAttribute('data-step') === '1', 'guide starts at search');
+      check(await page.locator('#previousQuickStart').isDisabled(), 'first step has no back action');
+      await page.locator('#query').fill('example.org');
+      for (let step = 1; step <= 3; step++) {
+        check(await page.locator('#quickStartDialog').getAttribute('data-step') === String(step), 'guide advances one step at a time');
+        await fits(page.locator('#quickStartCard'), `${layout}/${language} step ${step}`);
+        const geometry = await page.locator('#quickStartCard').evaluate(node => {
+          const card = node.getBoundingClientRect();
+          const spot = document.querySelector('#quickStartSpotlight').getBoundingClientRect();
+          return { fits: card.top >= 0 && card.bottom <= innerHeight + 1,
+            separate: card.bottom <= spot.top || card.top >= spot.bottom || card.right <= spot.left || card.left >= spot.right };
+        });
+        check(geometry.fits && geometry.separate, `${layout}/${language} step ${step}: guide stays in the viewport without covering its target ${JSON.stringify(geometry)}`);
+        await page.screenshot({ path: `${output}/${layout}-${language}-step-${step}.png` });
+        if (step === 2) {
+          await page.locator('#previousQuickStart').click();
+          check(await page.locator('#quickStartDialog').getAttribute('data-step') === '1', 'Back returns to the previous control');
+          await page.locator('#finishQuickStart').click();
+          await page.locator('#selectAll').click();
+          await page.locator('#selectAll').click();
+        }
+        if (step < 3) await page.locator('#finishQuickStart').click();
+      }
+      check(await page.locator('#quickStartWarning').isVisible(), 'final step keeps deletion consequences visible');
+      check(await page.locator('#confirmDialog').isHidden(), 'tour never opens or confirms deletion itself');
       await page.locator('#closeQuickStart').focus();
       await page.keyboard.press('Shift+Tab');
-      check(await page.locator('#finishQuickStart').evaluate(node => node === document.activeElement), 'backward Tab stays in guide');
+      check(await page.locator('#delete').evaluate(node => node === document.activeElement), 'keyboard navigation reaches the highlighted control');
       await page.keyboard.press('Tab');
       check(await page.locator('#closeQuickStart').evaluate(node => node === document.activeElement), 'forward Tab stays in guide');
       await page.keyboard.press('Escape');
-      await page.waitForFunction(() => document.activeElement?.id === 'query');
-      check(await page.locator('#query').evaluate(node => node === document.activeElement), 'closing returns focus to search');
+      await page.waitForFunction(() => document.activeElement?.id === 'openQuickStartSearch');
+      check(await page.locator('#openQuickStartSearch').evaluate(node => node === document.activeElement), 'closing returns focus to the search help entry');
       check(await page.locator('#query').inputValue() === 'example.org' && await page.locator('#deleteLabel').textContent() === selection, 'guide preserves search and selection');
-      await page.locator('#searchHelpToggle').click();
       await page.locator('#openQuickStartSearch').click();
-      await page.locator('#finishQuickStart').click();
+      await page.locator('#skipQuickStart').click();
       await page.waitForFunction(() => document.activeElement?.id === 'openQuickStartSearch');
       check(await page.locator('#openQuickStartSearch').evaluate(node => node === document.activeElement), 'search help entry regains focus');
+      await page.locator('#openQuickStartSearch').click();
+      await page.locator('#finishQuickStart').click();
+      await page.locator('#finishQuickStart').click();
+      await page.locator('#delete').click();
+      await page.locator('#confirmDialog').waitFor();
+      check(await page.locator('#quickStartDialog').isHidden(), 'opening the real preview ends the tour');
+      check(await page.evaluate(() => window.__deleted.length) === 0, 'preview still requires independent deletion confirmation');
+      await page.locator('#confirmDialog [value="cancel"]').click();
       await page.locator('#searchHelpClose').click();
       await page.locator('#openPreferences').click();
       await page.waitForFunction(() => !document.querySelector('#savePreferences').disabled);
       await page.locator('#defaultRange').selectOption('today');
       await page.locator('#openQuickStartSettings').click();
+      check(await page.locator('#preferencesDialog').isHidden(), 'settings yield to the main-screen tour without discarding draft');
       await page.keyboard.press('Escape');
       check(await page.locator('#preferencesDialog').isVisible() && await page.locator('#defaultRange').inputValue() === 'today', 'nested guide preserves the settings draft');
       await page.waitForFunction(() => document.activeElement?.id === 'openQuickStartSettings');
       check(await page.locator('#openQuickStartSettings').evaluate(node => node === document.activeElement), 'settings entry regains focus');
       await context.setOffline(true);
       await page.locator('#openUpdateSettings').click();
-      check(await page.locator('#installedVersion').textContent() === 'v0.6.0', 'installed version remains separate from release status');
+      check(await page.locator('#installedVersion').textContent() === 'v1.0.0', 'installed version remains separate from release status');
       check(await page.locator('#updateDialog .release-record').count() === releaseNotes.length, 'all package records are available offline');
-      const published = page.locator('#updateDialog [data-release="0.6.0"]');
+      const published = page.locator('#updateDialog [data-release="1.0.0"]');
       check(await published.getAttribute('open') !== null && await published.locator('[data-status="published"]').count() === 1, 'installed release presets Published and starts expanded');
-      check(await page.locator('#updateDialog [data-release="0.7.0"] [data-status="candidate"]').count() === 1, 'the new package is marked as a candidate offline');
-      const previous = page.locator('#updateDialog [data-release="0.5.0"]');
+      check(await published.locator('[data-status="candidate"]').count() === 0, 'the offline package is Published independently of store review');
+      const previous = page.locator('#updateDialog [data-release="0.7.0"]');
       check(await previous.locator('[data-status="published"]').count() === 1 && await previous.getAttribute('open') === null, 'previous published release starts collapsed');
       await previous.locator('summary').click();
       check(await previous.locator('.release-changes').isVisible(), 'previous changes can be expanded');
@@ -99,7 +132,7 @@ try {
       await context.setOffline(false);
       await page.reload();
       await page.locator('#selectAll:not(:disabled)').waitFor();
-      check(await page.locator('#quickStartHint').isHidden(), 'opened guide dismisses the first-use hint across reloads');
+      check(await page.locator('#quickStartHint').isHidden(), 'first-use hint stays dismissed across reloads');
       check(errors.length === 0, `${layout}/${language}: ${errors.join('; ')}`);
       await context.close();
     }
@@ -115,14 +148,31 @@ try {
     await page.locator('#searchHelpToggle').click();
     await fits(page.locator('#searchHelpPanel'), '320px search help');
     await page.locator('#openQuickStartSearch').click();
-    await fits(page.locator('#quickStartDialog'), '320px guide');
-    await page.screenshot({ path: `${output}/narrow-guide.png` });
+    for (let step = 1; step <= 3; step++) {
+      await fits(page.locator('#quickStartCard'), `320px guide step ${step}`);
+      await page.screenshot({ path: `${output}/narrow-step-${step}.png` });
+      await page.locator('#finishQuickStart').click();
+    }
+    check(await page.locator('#quickStartDialog').isHidden(), 'finishing exits the tour');
+    await page.locator('#openQuickStartSearch').click();
+    check(await page.locator('#quickStartDialog').getAttribute('data-step') === '1', 'reopening restarts the tour');
+    await page.locator('#query').fill('no-matching-history.invalid');
+    await page.locator('#query').press('Enter');
+    await page.locator('#empty').waitFor();
+    await page.locator('#finishQuickStart').click();
+    check(await page.locator('#selectAll').isDisabled(), 'empty results keep the original selection restriction');
+    await page.locator('#finishQuickStart').click();
+    check(await page.locator('#delete').isDisabled(), 'tour never enables deletion without a selection');
+    await page.locator('#finishQuickStart').click();
+    check(await page.locator('#quickStartDialog').isHidden(), 'an empty result does not trap users in the tour');
+    check(await page.evaluate(() => window.__deleted.length) === 0, 'tour completion never deletes history');
     await context.close();
   }
   for (const width of [1280, 360]) {
     const context = await browser.newContext({ viewport: { width, height: 850 } });
     const page = await context.newPage();
-    await page.goto(`${origin}/site/releases.html`);
+    const response = await page.goto(`${origin}/site/releases.html`);
+    assert.ok(response?.ok(), 'The browser fixture must include site/releases.html');
     for (const language of ['en', 'zh-CN']) {
       await page.locator(`[data-language="${language}"]`).click();
       for (const record of releaseNotes) {
@@ -131,15 +181,16 @@ try {
         check(await entry.locator('.release-changes > li').allTextContents().then(actual => JSON.stringify(actual) === JSON.stringify(record.changes.map(change => change[language]))), 'website uses the canonical changes');
       }
       check(await page.locator('[data-release="0.6.0"] [data-status="published"]').count() === 1, 'website presets v0.6.0 as Published too');
-      check(await page.locator('[data-release="0.6.0"]').getAttribute('open') !== null, 'website expands v0.6.0');
-      check(await page.locator('[data-release="0.7.0"] [data-status="candidate"]').count() === 1, 'website keeps the new package distinct from published records');
+      check(await page.locator('[data-release="0.6.0"]').getAttribute('open') === null, 'website keeps the previous published release collapsed');
+      check(await page.locator('[data-release="1.0.0"] [data-status="published"]').count() === 1, 'website marks the current package Published independently of store review');
+      check(await page.locator('[data-release="1.0.0"]').getAttribute('open') !== null, 'website expands the current published package');
       await fits(page.locator('body'), `${width}px website/${language}`);
       await page.screenshot({ path: `${output}/site-${width}-${language}.png`, fullPage: true });
     }
     await context.close();
   }
   const metadata = JSON.parse(await readFile(new URL('../site/extension-updates.json', import.meta.url), 'utf8'));
-  check(metadata.version === '0.6.0', 'public update metadata targets v0.6.0');
+  check(metadata.version === '0.7.0', 'public update metadata targets the verified Chrome Web Store version');
   console.log(`${checks} help and release-note checks passed. Screenshots: ${output}`);
 } finally {
   await browser?.close();

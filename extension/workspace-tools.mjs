@@ -54,9 +54,21 @@ export function websiteHostname(value) {
 }
 
 export function validateLinkRule(value) {
-  if (!exact(value, ['hostname', 'parameters']) || !Array.isArray(value.parameters) || !value.parameters.length ||
-      value.parameters.some(name => !text(name, 256) || !name || /[\r\n]/.test(name))) return invalid();
-  return { hostname: websiteHostname(value.hostname), parameters: [...new Set(value.parameters)] };
+  if (!exact(value, ['hostname', 'parameters', 'enabled', 'preserveParameters', 'excludedPaths']) ||
+      !Array.isArray(value.parameters) || !value.parameters.length ||
+      value.parameters.some(name => !text(name, 256) || !name || /[\r\n]/.test(name)) ||
+      (value.enabled !== undefined && typeof value.enabled !== 'boolean') ||
+      (value.preserveParameters !== undefined && (!Array.isArray(value.preserveParameters) ||
+        value.preserveParameters.some(name => !text(name, 256) || !name || /[\r\n]/.test(name)))) ||
+      (value.excludedPaths !== undefined && (!Array.isArray(value.excludedPaths) ||
+        value.excludedPaths.some(path => typeof path !== 'string' || !path.startsWith('/') || /[?#]/.test(path))))) return invalid();
+  return {
+    hostname: websiteHostname(value.hostname),
+    parameters: [...new Set(value.parameters)],
+    enabled: value.enabled ?? true,
+    preserveParameters: [...new Set(value.preserveParameters ?? [])],
+    excludedPaths: [...new Set(value.excludedPaths ?? [])]
+  };
 }
 
 export function validateWebsiteLabel(value) {
@@ -100,12 +112,18 @@ export function cleanLink(value, rule) {
   if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('LINK_UNAVAILABLE');
   const cleanRule = validateLinkRule(rule);
   if (parsed.hostname.toLowerCase().replace(/\.$/, '') !== cleanRule.hostname) throw new Error('LINK_UNAVAILABLE');
+  if (!cleanRule.enabled) return { url: value, removed: [], skip: 'disabled' };
+  if (cleanRule.excludedPaths.some(prefix => prefix === '/' || parsed.pathname === prefix ||
+      (prefix.endsWith('/') ? parsed.pathname.startsWith(prefix) : parsed.pathname.startsWith(prefix + '/')))) {
+    return { url: value, removed: [], skip: 'path' };
+  }
   const hashAt = value.indexOf('#');
   const queryAt = value.indexOf('?');
   if (queryAt < 0 || (hashAt >= 0 && queryAt > hashAt)) return { url: value, removed: [] };
   const fragment = hashAt < 0 ? '' : value.slice(hashAt);
   const query = value.slice(queryAt + 1, hashAt < 0 ? value.length : hashAt);
-  const names = new Set(cleanRule.parameters), removed = [];
+  const preserved = new Set(cleanRule.preserveParameters);
+  const names = new Set(cleanRule.parameters.filter(name => !preserved.has(name))), removed = [];
   // Do not serialize URLSearchParams: that would rewrite untouched signed/business parameters.
   const kept = query.split('&').filter(part => {
     let name;

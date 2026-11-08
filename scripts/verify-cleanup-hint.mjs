@@ -90,6 +90,26 @@ try {
   await worker.evaluate(() => chrome.storage.local.set({ softPrivacy: true }));
   await page.waitForFunction(() => !document.querySelector('#cleanupHintReasons [data-reason=frequent]'));
   verify((await page.locator('#cleanupHintReasons').textContent()).includes('Your website rule') && !(await page.locator('#cleanupHintReasons').textContent()).includes('Cleared on'), 'an open preview removes newly private cleanup details while retaining independent website rules');
+  const nativeSite = page.locator('#cleanupHintReasons [data-reason=site]');
+  if (!await nativeSite.evaluate(element => element.open)) await nativeSite.locator('summary').click();
+  await nativeSite.locator('.cleanup-candidate').filter({ visible: true }).first().check();
+  const selectedUrl = await nativeSite.locator('.cleanup-candidate:checked').first().getAttribute('data-url');
+  await page.locator('#cleanupHintClean').click();
+  verify((await page.locator('#confirmBody').textContent()).includes(' 1 '), 'native selective cleanup confirms one URL even when it has multiple reasons');
+  await page.locator('#confirmDialog [value=confirm]').click();
+  await page.waitForFunction(() => document.querySelector('#status').dataset.kind === 'done' && !document.querySelector('#search').disabled);
+  verify(await worker.evaluate(async url => (await chrome.history.getVisits({ url })).length === 0, selectedUrl), 'native selective cleanup actually removes that URL');
+  verify(await worker.evaluate(async () => (await chrome.history.search({ text: 'ordinary-', startTime: 0, maxResults: 1000 })).length === 110), 'native selective cleanup preserves all ordinary history');
+  verify(await page.locator('#cleanupHint').isVisible(), 'native partial cleanup keeps remaining recommendations');
+  await page.locator('#cleanupHintToggle').click(); await page.locator('#cleanupHintBack').click();
+  const total = Number(await page.locator('#cleanupHintCount').textContent());
+  await page.locator('#cleanupHintClean').click();
+  verify((await page.locator('#confirmBody').textContent()).includes(` ${total} `), 'native one-click cleanup confirms the unique recommendation count');
+  await page.locator('#confirmDialog [value=confirm]').click();
+  await page.locator('#cleanupHintSuccess').waitFor({ state: 'visible' });
+  await page.locator('#cleanupHintSlot').waitFor({ state: 'hidden' });
+  verify(await worker.evaluate(async () => (await chrome.history.search({ text: 'ordinary-', startTime: 0, maxResults: 1000 })).length === 110), 'native full recommendation cleanup preserves ordinary history');
+  await page.screenshot({ path: join(directory, 'popup-dark-cleaned.png'), animations: 'disabled' });
   verify(errors.length === 0, `no browser exceptions: ${errors.join('; ')}`);
   console.log(JSON.stringify({ result: 'passed', checks, screenshots: directory, syntheticHistoryOnly: true }));
 } catch (error) {

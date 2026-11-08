@@ -58,6 +58,13 @@ try {
         const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
         await chrome.storage.session.set({ modalLaunchSessions: { [syntheticLaunchId]: { tabId: tab.id, expires: Date.now() + 60000 } } });
       }, syntheticLaunchId);
+      await page.evaluate(() => {
+        const attach = Element.prototype.attachShadow;
+        Element.prototype.attachShadow = function (options) {
+          Element.prototype.attachShadow = attach;
+          return (window.fixtureModalRoot = attach.call(this, options));
+        };
+      });
       await page.evaluate(injectModal, `${extensionOrigin}/modal.html#launch=${syntheticLaunchId}`);
       await navigation;
       frame = page.frames().find(frame => frame.url().startsWith(`${extensionOrigin}/modal.html`));
@@ -65,6 +72,10 @@ try {
     await frame.waitForFunction(() => document.querySelector('#search') && !document.querySelector('#search').disabled);
     await enterWorkspace(frame);
     frame.setDefaultTimeout?.(6000);
+    if (layout === 'modal') {
+      await frame.locator('#closeModalWorkspace').waitFor({ state: 'visible' });
+      await page.waitForFunction(() => window.fixtureModalRoot.querySelector('.modal-close').hidden);
+    }
 
     await openSettings(frame);
     const structure = await frame.evaluate(() => ({
@@ -73,11 +84,32 @@ try {
       modes: [...document.querySelectorAll('#preferencesForm input[name=launchMode]')].map(input => input.value),
     }));
     assert.deepEqual(structure, { formCount: 1, fields: Array(4).fill('preferencesForm'), modes: ['popup', 'modal', 'fullpage'] });
+    const launchHelp = frame.getByRole('button', { name: 'About Open extension as' });
+    const launchHint = frame.locator('#launchHelp');
+    check(await launchHint.isHidden(), `${layout}: opening-method help is collapsed initially`);
+    await launchHelp.press('Enter');
+    check(await launchHint.isVisible() && await launchHelp.getAttribute('aria-expanded') === 'true', `${layout}: keyboard opens help`);
+    const fitsDialog = await launchHint.evaluate(panel => {
+      const box = panel.getBoundingClientRect();
+      const bounds = panel.closest('dialog').getBoundingClientRect();
+      return box.left >= bounds.left && box.right <= bounds.right && box.top >= bounds.top && box.bottom <= bounds.bottom;
+    });
+    check(fitsDialog, `${layout}: help fits inside the settings window`);
+    if (screenshotDirectory) {
+      await mkdir(screenshotDirectory, { recursive: true });
+      await frame.locator('#preferencesDialog').screenshot({ path: join(screenshotDirectory, `preferences-help-${layout}.png`) });
+    }
+    await page.keyboard.press('Escape');
+    check(await launchHint.isHidden() && await launchHelp.evaluate(node => node === document.activeElement),
+      `${layout}: Escape dismisses help and retains focus in preferences`);
     await frame.locator('#dismissPreferences').click(); await settingsClosed(frame);
     check(await frame.locator('#openPreferences').evaluate(node => node === document.activeElement), `${layout}: unchanged close restores focus`);
 
     await openSettings(frame, 'privacy');
     await frame.locator('#privateCleanup').check();
+    await frame.getByRole('button', { name: 'About Private cleanup' }).click();
+    check(await frame.locator('#privateCleanupHint').isVisible() && await frame.locator('#privateCleanup').isChecked(),
+      `${layout}: clicking help preserves the privacy draft`);
     const scrollTop = await frame.locator('.preferences-content').evaluate(node => { node.scrollTop = 120; return node.scrollTop; });
     await frame.locator('#dismissPreferences').click();
     await confirmed(frame);
@@ -184,7 +216,17 @@ try {
 
     // Capture Chinese and dark theme without mutating any real browser profile.
     await frame.getByRole('button', { name: '简体中文', exact: true }).click();
-    await openSettings(frame, 'privacy'); await frame.locator('#privateCleanup').uncheck();
+    await openSettings(frame, 'privacy');
+    const privacyHelp = frame.getByRole('button', { name: '关于隐藏清理记录（软隐私）' });
+    await privacyHelp.click();
+    check(await frame.locator('#softPrivacyHint').isVisible(), `${layout}: localized privacy help opens`);
+    if (screenshotDirectory) {
+      await frame.evaluate(() => document.dispatchEvent(new CustomEvent('history-sweep:set-theme', { detail: 'dark' })));
+      await frame.locator('#preferencesDialog').screenshot({ path: join(screenshotDirectory, `preferences-help-privacy-${layout}-dark.png`) });
+      await frame.evaluate(() => document.dispatchEvent(new CustomEvent('history-sweep:set-theme', { detail: 'light' })));
+    }
+    await privacyHelp.click();
+    await frame.locator('#privateCleanup').uncheck();
     await frame.locator('#closePreferences').click(); await confirmed(frame);
     check(await frame.locator('#unsavedPreferencesTitle').textContent() === '保存对设置的更改？', `${layout}: Chinese confirmation copy`);
     if (screenshotDirectory) {
@@ -205,7 +247,8 @@ try {
     }
     if (layout === 'modal') {
       check(await page.evaluate(() => globalThis.__historySweepModalHost?.isConnected()), 'closing settings preserves outer modal');
-      await page.mouse.click(8, 450);
+      check(await page.evaluate(() => window.fixtureModalRoot.querySelector('.modal-close').hidden), 'closing settings does not reveal an independently painted host close button');
+      await frame.locator('#closeModalWorkspace').click();
       await page.waitForFunction(() => !globalThis.__historySweepModalHost);
     }
     await page.close();

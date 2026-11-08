@@ -1,7 +1,13 @@
+@import './agent.css';
+
 /* Settings occupy the existing window; the history view stays mounted underneath. */
 #preferencesDialog, #updateDialog { inset:0; width:min(1080px,calc(100vw - 48px)); height:min(760px,calc(100dvh - 48px)); max-width:none; max-height:none; margin:auto; padding:0; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:var(--surface); transform:none; transition:none; box-shadow:var(--panel-shadow); }
 #preferencesDialog[open], #updateDialog[open] { display:flex; flex-direction:column; transform:none; animation:none; }
 #preferencesDialog::backdrop, #updateDialog::backdrop { background:var(--dialog-backdrop); backdrop-filter:none; transition:none; }
+/* The selected page and its enabled controls should paint together when settings open. */
+#preferencesDialog [data-settings-section],
+#preferencesDialog .settings-tab-select,
+#preferencesDialog .settings-select-trigger { transition:none; }
 @starting-style { #preferencesDialog[open] { transform:none; } }
 #updateDialog { opacity:0; transform:translateY(8px) scale(.985); }
 #updateDialog[open] { opacity:1; transform:none; transition:opacity 160ms ease,transform 200ms cubic-bezier(.22,1,.36,1); }
@@ -19,12 +25,42 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
 .settings-back { display:inline-flex; align-items:center; gap:7px; font-size:12px; text-decoration:none; }
 .settings-back .ui-icon { width:15px; height:15px; }
 /* The fixed header owns the tabs; only the page beneath it scrolls. */
-#preferencesDialog .settings-tabs-header { display:grid; grid-template-columns:220px minmax(0,1fr) 32px; gap:0; padding-left:0; min-height:60px; }
-.settings-tabs-header .settings-back { justify-self:start; margin-left:25px; }
-.settings-tabs { position:relative; display:flex; align-items:center; min-width:0; margin:0 16px 0 38px; }
+#preferencesDialog .settings-tabs-header {
+ display:grid;
+ grid-template-columns:36px minmax(0,1fr) 36px;
+ gap:8px;
+ min-height:56px;
+ padding:9px 14px;
+}
+.settings-tabs-header .settings-back,
+.settings-tabs-header #dismissPreferences {
+ display:grid;
+ place-items:center;
+ width:36px;
+ height:36px;
+ padding:0;
+ border:0;
+ border-radius:6px;
+ background:transparent;
+ box-shadow:none;
+}
+.settings-tabs-header .settings-back:hover,
+.settings-tabs-header #dismissPreferences:hover:not(:disabled) { background:var(--mist); }
+#backPreferences:focus-visible { outline:2px solid var(--muted); outline-offset:-2px; }
+.settings-tabs-header .settings-back > .ui-icon,
+.settings-tabs-header #dismissPreferences > .ui-icon { width:16px; height:16px; opacity:.8; }
+.settings-tabs { position:relative; display:flex; align-items:center; min-width:0; }
+.settings-tabs::before {
+ content:'';
+ flex:0 0 1px;
+ height:18px;
+ margin-right:10px;
+ background:var(--line);
+}
 .settings-tabs-list { display:flex; align-items:center; gap:6px; min-width:0; flex:1; overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain; touch-action:pan-x; scrollbar-width:none; padding:3px; }
 .settings-tabs-list::-webkit-scrollbar { display:none; }
-.settings-tab { display:flex; align-items:center; flex:0 0 auto; height:28px; max-width:210px; border:1px solid var(--line); border-radius:6px; background:var(--surface); color:var(--muted); }
+.settings-tab { display:flex; align-items:center; flex:0 0 auto; height:28px; max-width:min(210px,100%); border:1px solid var(--line); border-radius:6px; background:var(--surface); color:var(--muted); }
+.settings-tab[data-clipped] { opacity:0; pointer-events:none; }
 .settings-tab[data-active=true] { background:var(--mist-strong); border-color:transparent; color:var(--ink); }
 .settings-tab-select, .settings-tab-close, .settings-tabs-more, .settings-tabs-menu-page { font:inherit; cursor:pointer; border:0; background:transparent; color:inherit; }
 .settings-tab-select { min-width:0; min-height:0; height:26px; padding:0 7px 0 12px; font-size:12px; line-height:26px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:5px; }
@@ -114,8 +150,10 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
 .auto-switch[aria-checked=true] { background:var(--accent); }
 .auto-switch[aria-checked=true]::after { left:15px; background:var(--on-primary); }
 .auto-protection-link { display:block; margin-top:20px; padding:0; font-size:11px; color:var(--muted); }
+.auto-agent-entry { border:0; background:none; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
 .auto-footer { flex:0 0 auto; min-height:73px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:15px 38px; border-top:1px solid var(--line-soft); background:var(--surface); }
 .auto-footer > p { margin:0; max-width:360px; color:var(--muted); font-size:10px; line-height:1.6; }
+.auto-footer > button:only-child { margin-inline-start:auto; }
 .auto-footer-actions { display:flex; align-items:center; gap:14px; flex-shrink:0; margin-left:auto; }
 .auto-footer-actions .quiet { padding:8px 0; font-size:12px; }
 .auto-breadcrumb { padding:0; color:var(--muted); font-size:11px; margin-bottom:18px; }
@@ -199,8 +237,6 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
  .auto-field select option::checkmark { order:1; flex:0 0 auto; margin-left:auto; }
 }
 @media(max-width:760px) {
- #preferencesDialog .settings-tabs-header { grid-template-columns:205px minmax(0,1fr) 32px; }
- .settings-tabs { margin-left:24px; }
  .settings-layout { grid-template-columns:205px minmax(0,1fr); }
  .settings-nav { padding-inline:10px; }
  .settings-nav > button, .settings-nav > a { padding-inline:10px; gap:7px; }
@@ -215,11 +251,8 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
  .auto-section-heading > button { padding-inline:10px; }
 }
 @media(max-width:580px) {
- #preferencesDialog .settings-tabs-header { grid-template-columns:auto minmax(0,1fr) 28px; gap:10px; min-height:52px; padding:8px 12px; }
- .settings-tabs-header .settings-back { width:28px; height:28px; overflow:hidden; margin:0; padding:0; font-size:0; gap:0; justify-content:center; }
- .settings-tabs-header .settings-back .ui-icon { flex:0 0 16px; }
- .settings-tabs { margin:0; }
- .settings-tab { max-width:190px; }
+ #preferencesDialog .settings-tabs-header { min-height:52px; padding:7px 10px; }
+ .settings-tab { max-width:min(190px,100%); }
  .settings-nav-title { display:none; }
  .auto-rule-card { flex-wrap:wrap; }
  .auto-rule-head { flex-basis:100%; }
@@ -229,6 +262,7 @@ body[data-presentation=modal] #preferencesDialog, body[data-layout=popup] #prefe
  .settings-layout { display:flex; flex-direction:column; }
  .settings-nav { flex-direction:row; padding:8px; border-right:0; border-bottom:1px solid var(--line-soft); gap:3px; }
  .settings-nav > button, .settings-nav > a { flex:1; justify-content:center; min-width:0; padding:8px 4px; font-size:11px; white-space:nowrap; }
+ .settings-standalone .settings-nav > :is(button,a) { flex:1 1 auto; white-space:normal; overflow-wrap:anywhere; text-align:center; }
  .settings-nav .ui-icon, .settings-brand { display:none; }
  .settings-pages, #standaloneTasks { flex:1; min-height:0; }
  .auto-scroll, #preferencesDialog .preferences-content, .update-content { padding:23px 20px; }

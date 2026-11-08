@@ -33,6 +33,8 @@ try {
     });
     await page.goto(`${origin}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`);
     await page.waitForFunction(() => document.querySelector('#status')?.dataset.kind === 'scanned' && !document.querySelector('#search').disabled);
+    await page.waitForFunction(() => !document.body.hasAttribute('data-startup') && !document.querySelector('#app').inert);
+    await page.evaluate(() => document.fonts.ready);
     // The first default-open group is a different path from a warmed expand-all list.
     // Use trusted mouse input and keep the surrounding text nodes as repaint evidence.
     await page.evaluate(() => {

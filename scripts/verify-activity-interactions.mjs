@@ -67,6 +67,7 @@ try {
     await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
     await page.waitForFunction(() => document.querySelector('#activityPanel').hidden);
     await page.locator('#activityDock[data-open="false"] #activityEntry, #activityDock[data-open="true"] #activityCollapse').click();
+    await page.waitForFunction(() => !document.querySelector('#activityPanel').inert);
     check(await page.evaluate(() => document.querySelector('.activity-day[aria-pressed=true]') === window.__selectedCell), `${layout}: reopen retains existing chart nodes and selection`);
     await page.locator('.activity-day[aria-pressed=true]').focus();
     await page.keyboard.press('ArrowUp');
@@ -74,6 +75,9 @@ try {
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => document.querySelector('#activityTooltip').hidden);
     check(await page.locator('#activityGrid [aria-describedby=activityTooltip]').count() === 0, `${layout}: Escape removes tooltip association`);
+    await page.waitForFunction(() => document.querySelector('#activityPanel').hidden);
+    await page.locator('#activityEntry').click();
+    await page.waitForFunction(() => !document.querySelector('#activityPanel').inert);
     await page.evaluate(() => { window.__holdActivity = true; window.__releaseActivity = null; window.dispatchEvent(new Event('focus')); });
     await page.waitForFunction(() => window.__releaseActivity);
     check(await page.evaluate(() => document.querySelector('.activity-day[data-date="2026-10-16"]') === window.__selectedCell), `${layout}: background refresh retains cached chart`);

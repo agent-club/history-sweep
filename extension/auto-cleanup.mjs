@@ -86,7 +86,7 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
     const privacy = await readPrivacy();
     const runtime = (await api.storage.local.get(autoRuntimeStorage))[autoRuntimeStorage];
     return { config, running: active, stopping, result: privacy.privateCleanup || privacy.softPrivacy ? null : runtime?.result ?? null,
-      error: runtime?.error ?? null, ...privacy };
+      error: runtime?.error ?? null, execution: runtime?.execution ?? null, ...privacy };
   }
   function checkRevision(config, revision) {
     if (revision !== config.revision) throw autoError('AUTO_STALE');
@@ -126,11 +126,15 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
       checkConflict(config, rule, message.id);
       rules = [{ ...rule, id: message.id }];
     }
-    const result = await scan(rules, sites, now());
+    const cutoff = now();
+    const result = await scan(rules, sites, cutoff);
     const previewId = crypto.randomUUID();
     for (const [key, value] of previews) if (value.expires <= now() || value.owner === owner) previews.delete(key);
     previews.set(previewId, { owner, expires: now() + previewLifetime, revision: config.revision, sites: JSON.stringify(sites), urls: JSON.stringify(await readProtectedUrls()), all: message.all === true,
-      ruleSnapshot: message.all === true ? null : ruleSnapshot(message.rule), id: message.id });
+      ruleSnapshot: message.all === true ? null : ruleSnapshot(message.rule), id: message.id,
+      ...(message.exact === true ? { exact: result.items.map(({ url, lastVisitTime }) => ({ url, lastVisitTime })), cutoff } : {}) });
+    // Native Messaging can keep the worker alive; expired history snapshots must leave memory.
+    if (message.exact === true) setTimeout(() => previews.delete(previewId), previewLifetime).unref?.();
     return { ...result, previewId, ...(message.all !== true || message.id !== undefined ? { rule: normalizeRule(rules[0]) } : {}),
       fullyProtected: message.all !== true && fullyProtected(rules[0], sites) };
   }
@@ -144,6 +148,7 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
         proof.sites !== JSON.stringify(await readProtectedSites()) || proof.urls !== JSON.stringify(await readProtectedUrls())) throw autoError('AUTO_STALE');
     previews.delete(message.previewId);
     if (rule && fullyProtected(rule, await readProtectedSites())) throw autoError('AUTO_FULLY_PROTECTED');
+    return proof;
   }
   async function finishSchedule(selected, scheduled, stopped) {
     await serial(async () => {
@@ -162,7 +167,7 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
       await schedule(config);
     });
   }
-  async function performRun(runGeneration, selectedIds, scheduled) {
+  async function performRun(runGeneration, selectedIds, scheduled, proof, executionId) {
     let privacy;
     let selected = [];
     let scanned = { items: [] };
@@ -172,17 +177,23 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
       ...(recoveryIncomplete ? { incomplete: true } : {}) };
     try {
       const config = await readConfig();
-      if (!runnable(config) || runGeneration !== generation) return;
+      if (!runnable(config) || runGeneration !== generation) { if (executionId) result.phase = 'stopped'; return; }
       selected = enabledRules(config).filter(rule => selectedIds.includes(rule.id));
-      if (!selected.length) return;
+      if (!selected.length) { if (executionId) result.phase = 'stopped'; return; }
       privacy = await readPrivacy();
       privateDuringRun ||= privacy.privateCleanup || recoveryPrivate;
       result.privateCleanup = privacy.privateCleanup;
       // Persist recovery metadata before the first destructive call, including private runs.
-      await serial(() => api.storage.local.set({ [autoRuntimeStorage]: { inProgress: true, privateCleanup: privateDuringRun } }));
-      const cutoff = now();
+      await serial(() => api.storage.local.set({ [autoRuntimeStorage]: { inProgress: true, privateCleanup: privateDuringRun,
+        ...(executionId ? { execution: { id: executionId, phase: 'running' } } : {}) } }));
+      const cutoff = proof?.cutoff ?? now();
       const sites = await readProtectedSites();
       scanned = await scan(selected, sites, cutoff);
+      if (proof?.exact) {
+        // Agent approval cannot expand to URLs that were absent from the reviewed preview.
+        const fingerprint = items => JSON.stringify(items.map(item => [item.url, item.lastVisitTime]).sort((a, b) => a[0].localeCompare(b[0])));
+        if (fingerprint(scanned.items) !== fingerprint(proof.exact)) throw autoError('AUTO_STALE');
+      }
       let verificationFailed = false;
       for (const item of scanned.items) {
         if (runGeneration !== generation) { result.phase = 'stopped'; break; }
@@ -224,7 +235,7 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
       else if (result.remaining) result.phase = 'partial';
     } catch (error) {
       result.phase = 'failed';
-      runError = error.message === 'AUTO_SCAN_INCOMPLETE' ? error.message : 'AUTO_UNAVAILABLE';
+      runError = ['AUTO_SCAN_INCOMPLETE', 'AUTO_STALE'].includes(error?.message) ? error.message : 'AUTO_UNAVAILABLE';
     } finally {
       try {
         const canRecord = async () => Boolean(privacy && !privacy.privateCleanup && !privateDuringRun &&
@@ -237,12 +248,14 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
         await serial(async () => {
           const visible = await canRecord();
           await api.storage.local.set({ [autoRuntimeStorage]: { inProgress: false,
+            ...(executionId ? { execution: { id: executionId, phase: result.phase } } : {}),
             ...(visible ? { result } : {}), ...(runError ? { error: runError } : {}) } });
           recoveryIncomplete = false;
           recoveryPrivate = false;
         });
       } catch {
-        await serial(() => api.storage.local.set({ [autoRuntimeStorage]: { inProgress: false, error: 'AUTO_UNAVAILABLE' } })).catch(() => {});
+        await serial(() => api.storage.local.set({ [autoRuntimeStorage]: { inProgress: false, error: 'AUTO_UNAVAILABLE',
+          ...(executionId ? { execution: { id: executionId, phase: 'interrupted' } } : {}) } })).catch(() => {});
       }
       // Keep this task busy until its schedule has settled, so another run cannot overtake it.
       await finishSchedule(selected, scheduled, result.phase === 'stopped' || runGeneration !== generation).catch(() => {});
@@ -251,14 +264,14 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
       onStateChange();
     }
   }
-  function launch(selectedIds, scheduled) {
+  function launch(selectedIds, scheduled, proof, executionId) {
     if (active) throw autoError('AUTO_BUSY');
     active = true;
     stopping = false;
     privateDuringRun = false;
     const runGeneration = generation;
     // Manual and scheduled jobs share one queue. Scan only once the job owns deletion.
-    void runExclusive(() => performRun(runGeneration, selectedIds, scheduled)).catch(() => { active = false; stopping = false; });
+    void runExclusive(() => performRun(runGeneration, selectedIds, scheduled, proof, executionId)).catch(() => { active = false; stopping = false; });
     onStateChange();
   }
   async function checkDue() {
@@ -283,6 +296,7 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
         recoveryPrivate = runtime.privateCleanup === true || privacy.privateCleanup;
         // Preserve the recovery marker until the fresh scan completes, even across another restart.
         await api.storage.local.set({ [autoRuntimeStorage]: { inProgress: true, privateCleanup: recoveryPrivate,
+          ...(runtime.execution ? { execution: { id: runtime.execution.id, phase: 'interrupted' } } : {}),
           ...(!recoveryPrivate ? { result: { phase: 'interrupted', removed: 0, remaining: 0, skipped: 0, privateCleanup: false } } : {}) } });
       }
       await checkDue();
@@ -311,8 +325,8 @@ export function createAutoCleanup(api, { readProtectedSites, readProtectedUrls =
         if (!runnable(config)) throw autoError('AUTO_UNAVAILABLE');
         const selected = enabledRules(config).filter(rule => message.id === undefined || rule.id === message.id);
         if (!selected.length) throw autoError('AUTO_UNAVAILABLE');
-        await consumePreview(message, config, owner);
-        launch(selected.map(rule => rule.id), false);
+        const proof = await consumePreview(message, config, owner);
+        launch(selected.map(rule => rule.id), false, proof, message.executionId);
         return { accepted: true };
       }
       if (message.type === 'auto-remove') {

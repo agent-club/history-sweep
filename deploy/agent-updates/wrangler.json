@@ -1,0 +1,8 @@
+{
+  "name": "history-sweep-agent-updates",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-25",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "sweep.agentclub.dev/agent/*", "zone_name": "agentclub.dev" }]
+}

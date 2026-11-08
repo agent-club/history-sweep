@@ -1,10 +1,21 @@
 // Shared by the offline extension and the generated website page.
 // Release status is preset for the package and its matching website notes.
+// The packaged version is published here independently of Chrome Web Store review.
 const copy = (en, zh) => ({ en, 'zh-CN': zh });
 
 export const releaseNotes = [
   {
-    version: '0.7.0', status: 'candidate',
+    version: '1.0.0', status: 'published',
+    title: copy('Agent access and link cleanup', 'Agent 接入与链接净化'),
+    changes: [
+      copy('Connect a supported local agent to review and manage cleanup tasks. Changes and execution require approval in the extension.', '连接受支持的本地 Agent 以查看和管理清理任务。修改和执行需在扩展内批准。'),
+      copy('Preview, copy or open a cleaned link. Set per-site rules and choose whether to clean outgoing links automatically for that site.', '预览、复制或打开净化后的链接。可按网站设置规则，并选择是否自动净化该网站的外发链接。'),
+      copy('Review and select cleanup recommendations or confirm cleanup for all recommendations. Kept websites and URLs retain priority.', '复核并勾选清理建议，或确认清理全部建议。保留网站和网址仍然优先。'),
+      copy('Follow Quick start through search, selection and the deletion preview. Open it again from search help or Preferences.', '通过快速开始逐步了解搜索、勾选和删除预览。可从搜索帮助或偏好设置再次打开。'),
+    ],
+  },
+  {
+    version: '0.7.0', status: 'published',
     title: copy('More control over the pages you keep and clear', '更从容地保留与清理'),
     changes: [
       copy('Review cleanup recommendations with local website rules, inactivity thresholds and recent cleanup evidence. Reasons expand inside the results without selecting or deleting pages; kept websites and URLs take priority.', '通过本机网站规则、未访问天数与近期清理依据查看清理建议。原因在结果中展开，不自动选择或删除；保留网站与网址优先。'),

@@ -461,7 +461,8 @@ try {
   const settingsNav = page.locator('#preferencesDialog .settings-nav'), syncSection = page.locator('[data-settings-section=sync]');
   const firstSection = page.locator('[data-settings-section=general]');
   await firstSection.focus();
-  for (let index = 0; index < 5; index += 1) await page.keyboard.press('Tab');
+  const sectionCount = await settingsNav.locator('[data-settings-section]').count();
+  for (let index = 1; index < sectionCount; index += 1) await page.keyboard.press('Tab');
   check(await syncSection.evaluate(element => element === document.activeElement), 'keyboard navigation reaches the last settings section');
   const navBounds = await rect(settingsNav), syncBounds = await rect(syncSection);
   evidence.settingsNav = { nav: navBounds, syncButton: syncBounds };

@@ -1,6 +1,6 @@
 # History Sweep
 
-Prepared for the v0.7.0 candidate update; not a claim of current store availability.
+Listing copy for the v1.0.0 Chrome Web Store update.
 
 ## Summary (Chrome Web Store)
 Find, select, and delete browsing history in batches. A calmer, more private way to tidy up Chrome.
@@ -42,6 +42,12 @@ Save searches and combine explicit AND filters. Protect exact URLs, inspect avai
 
 MANUAL SETTINGS SYNC AND ENCRYPTED BACKUP
 In Preferences → Sync & disk backup, save an HTTPS WebDAV file URL to transfer language, appearance and opening preferences manually. Browsing history, cleanup activity, kept websites, browsing defaults and Private cleanup preferences are excluded. Request access only to your chosen host when testing or transferring. The provider can read remote JSON. Export a password-encrypted backup outside the extension folder for manual recovery after uninstall; Chrome removes extension storage on uninstall. Backups are manual snapshots, not automatic sync. Disk files can optionally include kept websites/URLs, browsing defaults and task scopes. Restoring tasks keeps them paused. These sections never enter WebDAV transfer. Saved searches, manual labels and label images are excluded.
+
+OPTIONAL LINK CLEANUP AND AGENT ACCESS
+
+Preview a cleaned link before copying or opening it. Automatic cleanup is off until you enable it for a website and grant access. Your rules and exceptions stay on this device.
+
+Connect a supported local agent to preview and manage cleanup tasks. Approve changes and execution in the extension. The chosen agent receives task domains, schedules and aggregate preview counts, and may send them to its model provider.
 
 PRIVATE BY DESIGN
 History is processed in your browser and never uploaded by the extension. No account, analytics, or ads. The history permission lets it read and remove browsing history; activeTab supports user-invoked website searches and the in-page modal, scripting inserts the chosen modal host, contextMenus adds the website right-click entry, storage saves kept-domain rules, the opening preference, and daily cleanup counts with hostname/latest-title/last-visit summaries only on this device, without complete deleted URLs; alarms schedules the cleanup tasks you enable; favicon displays Chrome-provided website icons in group headings and local activity. It does not read website passwords, cookies, bookmarks, or webpage contents. WebDAV connection credentials you enter are saved locally and used only to authenticate to your selected server; backup files encrypt them. The optional HTTPS host access supports user-initiated WebDAV operations.

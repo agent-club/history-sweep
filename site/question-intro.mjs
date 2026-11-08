@@ -1,4 +1,5 @@
 const dialog = document.getElementById('question-intro');
+const browserUpdate = document.getElementById('browser-update');
 const canvas = document.getElementById('intro-pixels');
 const context = canvas.getContext('2d');
 const ribbon = document.getElementById('intro-ribbon');
@@ -499,6 +500,17 @@ function finish(animate = true) {
   closingAnimation.finished.then(cleanup).catch(() => {});
 }
 
+function getDesktopChromeVersion() {
+  const {userAgent, userAgentData} = navigator;
+  if (userAgentData) {
+    if (userAgentData.mobile) return undefined;
+    return userAgentData.brands.find(entry => entry.brand === 'Google Chrome')?.version;
+  }
+  // Older Chrome has no Client Hints; exclude browsers with a Chrome token for compatibility.
+  if (/Android|Mobile|Edg|OPR\/|Vivaldi\/|SamsungBrowser\//.test(userAgent)) return undefined;
+  return /\bChrome\/(\d+)\./.exec(userAgent)?.[1];
+}
+
 function tick(time) {
   if (!dialog.open || exiting) return;
   // Measure the typing and dissolve against the final font, so no glyphs jump during playback.
@@ -509,8 +521,10 @@ function tick(time) {
   }
   if (previousTime !== undefined) elapsed += Math.min(time - previousTime, 50);
   previousTime = time;
-  const index = elapsed >= gatherAt ? 3 : starts.findLastIndex(start => elapsed >= start);
-  showQuestion(index);
+  // The opening also runs on Chrome versions that predate Array#findLastIndex.
+  let index = 0;
+  while (index < starts.length && elapsed >= starts[index]) index++;
+  showQuestion(elapsed >= gatherAt ? starts.length : index - 1);
   updateTyping(elapsed);
   if (elapsed >= dissolveAt - 240 && !textCaptured) captureText();
   if (elapsed >= dissolveAt) dialog.dataset.phase = 'handoff';
@@ -573,6 +587,16 @@ if (homeRibbon.complete && homeRibbon.naturalWidth) readRibbon();
 else homeRibbon.addEventListener('load', readRibbon, {once: true});
 // Anchor visits go straight to their section. The opening uses no persisted preference.
 // If initialization timed out, keep the revealed homepage instead of interrupting it later.
-const autoOpen = document.documentElement.dataset.introPending !== 'expired' && !location.hash && !reducedMotion.matches;
+const automaticVisit = document.documentElement.dataset.introPending !== 'expired' && !location.hash;
 delete document.documentElement.dataset.introPending;
-if (autoOpen) openIntro();
+if (automaticVisit) {
+  const chrome = Number(getDesktopChromeVersion());
+  const minimum = Number(browserUpdate.dataset.minimumChrome);
+  if (Number.isInteger(chrome) && chrome > 0 && chrome < minimum) {
+    browserUpdate.querySelector('[data-current-browser]').textContent = `Chrome ${chrome}`;
+    browserUpdate.querySelector('[data-required-browser]').textContent = `Chrome ${minimum}+`;
+    if (reducedMotion.matches) browserUpdate.showModal();
+    else dialog.addEventListener('close', () => browserUpdate.showModal(), {once: true});
+  }
+  if (!reducedMotion.matches) openIntro();
+}

@@ -29,7 +29,7 @@ function styleLabel(element, appearance) {
     `linear-gradient(${appearance.background}cc, ${appearance.background}cc), url("${image}")`;
 }
 
-export function mountWorkspaceTools({ lang, request, snapshot, applySearch, onChange, onCriteriaInput, onSearch, onDelete }) {
+export function mountWorkspaceTools({ lang, request, snapshot, applySearch, onChange, onCriteriaInput, onSearch, onDelete, onOpenLinkSettings }) {
   const t = (key, values) => workspaceText(lang, key, values);
   const $ = id => document.getElementById(id);
   const events = new AbortController();
@@ -291,30 +291,51 @@ export function mountWorkspaceTools({ lang, request, snapshot, applySearch, onCh
   }
   function showCleanLink(item) {
     const hostname = new URL(item.url).hostname.toLowerCase().replace(/\.$/, '');
-    let parameters, original, cleaned, summary, cleanedButton;
+    let savedRule = tools.linkRules.find(rule => rule.hostname === hostname);
+    let parameters, original, cleaned, summary, cleanedButton, openedButton, saveRuleButton, oneOff = false, lastOpenAt = -Infinity;
+    const draftRule = () => ({ hostname, parameters: parameters.value.split(/[,，\n]+/).map(value => value.trim()).filter(Boolean),
+      enabled: oneOff || savedRule?.enabled !== false, preserveParameters: savedRule?.preserveParameters || [], excludedPaths: savedRule?.excludedPaths || [] });
     const preview = () => {
-      const names = parameters.value.split(/[,，\n]+/).map(value => value.trim()).filter(Boolean);
-      if (!names.length) { cleaned.value = item.url; summary.textContent = t('noParameters'); cleanedButton.disabled = true; return; }
+      const rule = draftRule();
+      if (!rule.parameters.length) { cleaned.value = item.url; summary.textContent = t('noParameters'); cleanedButton.disabled = true; openedButton.disabled = true; saveRuleButton.disabled = true; return; }
       try {
-        const result = cleanLink(item.url, { hostname, parameters: names }); cleaned.value = result.url;
-        summary.textContent = result.removed.length ? t('removedParams', { names: result.removed.join(', ') }) : t('noParamMatches');
+        const result = cleanLink(item.url, rule); cleaned.value = result.url;
+        summary.textContent = result.skip === 'disabled' ? t('disabledLinkRule') : result.skip === 'path' ? t('excludedLinkPath') :
+          result.removed.length ? t('removedParams', { names: result.removed.join(', ') }) : t('noParamMatches');
         cleanedButton.disabled = !result.removed.length;
-      } catch { summary.textContent = t('invalid'); cleanedButton.disabled = true; }
+        openedButton.disabled = !result.removed.length;
+        saveRuleButton.disabled = false;
+      } catch { summary.textContent = t('invalid'); cleanedButton.disabled = true; openedButton.disabled = true; saveRuleButton.disabled = true; }
     };
     open(t('clean'), root => {
       node('p', { textContent: hostname }, root);
       original = labelField(root, t('original'), item.url, 'textarea'); original.readOnly = true;
       cleaned = labelField(root, t('cleaned'), item.url, 'textarea'); cleaned.readOnly = true;
-      parameters = labelField(root, t('parameters'), (tools.linkRules.find(rule => rule.hostname === hostname)?.parameters || []).join('\n'), 'textarea');
+      parameters = labelField(root, t('parameters'), savedRule?.enabled === false ? '' : (savedRule?.parameters || []).join('\n'), 'textarea');
       node('p', { className: 'wt-note', textContent: t('parametersHint') }, root);
+      if (savedRule?.enabled === false) node('p', { className: 'wt-note', textContent: t('disabledLinkRule') }, root);
+      if (savedRule?.preserveParameters.length) node('p', { className: 'wt-note', textContent: t('preservedLinkNames', { names: savedRule.preserveParameters.join(', ') }) }, root);
       summary = node('p', { className: 'wt-note' }, root);
-      button(t('saveRule'), () => void perform(async () => { await save({ type: 'save-link-rule', rule: { hostname, parameters: parameters.value.split(/[,，\n]+/).map(value => value.trim()).filter(Boolean) } }); feedback.textContent = t('saved'); }), root);
+      saveRuleButton = button(t('saveRule'), () => void perform(async () => {
+        await save({ type: 'save-link-rule', rule: { ...draftRule(), enabled: savedRule?.enabled ?? true }, expectedRule: savedRule || null });
+        savedRule = tools.linkRules.find(rule => rule.hostname === hostname); feedback.textContent = t('saved');
+      }), root);
+      if (onOpenLinkSettings) button(t('manageLinkRules'), () => { dismiss(); onOpenLinkSettings(); }, root);
       node('p', { className: 'wt-note', textContent: t('cleanHint') }, root);
     });
     footer.replaceChildren();
     button(t('copyOriginal'), () => void copyUrl(item.url, original), footer);
-    cleanedButton = button(t('copyClean'), () => void copyUrl(cleaned.value, cleaned), footer, 'primary');
-    parameters.addEventListener('input', preview); preview();
+    cleanedButton = button(t('copyClean'), () => void copyUrl(cleaned.value, cleaned), footer);
+    openedButton = button(t('openClean'), () => {
+      const now = performance.now();
+      if (busy || now - lastOpenAt < 800) return;
+      lastOpenAt = now;
+      void perform(async () => {
+        const opened = await request({ type: 'open-cleaned-link', url: item.url, rule: draftRule() });
+        feedback.textContent = t(opened.background ? 'openedCleanBackground' : 'openedClean');
+      });
+    }, footer, 'primary');
+    parameters.addEventListener('input', () => { oneOff = true; preview(); }); preview();
   }
 
   function editLabels(hostname) {

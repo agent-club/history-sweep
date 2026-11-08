@@ -68,6 +68,7 @@ try {
   check(await page.locator('#syncSettingsContent').evaluate(node => node.closest('dialog')?.id) === 'preferencesDialog', 'WebDAV shares the settings dialog');
   check(await page.locator('.sync-root h1').textContent() === 'Sync & disk backup', 'embedded settings render localized title');
   check(await page.locator('#uploadConfig').isDisabled(), 'remote controls disabled until a connection is saved');
+  check(await page.locator('#importBackup').isDisabled(), 'import is disabled before selecting a backup file');
   check(requests.length === 0, 'opening settings makes no remote requests');
   await page.locator('#davUrl').fill('https://dav.example.test/backup/config.json');
   await page.locator('#davUser').fill('synthetic-user'); await page.locator('#davPassword').fill(fixtureValue);
@@ -109,6 +110,10 @@ try {
   await page.evaluate(async () => { await chrome.storage.local.remove(['syncConnection', 'syncMetadata', 'launchMode']); localStorage.clear(); });
   await page.reload(); await openEmbedded(page);
   await page.locator('#backupFile').setInputFiles(backupPath);
+  check(await page.locator('#importBackup').isEnabled(), 'selecting a backup file enables import');
+  await page.locator('#backupFile').setInputFiles([]);
+  check(await page.locator('#importBackup').isDisabled(), 'clearing the selected backup disables import again');
+  await page.locator('#backupFile').setInputFiles(backupPath);
   check(await page.locator('#backupFileName').textContent() === 'backup.json', 'custom picker displays the selected filename');
   check(await page.locator('#backupFilePicker').getAttribute('data-selected') === 'true', 'selected file receives a visible state');
   check(await page.locator('#backupFile').evaluate(input => getComputedStyle(input).opacity === '0'), 'native file input is visually replaced');
@@ -138,7 +143,7 @@ try {
   check(await reopened.locator('#davPassword').inputValue() === fixtureValue, 'connection survives real browser restart');
   await reopened.evaluate(() => chrome.storage.local.set({ syncConnection: { provider: 'unsupported-fixture' } }));
   await reopened.reload(); await ready(reopened);
-  check(await reopened.locator('#syncStatus').getAttribute('data-error') === 'true' && !await reopened.locator('#importBackup').isDisabled(), 'corrupt stored connection still allows disk recovery');
+  check(await reopened.locator('#syncStatus').getAttribute('data-error') === 'true' && await reopened.locator('#backupFile').isEnabled(), 'corrupt stored connection still allows selecting a recovery file');
   await reopened.locator('#backupFile').setInputFiles(backupPath); await reopened.locator('#backupPassword').fill(passphrase);
   await reopened.locator('#importBackup').click(); await reopened.locator('#restoreDialog [value=confirm]').click(); await idle(reopened);
   check(await reopened.locator('#davPassword').inputValue() === fixtureValue, 'disk backup recovers a corrupt connection');

@@ -16,7 +16,7 @@ export function autoCleanupView(prefix = '') {
  <div class="auto-scroll"><button id="cancelEditor" data-auto-id="cancelEditor" type="button" class="auto-breadcrumb quiet"></button><h1 id="editorHeading" data-auto-id="editorHeading" tabindex="-1"></h1>
  <div class="auto-steps"><span class="is-current" data-copy="stepConditions"></span><i></i><span data-copy="stepPreview"></span><i></i><span data-copy="stepEnable"></span></div>
  <p id="handoffNotice" data-auto-id="handoffNotice" class="auto-notice" data-copy="handoffNotice" hidden></p>
- <form id="ruleForm" data-auto-id="ruleForm" novalidate>              <div class="auto-editor-fields">
+  <form id="ruleForm" data-auto-id="ruleForm" novalidate><p class="auto-editor-help" data-copy="editorIntro"></p><div class="auto-editor-fields">
                 <label class="auto-field" for="ruleDomain"><span data-copy="domainLabel"></span><input id="ruleDomain" data-auto-id="ruleDomain" name="domain" type="text" inputmode="url" autocomplete="url" spellcheck="false" required></label>
                 <label class="auto-field auto-select-field" for="ruleDaysPreset"><span data-copy="retentionLabel"></span>
                   <select id="ruleDaysPreset" data-auto-id="ruleDaysPreset" name="daysPreset"><option value="all"></option><option value="1"></option><option value="7" selected></option><option value="30"></option><option value="custom"></option></select>

@@ -107,11 +107,15 @@ test('profile persistence and reinstall recovery preserve unrelated local histor
   const source = stores(); const connection = dav();
   assert.equal((await source.store.read()).preferences.launchMode, 'modal');
   await source.store.saveConnection(connection); await source.store.apply(document());
+  source.local.setItem('themePreset', 'warm-paper');
   const reopened = createConfigStore(source.storage, source.local);
   assert.deepEqual(await reopened.connection(), connection); assert.deepEqual(await reopened.read(), document());
   const clean = stores(); const passphrase = randomBytes(18).toString('hex');
   const backup = await decryptBackup(await encryptBackup(await reopened.connection(), await reopened.read(), passphrase), passphrase);
   await clean.store.apply(backup.config, backup.connection);
+  assert.equal(clean.local.getItem('themePreset'), null, 'the current backup format transfers the mode only');
+  await reopened.apply(backup.config, backup.connection);
+  assert.equal(source.local.getItem('themePreset'), 'warm-paper', 'restoring a legacy config preserves the active local preset');
   assert.deepEqual(await clean.store.connection(), connection); assert.deepEqual(await clean.store.read(), document());
   assert.deepEqual(clean.data.protectedSites, ['keep.test']); assert.deepEqual(clean.data.localActivity, { days: { fixture: true } });
   assert.equal(Object.hasOwn(await clean.store.read(), 'localActivity'), false);

@@ -32,3 +32,13 @@ test('deletion previews pluralize URL and website counts independently',()=>{
   assert.match(translate('en', 'confirmBody', { n: '1' }), /1 selected URL\./);
   assert.match(translate('en', 'confirmBody', { n: '2' }), /2 selected URLs\./);
 });
+test('recommended cleanup counts render once and pluralize their own scope',()=>{
+  for (const n of [0, 1, 6]) {
+    assert.equal(translate('en', 'cleanupItemCount', { n }), `${n} ${n === 1 ? 'item' : 'items'}`);
+    assert.equal(translate('en', 'cleanupSelectedLabel', { n }), `Clean ${n} selected recommended ${n === 1 ? 'record' : 'records'}`);
+    assert.equal(translate('en', 'cleanupCompleted', { n }), `Cleaned ${n} recommended ${n === 1 ? 'record' : 'records'}`);
+    assert.equal(translate('zh-CN', 'cleanupItemCount', { n }), `${n} 项`);
+  }
+  assert.equal(translate('en', 'cleanupPartial', { n: 2, total: 1 }), 'Cleaned 2; 1 recommendation remains');
+  assert.equal(translate('en', 'cleanupFailed', { n: 1 }), 'Could not remove 1 record. Your selection is kept for another attempt.');
+});

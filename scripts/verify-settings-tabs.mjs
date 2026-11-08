@@ -45,6 +45,45 @@ try {
   const geometry=await tab('general').evaluate(node=>({height:node.getBoundingClientRect().height,radius:getComputedStyle(node).borderRadius}));
   check(geometry.height===28 && geometry.radius==='6px','page tabs use the agreed compact height and small corners');
 
+  const settingsNav = page.locator('#preferencesDialog .settings-nav');
+  const agentSection = settingsNav.getByRole('button', { name: 'Agent 访问', exact: true });
+  await agentSection.press('Enter');
+  await active('agent');
+  check(await agentSection.getAttribute('aria-current') === 'page' &&
+    await page.locator('#settings-panel-agent').getByRole('heading', { name: 'Agent 访问', exact: true }).isVisible(),
+    'the Agent sidebar item opens and selects the existing Agent page');
+  await agentSection.click();
+  check(await tab('agent').count() === 1, 'reopening Agent from the sidebar uses the same page tab');
+  await capture('sidebar-agent');
+  await close('agent');
+  await active('general');
+  const sidebarToggle = settingsNav.getByRole('button', { name: '收起设置侧栏' });
+  const settingsPages = page.locator('#preferencesDialog .settings-pages');
+  const expandedNav = await settingsNav.boundingBox();
+  const expandedPages = await settingsPages.boundingBox();
+  const expandedToggle = await sidebarToggle.boundingBox();
+  await capture('sidebar-expanded');
+  await sidebarToggle.click();
+  const expandSidebar = settingsNav.getByRole('button', { name: '展开设置侧栏' });
+  const collapsedToggle = await expandSidebar.boundingBox();
+  check((await settingsNav.boundingBox()).width === 64 && (await settingsPages.boundingBox()).width === expandedPages.width + 156,
+    'desktop collapse reduces the 220px sidebar to 64px and gives the space to the page');
+  check(expandedNav.width === 220 && collapsedToggle.x === expandedToggle.x && collapsedToggle.y === expandedToggle.y,
+    'the sidebar toggle stays in place when the rail collapses');
+  check(await settingsNav.locator('[data-settings-section] .ui-icon:visible').count() === 8 &&
+    await settingsNav.locator('.settings-nav-label:visible, .settings-brand:visible, .settings-nav-title:visible').count() === 0,
+    'the collapsed rail shows all eight icons and hides labels and branding');
+  await capture('sidebar-collapsed');
+  const privacy = settingsNav.getByRole('button', { name: '隐私', exact: true });
+  await privacy.click();
+  await active('privacy');
+  check(await privacy.getAttribute('aria-current') === 'page', 'icon-only navigation selects and highlights the requested page');
+  await expandSidebar.press('Enter');
+  check(await sidebarToggle.getAttribute('aria-expanded') === 'true' && await privacy.getAttribute('aria-current') === 'page',
+    'keyboard expansion keeps the current settings page selected');
+  await close('privacy');
+  await active('general');
+
   await section('recommendations');await active('recommendation-list');
   await page.locator('#recommendation-editHabit').click();await active('recommendation-habit');
   await page.locator('#recommendation-lookback').fill('21');
@@ -106,6 +145,21 @@ try {
   for(const name of ['general','protection','sync','recommendations']) await section(name);
   await active('recommendation-list');
   await page.setViewportSize({width:440,height:700});
+  const expandedNarrow = await settingsNav.boundingBox();
+  await sidebarToggle.click();
+  check((await settingsNav.boundingBox()).height < expandedNarrow.height &&
+    await settingsNav.locator('[data-settings-section] .ui-icon:visible').count() === 8 &&
+    await settingsNav.evaluate(node => node.scrollWidth === node.clientWidth),
+    'narrow collapse reduces navigation to a single row of icons that fits');
+  await capture('sidebar-narrow-collapsed');
+  await agentSection.press('Enter');
+  await active('agent');
+  check(await agentSection.getAttribute('aria-current') === 'page', 'the narrow icon rail can open Agent access with the keyboard');
+  await capture('sidebar-agent-narrow');
+  await close('agent');
+  await select('recommendation-list');
+  await active('recommendation-list');
+  await expandSidebar.click();
   await page.locator('.settings-tabs-more').waitFor({state:'visible'});
   const strip=page.locator('.settings-tabs-list');
   check(await strip.evaluate(node=>node.scrollWidth>node.clientWidth),'visited tabs overflow horizontally in a narrow window');
@@ -145,6 +199,15 @@ try {
   await page.waitForFunction(()=>document.querySelector('.settings-tabs-list').scrollLeft>10);
   check(true,'touch swiping horizontally moves the tab strip');await touch.detach();
   await capture('narrow-scrolled-tabs');
+  await strip.evaluate(node => { node.scrollLeft = 20; });
+  await page.waitForFunction(() => {
+    const strip = document.querySelector('.settings-tabs-list');
+    const first = strip.firstElementChild;
+    const viewport = strip.getBoundingClientRect();
+    const bounds = first.getBoundingClientRect();
+    return bounds.left < viewport.left && bounds.right > viewport.left && getComputedStyle(first).opacity === '0';
+  });
+  check(true,'a partially clipped tab does not show a fragment of its label');
   await page.setViewportSize({width:1440,height:900});
   await page.locator('.settings-tabs-more').waitFor({state:'hidden'});
   check(true,'ellipsis disappears again when the pages fit');

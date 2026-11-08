@@ -130,19 +130,19 @@ try {
   await frame.waitForFunction(() => !document.querySelector('#filters').open);
   check(await host.evaluate(() => window.__historySweepModalHost.isConnected()), 'host backdrop closes the integrated time panel while preserving the main modal');
   await frame.locator('#openPreferences').click(); await frame.waitForFunction(() => !document.querySelector('#launchChoices').disabled);
-  await host.waitForFunction(() => window.__releaseModalRoot.querySelector('button').hidden);
-  check(await host.evaluate(() => getComputedStyle(window.__releaseModalRoot.querySelector('button')).display === 'none'), 'outer close is absent while preferences are open');
+  await host.waitForFunction(() => window.__releaseModalRoot.querySelector('.modal-close').hidden);
+  check(await host.evaluate(() => getComputedStyle(window.__releaseModalRoot.querySelector('.modal-close')).display === 'none'), 'outer close is absent while preferences are open');
   await host.evaluate(() => window.postMessage({ type: 'history-sweep:preferences', open: false }, location.origin));
-  check(await host.evaluate(() => window.__releaseModalRoot.querySelector('button').hidden), 'host page cannot spoof drawer visibility');
+  check(await host.evaluate(() => window.__releaseModalRoot.querySelector('.modal-close').hidden), 'host page cannot spoof drawer visibility');
   await frame.locator('#defaultViewToggle').click();
   await host.mouse.click(3, 3);
   await frame.waitForFunction(() => document.querySelector('#defaultViewToggle').getAttribute('aria-expanded') === 'false');
-  check(await frame.locator('#preferencesDialog').evaluate(node => node.open) && await host.evaluate(() => window.__releaseModalRoot.querySelector('button').hidden), 'host backdrop first closes the custom menu while retaining the drawer and hiding outer close');
+  check(await frame.locator('#preferencesDialog').evaluate(node => node.open) && await host.evaluate(() => window.__releaseModalRoot.querySelector('.modal-close').hidden), 'host backdrop first closes the custom menu while retaining the drawer and hiding outer close');
 
   await host.mouse.click(3, 3); await frame.waitForFunction(() => !document.querySelector('#preferencesDialog').open);
   check(await host.evaluate(() => window.__historySweepModalHost.isConnected()), 'host backdrop cancels Preferences without closing main modal');
-  await host.waitForFunction(() => !window.__releaseModalRoot.querySelector('button').hidden);
-  check(await host.evaluate(() => getComputedStyle(window.__releaseModalRoot.querySelector('button')).display !== 'none'), 'outer close returns after drawer exit');
+  await host.waitForFunction(() => !window.__releaseModalRoot.querySelector('.modal-close').hidden);
+  check(await host.evaluate(() => getComputedStyle(window.__releaseModalRoot.querySelector('.modal-close')).display !== 'none'), 'outer close returns after drawer exit');
   await host.evaluate(() => window.postMessage({ type: 'history-sweep:layer-dismissed', requestId: 3, handled: false }, location.origin));
   check(await host.evaluate(() => window.__historySweepModalHost.isConnected()), 'a host-page message cannot spoof the extension-frame dismissal response');
   await host.mouse.click(3, 3); await host.waitForFunction(() => !window.__historySweepModalHost);

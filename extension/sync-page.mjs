@@ -4,6 +4,7 @@ import { createConfigStore } from './config-store.mjs';
 import { mountLocalBackup } from './backup-page.mjs';
 import { MAX_BACKUP_BYTES } from './local-backup.mjs';
 import { workspaceText } from './workspace-copy.mjs';
+import { addPreferenceHelp, setupPreferenceHelp } from './preference-help.mjs';
 
 export function mountSyncSettings(root, { lang = readLanguage(), request } = {}) {
 const embedded = root.dataset.embedded === 'true';
@@ -11,18 +12,29 @@ root.classList.add('sync-root');
 const t = (key, values) => translate(lang, key, values);
 const $ = id => root.querySelector(`#${id}`);
 const field = (id, label, type = 'text', placeholder = '') => `<label for="${id}">${label}<input id="${id}" type="${type}" ${placeholder ? `placeholder="${placeholder}"` : ''} autocomplete="off" spellcheck="false" maxlength="4096"></label>`;
-root.innerHTML = `<header class="sync-heading">${embedded ? '' : '<img src="icons/mark.svg" alt="">'}<div><h1 tabindex="-1">${t('syncSettings')}</h1>${embedded ? '' : '<p>History Sweep</p>'}</div><div id="connectionNotice" class="settings-notice" role="status" aria-live="polite" hidden><span></span><button class="settings-notice-close" type="button" aria-label="${t('syncNoticeDismiss')}">×</button></div></header>
-  <p class="sync-note">${t('syncPersistence')}</p>
-  <section aria-labelledby="connectionTitle"><h2 id="connectionTitle">${t('syncConnection')}</h2><p>${t('syncConnectionHint')}</p>
+root.innerHTML = `<header class="sync-heading">${embedded ? '' : '<img src="icons/mark.svg" alt="">'}<div><h1 id="syncSettingsTitle" tabindex="-1">${t('syncSettings')}</h1>${embedded ? '' : '<p>History Sweep</p>'}</div><div id="connectionNotice" class="settings-notice" role="status" aria-live="polite" hidden><span></span><button class="settings-notice-close" type="button" aria-label="${t('syncNoticeDismiss')}">×</button></div></header>
+  <p id="syncPersistenceHint" class="sync-note">${t('syncPersistence')}</p>
+  <section aria-labelledby="connectionTitle"><h2 id="connectionTitle">${t('syncConnection')}</h2><p id="connectionHint">${t('syncConnectionHint')}</p>
     <form id="connectionForm"><fieldset id="connectionFields" disabled>
       <fieldset id="webdavFields">${field('davUrl', t('syncFileUrl'), 'url', 'https://dav.example.com/folder/history-sweep.json')}${field('davUser', t('syncUsername'), 'text', t('syncUsernamePlaceholder'))}${field('davPassword', t('syncAuthLabel'), 'password', t('syncPasswordPlaceholder'))}</fieldset>
       <div class="sync-connection-actions"><button class="primary" type="submit">${t('syncSave')}</button></div>
     </fieldset></form>
   </section>
-  <section aria-labelledby="transferTitle"><h2 id="transferTitle">${t('syncTransfer')}</h2><p>${t('syncScope')}</p><p>${t('syncManual')}</p>
-    <div class="sync-actions"><button id="testConnection" disabled>${t('syncTest')}</button><button id="uploadConfig" disabled>${t('syncUpload')}</button><button id="downloadConfig" disabled>${t('syncDownload')}</button></div>
+  <section class="settings-action-row sync-transfer" aria-labelledby="transferTitle">
+    <div class="settings-action-main">
+      <h2 id="transferTitle">${t('syncTransfer')}</h2>
+      <p id="transferSummary">${t('syncTransferSetup')}</p>
+      <p id="transferScopeHint">${t('syncScope')}</p><p id="transferManualHint">${t('syncManual')}</p>
+    </div>
+    <div class="settings-action-controls sync-transfer-actions" role="group" aria-labelledby="transferTitle" aria-describedby="transferSummary">
+      <button id="testConnection" class="sync-transfer-test" type="button" disabled><img src="icons/ui/link.svg" alt=""><span>${t('syncTest')}</span></button>
+      <div class="sync-transfer-pair">
+        <button id="uploadConfig" type="button" disabled><img src="icons/ui/arrow-line-up.svg" alt=""><span>${t('syncUpload')}</span></button>
+        <button id="downloadConfig" type="button" disabled><img class="sync-transfer-arrow-down" src="icons/ui/arrow-line-up.svg" alt=""><span>${t('syncDownload')}</span></button>
+      </div>
+    </div>
   </section>
-  <section aria-labelledby="backupTitle"><h2 id="backupTitle">${t('syncBackup')}</h2><p>${t('syncBackupHint')}</p>
+  <section aria-labelledby="backupTitle"><h2 id="backupTitle">${t('syncBackup')}</h2><p id="backupDescriptionHint">${t('syncBackupHint')}</p>
     <label for="backupPassword" class="sync-password-field">${t('syncPassphraseLabel')}<input id="backupPassword" type="password" placeholder="${t('syncPassphrasePlaceholder')}" autocomplete="off" spellcheck="false" maxlength="4096" aria-describedby="backupPasswordHelp"></label>
     <div id="backupPasswordHelp" class="sync-password-help"><span>${t('syncPassphraseExportHint')}</span><span>${t('syncPassphraseImportHint')}</span><span>${t('syncPassphraseKeepHint')}</span></div>
     <div class="sync-file-field"><label for="backupFile">${t('syncBackupFile')}</label>
@@ -44,6 +56,11 @@ const localBackup = mountLocalBackup(root, { lang, request: request || (async me
   return response.data;
 }) });
 
+addPreferenceHelp($('syncSettingsTitle'), lang, t('syncSettings'), $('syncPersistenceHint'));
+addPreferenceHelp($('connectionTitle'), lang, t('syncConnection'), $('connectionHint'));
+addPreferenceHelp($('transferTitle'), lang, t('syncTransfer'), $('transferScopeHint'), $('transferManualHint'));
+addPreferenceHelp($('backupTitle'), lang, t('syncBackup'), $('backupDescriptionHint'), $('backupPasswordHelp'));
+
 let store;
 let busy = false;
 let ready = false;
@@ -63,8 +80,10 @@ function fillConnection(value) {
 function controls() {
   localBackup.setBusy(!ready || busy);
   $('connectionFields').disabled = !ready || busy;
+  $('transferSummary').textContent = t(savedConnection === null ? 'syncTransferSetup' : 'syncTransferSummary');
   for (const id of operations) $(id).disabled = !ready || busy || savedConnection === null;
-  for (const id of ['exportBackup', 'importBackup', 'backupPassword', 'backupFile']) $(id).disabled = !ready || busy;
+  for (const id of ['exportBackup', 'backupPassword', 'backupFile']) $(id).disabled = !ready || busy;
+  $('importBackup').disabled = !ready || busy || !$('backupFile').files.length;
   $('backupFilePicker').dataset.disabled = String(!ready || busy);
 }
 function cleanConnection() {
@@ -172,6 +191,7 @@ $('backupFile').addEventListener('change', () => {
   $('backupFileName').title = file ? file.name : '';
   $('backupFilePicker').dataset.selected = String(!!file);
   $('backupFilePicker').querySelector('.sync-file-action').textContent = t(file ? 'syncFileChange' : 'syncFileChoose');
+  controls();
 });
 
 async function initialize() {
@@ -195,4 +215,5 @@ if (standalone) {
   document.documentElement.lang = lang;
   document.title = `${translate(lang, 'syncTitle')} — History Sweep`;
   mountSyncSettings(standalone, { lang });
+  setupPreferenceHelp(standalone, { standalone: true });
 }

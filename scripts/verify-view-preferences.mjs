@@ -26,7 +26,8 @@ const close = frame => frame.waitForFunction(() => !document.querySelector('#pre
 async function dragView(page, frame, source, target, position, cancel = false) {
   const handle = frame.locator(`[data-view-choice=${source}] [data-view-drag]`);
   const row = frame.locator(`[data-view-choice=${target}]`);
-  await handle.scrollIntoViewIfNeeded();
+  // Keep both ends of the drag visible in the popup's short scrolling area.
+  await frame.locator('#viewChoices').scrollIntoViewIfNeeded();
   const start = await handle.boundingBox();
   const end = await row.boundingBox();
   await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);

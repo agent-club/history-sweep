@@ -14,12 +14,16 @@ import { validateLocalBackup, pausedTaskConfig } from '../extension/local-backup
 import { readBrowsingPreferences } from '../extension/browsing-preferences.mjs';
 import { validateConfig as validateSyncConfig, validateConnection, CONNECTION_KEY } from '../extension/config-sync.mjs';
 import { normalizeRule } from '../extension/auto-cleanup-model.mjs';
+import { createAutomaticLinkCleanup } from '../extension/automatic-link-cleanup.mjs';
+import { isAgentMessage } from '../extension/agent-bridge.mjs';
+import { agentError } from '../extension/agent-access.mjs';
 
 const source = (await readFile(new URL('../extension/background.mjs', import.meta.url), 'utf8')).replace(/^import .*\n/gm, '');
 const sender = { id: 'fixture', frameId: 0, documentId: 'popup-document', url: 'chrome-extension://fixture/popup.html' };
 function worker(history, sessions = {}, currentVersion = '0.3.1', updateOptions = {}) {
   let listener;
   const opened = [];
+  const openedDetails = [];
   const timers = [];
   const saved = updateOptions.localState || {};
   const menus = [];
@@ -32,7 +36,7 @@ function worker(history, sessions = {}, currentVersion = '0.3.1', updateOptions 
   let reloads = 0;
   const chrome = {
     management: { getSelf: async () => ({ id: 'fixture', installType: 'development' }) },
-    history, tabs: { create: async ({ url }) => { opened.push(url); }, query: async () => [{ url: activeUrl }], onRemoved: { addListener() {} } },
+    history, tabs: { create: async details => { opened.push(details.url); openedDetails.push(details); }, query: async () => [{ url: activeUrl }], onRemoved: { addListener() {} } },
     action: { setPopup: async data => { popups.push(data.popup); }, onClicked: { addListener: callback => { actionClicked = callback; } } },
     scripting: { executeScript: async data => { injected.push(data); return [{ result: { opened: true } }]; } },
     storage: {
@@ -44,9 +48,9 @@ function worker(history, sessions = {}, currentVersion = '0.3.1', updateOptions 
     contextMenus: { create: menu => { menus.push(menu); }, onClicked: { addListener: callback => { menuClicked = callback; } } },
     runtime: { id: 'fixture', getManifest: () => ({ version: currentVersion }), reload: () => { reloads++; }, onUpdateAvailable: { addListener: callback => { updateAvailable = callback; } }, getURL: path => 'chrome-extension://fixture/' + path, onMessage: { addListener: value => { listener = value; } }, onInstalled: { addListener: callback => { installed.push(callback); } }, onStartup: { addListener() {} } },
   };
-  runInNewContext(source, { ...filters, ...workspaceTools, validateLocalBackup, pausedTaskConfig, readBrowsingPreferences, validateSyncConfig, validateConnection, CONNECTION_KEY, normalizeRule, createNameplateStore, createAutoCleanup, createLauncher, createActivityLog, createUpdateChecker: api => createUpdateChecker({ ...api, ...updateOptions }, { fetchVersion: updateOptions.fetchVersion }), isNewerVersion, chrome, URL, URLSearchParams, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date: updateOptions.Date || Date });
+  runInNewContext(source, { ...filters, ...workspaceTools, validateLocalBackup, pausedTaskConfig, readBrowsingPreferences, validateSyncConfig, validateConnection, CONNECTION_KEY, normalizeRule, createAutomaticLinkCleanup, createNameplateStore, createAutoCleanup, createLauncher, createActivityLog, isAgentMessage, agentError, createUpdateChecker: api => createUpdateChecker({ ...api, ...updateOptions }, { fetchVersion: updateOptions.fetchVersion }), isNewerVersion, chrome, URL, URLSearchParams, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date: updateOptions.Date || Date });
   return {
-    opened, timers, saved, menus, injected, popups, sessions, updateAvailable: details => updateAvailable(details), get reloads() { return reloads; }, clickAction: tab => actionClicked(tab), install: (reason = 'install') => installed.forEach(callback => callback({ reason })), clickMenu: info => menuClicked(info), setActiveUrl: url => { activeUrl = url; },
+    opened, openedDetails, timers, saved, menus, injected, popups, sessions, updateAvailable: details => updateAvailable(details), get reloads() { return reloads; }, clickAction: tab => actionClicked(tab), install: (reason = 'install') => installed.forEach(callback => callback({ reason })), clickMenu: info => menuClicked(info), setActiveUrl: url => { activeUrl = url; },
     send: (message, from = sender) => new Promise(resolve => {
       if (!listener(message, from, resolve)) resolve({ ok: false });
     }),
@@ -60,6 +64,47 @@ async function finished(w, id) {
   }
   throw new Error('Deletion did not finish');
 }
+
+test('cleaned links open only after worker recomputation without replacing history', async () => {
+  let historyChanges = 0;
+  const w = worker({ deleteUrl: async () => { historyChanges++; }, addUrl: async () => { historyChanges++; } });
+  const url = 'https://reading.example/article?business=a%20b+%2f&utm_source=mail#notes';
+  const rule = { hostname: 'reading.example', parameters: ['utm_source'] };
+  assert.equal((await w.send({ type: 'open-cleaned-link', url, rule })).ok, true);
+  assert.deepEqual(w.opened, ['https://reading.example/article?business=a%20b+%2f#notes']);
+  assert.equal(w.openedDetails[0].active, false, 'toolbar popup selection is protected by background opening');
+  const manager = { ...sender, url: 'chrome-extension://fixture/manager.html' };
+  assert.equal((await w.send({ type: 'open-cleaned-link', url, rule }, manager)).data.background, false);
+  assert.equal(w.openedDetails[1].active, true);
+  assert.equal(historyChanges, 0);
+  assert.equal((await w.send({ type: 'open-cleaned-link', url, rule: { ...rule, enabled: false } })).ok, false);
+  assert.equal((await w.send({ type: 'open-cleaned-link', url: 'javascript:alert(1)', rule })).ok, false);
+  assert.equal((await w.send({ type: 'open-cleaned-link', url, rule }, { ...sender, url: 'https://untrusted.example/' })).ok, false);
+  assert.equal(w.opened.length, 2);
+});
+
+test('website-rule edits preserve unrelated settings and reject stale or colliding changes', async () => {
+  const tools = workspaceTools.workspaceDefaults();
+  tools.protectedUrls = ['https://kept.example/exact'];
+  tools.labels = { 'reading.example': { values: ['Read'], visible: true } };
+  const saved = { workspaceTools: tools };
+  const w = worker({}, {}, '0.7.0', { localState: saved });
+  const first = { hostname: 'reading.example', parameters: ['utm_source'], preserveParameters: ['ref'], excludedPaths: ['/checkout'], enabled: true };
+  assert.equal((await w.send({ type: 'save-link-rule', rule: first, expectedRule: null })).ok, true);
+  const previous = workspaceTools.validateLinkRule(first);
+  const changed = { ...first, parameters: ['utm_source', 'utm_campaign'] };
+  assert.equal((await w.send({ type: 'save-link-rule', rule: changed, expectedRule: previous })).ok, true);
+  assert.equal((await w.send({ type: 'save-link-rule', rule: first, expectedRule: previous })).code, 'LINK_RULE_CHANGED');
+  assert.equal((await w.send({ type: 'remove-link-rule', hostname: first.hostname, expectedRule: previous })).code, 'LINK_RULE_CHANGED');
+  const current = workspaceTools.validateLinkRule(changed);
+  assert.equal((await w.send({ type: 'save-link-rule', previousHostname: first.hostname, rule: { ...changed, hostname: 'renamed.example' }, expectedRule: current })).ok, true);
+  assert.equal(saved.workspaceTools.linkRules.length, 1);
+  assert.equal(saved.workspaceTools.linkRules[0].hostname, 'renamed.example');
+  assert.deepEqual(saved.workspaceTools.protectedUrls, ['https://kept.example/exact']);
+  assert.deepEqual(saved.workspaceTools.labels, { 'reading.example': { values: ['Read'], visible: true } });
+  assert.equal((await w.send({ type: 'remove-link-rule', hostname: 'renamed.example', expectedRule: saved.workspaceTools.linkRules[0] })).ok, true);
+  assert.equal(saved.workspaceTools.linkRules.length, 0);
+});
 
 test('exact kept URLs are worker-enforced and interruption metadata contains no target list', async () => {
   const kept = 'https://retained.example/synthetic-keep';
@@ -452,6 +497,21 @@ test('a 100,000-URL job completes without deleting an unselected URL', async () 
   assert.equal(result.phase, 'done');
   assert.equal(result.completed, 100000);
   assert.deepEqual([...remaining], ['https://example.test/keep']);
+});
+
+test('the rating invitation is claimed once across workspace views and worker restarts', async () => {
+  const localState = {};
+  const w = worker({}, {}, '0.7.0', { localState });
+  const claim = { type: 'claim-rating-invite' };
+  assert.equal((await w.send(claim, { ...sender, url: 'chrome-extension://fixture/auto-cleanup.html' })).ok, false);
+  assert.equal(localState.ratingInviteShown, undefined);
+
+  const manager = { ...sender, documentId: 'manager', url: 'chrome-extension://fixture/manager.html' };
+  const claims = await Promise.all([w.send(claim), w.send(claim, manager)]);
+  assert.ok(claims.every(response => response.ok));
+  assert.equal(claims.filter(response => response.data.show).length, 1);
+  assert.equal(localState.ratingInviteShown, true);
+  assert.equal((await worker({}, {}, '0.7.0', { localState }).send(claim)).data.show, false);
 });
 
 function hintWorker(initial, localState = {}) {

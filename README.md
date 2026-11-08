@@ -24,13 +24,13 @@ History Sweep is a Chrome extension that helps you search, review, and delete br
 - **Search the current website.** Use the popup's current-website button or the page's right-click menu to find that site's history.
 - **Use English or Simplified Chinese.** Switch languages in the extension; your choice is remembered.
 
-The overview above illustrates v0.4.0. The Chrome Web Store release was verified as **v0.6.0** on November 1, 2026; local release materials now target the **v0.7.0 candidate**. This does not confirm store availability. Its additions and the earlier v0.6.0 package are described below.
+The overview above illustrates v0.4.0. The **v1.0.0** package adds Agent access, per-site link cleanup, actions for cleanup recommendations and a guided Quick start. See the Chrome Web Store listing for the currently available store version.
 
-## Release candidate — v0.7.0
+## Previous release — v0.7.0
 
-Prepared locally for review; not submitted or published. Includes recommended cleanup, saved searches, AND filters, exact-URL protection, visit details and deletion impact, manual website labels, cleaned-link copying, selected-result export, activity clearing, interruption notices, selective encrypted recovery, progressive results and settings tabs. WebDAV transfer and manifest permissions are unchanged. Restored tasks stay paused; deletion still removes all visits to each URL.
+This release includes recommended cleanup, saved searches, AND filters, exact-URL protection, visit details and deletion impact, manual website labels, cleaned-link copying, selected-result export, activity clearing, interruption notices, selective encrypted recovery, progressive results and settings tabs. WebDAV transfer and manifest permissions are unchanged. Restored tasks stay paused; deletion still removes all visits to each URL.
 
-See [release materials and verification](store/v0.7.0-candidate.md), [workspace tools](docs/workspace-tools.md) and the [shared bilingual release notes](site/releases.html). The public update hint is kept separate from the candidate version.
+See [release materials and verification](store/v0.7.0-candidate.md), [workspace tools](docs/workspace-tools.md) and the [shared bilingual release notes](site/releases.html). The public update hint follows the version available from the Chrome Web Store.
 
 ## Previous release — v0.5.0
 
@@ -47,6 +47,8 @@ v0.5.0 includes [frequency browsing and defaults #8](https://github.com/agent-cl
 These screenshots were captured from the original v0.5.0 ZIP in an isolated browser with synthetic native history. v0.5.0 is publicly available on the Chrome Web Store; the listing shows an October 23, 2026 update date, not an exact publication timestamp. [Store copy and package evidence](store/v0.5.0-candidate.md) retain the submission history. WebDAV sync and encrypted disk backup are included. Website classification, history tags and tracking-parameter cleanup are not included.
 
 ## Quick start and release notes
+
+In v1.0.0, Quick start highlights the search, selection and deletion-preview controls one step at a time. You can use the highlighted controls, go back or skip the tour. Search, selection and unsaved preferences are preserved; the tour never confirms a deletion.
 
 v0.6.0 includes an optional three-step guide under **Preferences → Quick start** and the **?** beside search. Its first-use hint can be dismissed; opening help keeps the current search, selection and unsaved preferences. **Preferences → Version & updates** includes offline release notes. The bilingual [website release notes](site/releases.html) use the same source, with published packages, candidates and later development changes marked separately. These help features are not in the published v0.5.0 package.
 
@@ -86,6 +88,10 @@ The v0.6.0 package includes the changes below. Its October 26 local preparation 
 **Visited settings pages.** Compact tabs stay at the top of Preferences. Click a tab to return to its page without losing its draft; each tab has a close button. When tabs exceed the available width, use the **…** menu, horizontal scrolling, or a touch swipe to reach them. Closing an edited page asks before discarding changes. Closing the current tab selects its adjacent tab; closing the final tab returns to browsing history. Included in the v0.7.0 candidate package. Historical website media retain their documented versions.
 
 **Recommended cleanup.** A quiet strip inside the results offers reasons without changing their order or selection. Preferences → Recommended cleanup lets you choose exact websites or subdomains, always suggest their records or require 1–365 days without a visit, adjust the cleanup-history lookback and distinct-date threshold, and enable extension records or app protocols. Defaults remain at least two different local cleanup dates within the past seven days, including today. Multiple reasons merge into one record; kept websites take priority. Missing last-visit times and legacy website summaries are not inferred. Soft privacy suppresses cleanup-derived recommendations. Preview uses the current search results and the unsaved draft, without selecting or deleting anything. Settings are stored on this device; daily or weekly animation limits store only a timestamp, and reduced motion skips animations. Verified residual hints remain available independently of recommendation rules. Included in the v0.7.0 candidate package; historical v0.6.0 assets remain unchanged.
+
+**v1.0.0 recommended cleanup actions.** The results strip now offers **Clean all** or **Review and select**, sharing selection with the main list while deleting only the chosen recommendations. Unrelated selected records are retained. Confirmation and per-URL verification still apply. Full success stays visible briefly, then fades as the list closes the gap; partial success and failed records remain available. Verify with `node scripts/verify-recommended-cleanup.mjs`; use `HISTORY_SWEEP_CHROMIUM` to select an installed test browser.
+
+**v1.0.0 link cleanup.** Page actions → Clean a link adds explicit opening in a new tab. Preferences → Link cleanup manages exact-hostname rules, enable/disable state, kept parameters and path exceptions. Optional per-site automatic cleanup requires an explicit enable action and site access; encoded parameter names are left for manual preview. See [usage, data boundaries and verification](docs/link-cleanup.md).
 
 ## When History Sweep fits
 
@@ -130,6 +136,12 @@ History Sweep does not upload browsing history, require an account, or add analy
 Chrome's history permission lets the extension search, remove, and verify records. The favicon permission displays Chrome-provided website icons beside website group headings. Other permissions support the current-website action, right-click entry, in-page modal, and saved preferences. The extension does not collect page content or run remote code.
 
 Read the [privacy policy](https://sweep.agentclub.dev/privacy) for details.
+
+## Agent integration
+
+v1.0.0 connects to a local stdio MCP companion for discovering, previewing and managing cleanup tasks, with a combined MCP/Skill installer, publisher update checks and local connection health. Changes and execution require approval on the extension's **Agent access** page. The companion targets Windows, macOS and Linux; native Windows and Linux verification is pending. See [setup, data disclosure and retry semantics](docs/agent-integration.md).
+
+The optional agent integration shares task domains, schedules and aggregate preview counts with your chosen agent, which may send them to its model provider. It does not return page URLs, titles or visit timestamps.
 
 ## Before you delete
 

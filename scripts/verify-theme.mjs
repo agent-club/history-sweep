@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { dependency } from './runtime.mjs';
 import { createServer } from './serve.mjs';
 import { installMock } from './fixtures.mjs';
@@ -13,13 +15,21 @@ const errors = [];
 const check = (value, message) => { assert.ok(value, message); checks++; };
 const ready = page => page.waitForFunction(() => document.querySelector('#status')?.dataset.kind === 'scanned' && !document.querySelector('#search').disabled);
 const theme = page => page.locator('html').getAttribute('data-theme');
-const choose = async (page, mode, keyboard = false) => {
-  if (keyboard) await page.locator('#themeToggle').press('Enter'); else await page.locator('#themeToggle').click();
-  if (keyboard) await page.locator(`[data-theme-choice="${mode}"]`).press('Enter'); else await page.locator(`[data-theme-choice="${mode}"]`).click();
+const preset = page => page.locator('html').getAttribute('data-theme-preset');
+const chooseAppearance = async (page, trigger, selector, keyboard) => {
+  if (keyboard) {
+    await page.locator(trigger).press('Enter');
+    await page.locator(selector).press('Enter');
+  } else {
+    await page.locator(trigger).click();
+    await page.locator(selector).click();
+  }
 };
+const choose = (page, mode, keyboard) => chooseAppearance(page, '#themeToggle', `[data-theme-choice="${mode}"]`, keyboard);
+const choosePreset = (page, name, keyboard) => chooseAppearance(page, '#themePresetToggle', `[data-theme-preset-choice="${name}"]`, keyboard);
+const canvas = page => page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
 const records = Array.from({ length: 48 }, (_, i) => ({ url: `https://${i % 3 === 0 ? 'archive' : 'studio'}.test/page-${i}`, title: `Design notebook ${i + 1}`, lastVisitTime: Date.now() - i * 3600000, visitCount: 1 }));
-const output = '/private/tmp/history-sweep-theme';
-await mkdir(output, { recursive: true });
+const output = await mkdtemp(join(tmpdir(), 'history-sweep-theme-'));
 try {
   for (const layout of ['popup', 'manager', 'modal', 'narrow']) {
     const context = await browser.newContext({ colorScheme: 'light', viewport: layout === 'popup' ? { width: 440, height: 590 } : layout === 'narrow' ? { width: 390, height: 844 } : { width: 1120, height: 800 } });
@@ -29,12 +39,13 @@ try {
       const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
     });
     await page.goto(`${origin}/extension/${layout === 'popup' ? 'popup' : 'manager'}.html`); await ready(page);
-    check(await theme(page) === 'light', `${layout}: first open follows light system`);
+    check(await theme(page) === 'light' && await preset(page) === 'classic' && await canvas(page) === 'rgb(242, 242, 242)', `${layout}: first open uses classic and follows light system`);
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
-    check(await page.locator('#themeToggle').getAttribute('aria-label') === 'Appearance: Automatic', 'automatic selection stays clear after a system change');
+    check(await page.locator('#themeToggle').getAttribute('aria-label') === 'Color mode: Automatic', 'automatic selection stays clear after a system change');
     await choose(page, 'light');
     check(await theme(page) === 'light', 'pointer toggle switches immediately');
+    await page.locator('#groupByDate').click();
     await page.locator('#expandGroups').click();
     await page.locator('.date-select').first().check();
     await page.locator('#query').fill('studio');
@@ -49,7 +60,15 @@ try {
     check(await page.locator('#themeToggle img').first().evaluate(node => node.src.endsWith('/appearance.svg') && node.complete && node.naturalWidth > 0), 'appearance icon stays recognizable in dark mode');
     check(await page.locator('[data-theme-choice=dark]').getAttribute('aria-pressed') === 'true', 'dark choice is accessible');
     check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'theme causes no horizontal overflow');
-    check(await page.locator('.brand').evaluate(node => node.getBoundingClientRect().right <= document.querySelector('.top-actions').getBoundingClientRect().left), 'header controls do not overlap brand');
+    check(await page.locator('.brand-with-version').evaluate(node => {
+      const brand = node.getBoundingClientRect(), actions = document.querySelector('.top-actions').getBoundingClientRect();
+      return brand.right <= actions.left || brand.bottom <= actions.top;
+    }), 'header controls do not overlap the brand when the toolbar wraps');
+    if (layout === 'narrow') check(await page.evaluate(() => {
+      const links = document.querySelector('.header-links').getBoundingClientRect();
+      const preferences = document.querySelector('.header-preferences').getBoundingClientRect();
+      return links.right <= preferences.left && links.top < preferences.bottom && preferences.top < links.bottom;
+    }), 'the narrow toolbar keeps the resource and appearance controls on one row');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('#search')).backgroundColor === 'rgb(228, 228, 228)');
     const primary = await page.locator('#search').evaluate(node => ({ color: getComputedStyle(node).color, fill: getComputedStyle(node).backgroundColor }));
     check(primary.color === 'rgb(27, 27, 27)' && primary.fill === 'rgb(228, 228, 228)', `dark primary has readable dark text on light fill: ${JSON.stringify(primary)}`);
@@ -57,47 +76,65 @@ try {
     await page.screenshot({ path: `${output}/${layout}-dark.png` });
     await page.emulateMedia({ colorScheme: 'light' });
     check(await theme(page) === 'dark', 'explicit choice survives system change');
-    await page.locator('#filterToggle').click(); await page.locator('#timeRange').selectOption('custom');
-    await page.locator('[data-calendar-for="endDate"]').click();
-    check(await page.locator('#datePicker').evaluate(node => getComputedStyle(node).backgroundColor === 'rgb(30, 30, 30)'), 'calendar has dark surface');
+    await page.locator('#filterToggle').click();
+    await page.locator('#datePicker').waitFor({ state: 'visible' });
+    check(await page.locator('.time-range-panel').evaluate(node => getComputedStyle(node).backgroundColor === 'rgb(30, 30, 30)'), 'calendar panel has dark surface');
     await page.screenshot({ path: `${output}/${layout}-calendar.png` });
-    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
     await page.locator('#openPreferences').click(); await page.waitForFunction(() => !document.querySelector('#launchChoices').disabled);
     await page.locator('#preferencesDialog').evaluate(node => Promise.all(node.getAnimations().map(animation => animation.finished)));
     check(await page.locator('#preferencesDialog').evaluate(node => getComputedStyle(node).color === 'rgb(237, 237, 237)'), 'preferences has readable theme text');
     await page.screenshot({ path: `${output}/${layout}-preferences.png` });
     await page.locator('#closePreferences').click();
+    const beforePreset = await state();
+    await choosePreset(page, 'warm-paper', true);
+    check(await canvas(page) === 'rgb(33, 26, 22)' && await theme(page) === 'dark', 'warm paper paints the dark canvas without changing the mode');
+    check(JSON.stringify(beforePreset) === JSON.stringify(await state()), 'preset changes preserve the active history task');
+    check(await page.locator('#themePresetToggle').evaluate(node => node === document.activeElement), 'keyboard choice returns focus to the theme icon');
+    check(await page.locator('[data-theme-preset-choice=warm-paper]').getAttribute('aria-pressed') === 'true', 'warm paper has an accessible selected state');
+    await page.screenshot({ path: `${output}/${layout}-warm-dark.png`, animations: 'disabled' });
     await page.getByRole('button', { name: '简体中文', exact: true }).click();
-    check(await page.locator('#themeToggle').getAttribute('aria-label') === '外观：深色', 'language remount retains theme and localizes icon action');
+    check(await page.locator('#themeToggle').getAttribute('aria-label') === '明暗模式：深色' && await page.locator('#themePresetToggle').getAttribute('aria-label') === '主题：暖纸', 'language remount localizes both selections');
     await page.reload(); await ready(page);
-    check(await theme(page) === 'dark', 'saved choice survives reopening');
+    check(await theme(page) === 'dark' && await preset(page) === 'warm-paper', 'saved mode and preset survive reopening');
     check(await page.evaluate(() => window.__deleted.length) === 0, 'theme never deletes history');
     // A second extension view shares the same appearance preference.
     const other = await context.newPage(); await installMock(other, records);
     await other.goto(`${origin}/extension/manager.html`); await ready(other);
-    check(await theme(other) === 'dark', 'new view inherits choice');
+    check(await theme(other) === 'dark' && await preset(other) === 'warm-paper', 'new view inherits both choices');
     await choose(page, 'light');
     await other.waitForFunction(() => document.documentElement.dataset.theme === 'light');
     check(await other.locator('[data-theme-choice=light]').getAttribute('aria-pressed') === 'true', 'existing view updates selection through storage event');
+    check(await canvas(page) === 'rgb(241, 233, 220)', 'light mode uses the warm paper palette');
     await choose(page, 'system');
     check(await page.locator('html').getAttribute('data-theme-preference') === 'system', 'manual selection can return to automatic');
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
     check(await page.locator('#themeToggle img').first().getAttribute('src') === 'icons/ui/appearance.svg', 'automatic keeps the appearance entry icon');
     await page.reload(); await ready(page);
-    check(await theme(page) === 'dark' && await page.locator('html').getAttribute('data-theme-preference') === 'system', 'reopening automatic follows dark system');
+    check(await theme(page) === 'dark' && await preset(page) === 'warm-paper' && await page.locator('html').getAttribute('data-theme-preference') === 'system', 'reopening automatic follows dark system within warm paper');
     await page.emulateMedia({ colorScheme: 'light' });
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
     await page.locator('#themeToggle').click();
+    await page.locator('#themePresetToggle').click();
+    await page.waitForFunction(() => document.querySelector('#themePresetMenu').open && !document.querySelector('#themeMenu').open);
+    check(await page.locator('#themePresetChoices button').count() === 5, 'the independent theme menu exposes all five presets');
+    check(await page.locator('#themePresetChoices').evaluate(node => {
+      const { left, right, bottom } = node.getBoundingClientRect();
+      return left >= 0 && right <= innerWidth && bottom <= innerHeight && node.scrollWidth === node.clientWidth;
+    }), `${layout}: expanded theme menu fits the viewport`);
     await page.screenshot({ path: `${output}/${layout}-choices.png` });
     await page.keyboard.press('Escape');
-    check(!await page.locator('#themeMenu').evaluate(node => node.open), 'Escape closes only appearance choices');
+    check(!await page.locator('#themePresetMenu').evaluate(node => node.open) && await page.locator('#themePresetToggle').evaluate(node => node === document.activeElement), 'Escape closes the theme menu and restores focus');
     await page.locator('#themeToggle').click(); await page.mouse.click(3, 3);
     check(!await page.locator('#themeMenu').evaluate(node => node.open), 'outside click closes appearance choices');
+    await choosePreset(page, 'classic');
+    await other.waitForFunction(() => document.documentElement.dataset.themePreset === 'classic');
+    check(await canvas(page) === 'rgb(242, 242, 242)' && await page.locator('html').getAttribute('data-theme-preference') === 'system', 'restoring classic keeps automatic mode and propagates across views');
     await context.close();
   }
   const context = await browser.newContext({ colorScheme: 'dark', viewport: { width: 1280, height: 900 } });
-  const host = await context.newPage(); await installMock(host, []);
+  const host = await context.newPage(); await installMock(host, records);
   await host.route('**/theme-host', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><p>Illustrative host page</p>' }));
   await host.route('**/extension/manager.html', async route => {
     const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
@@ -111,21 +148,65 @@ try {
   await host.waitForFunction(() => window.__testShadow?.querySelector('dialog')?.dataset.theme === 'dark');
   const frame = host.frames().find(frame => frame.url().includes('/extension/manager.html')); await ready(frame);
   check(await theme(frame) === 'dark', 'iframe initially follows dark system');
-  await host.screenshot({ path: `${output}/host-dark-empty.png` });
+  await host.screenshot({ path: `${output}/host-classic-dark.png` });
   check(await host.evaluate(() => getComputedStyle(window.__testShadow.querySelector('dialog')).backgroundColor === 'rgb(22, 22, 22)'), 'outer modal chrome also uses dark theme');
-  await host.evaluate(() => window.postMessage({ type: 'history-sweep:theme', theme: 'light' }, location.origin));
+  await host.evaluate(() => window.postMessage({ type: 'history-sweep:theme', theme: 'light', preset: 'warm-paper' }, location.origin));
   await host.waitForTimeout(50);
-  check(await host.evaluate(() => window.__testShadow.querySelector('dialog').dataset.theme === 'dark'), 'host page cannot spoof iframe theme messages');
+  check(await host.evaluate(() => {
+    const { theme, themePreset } = window.__testShadow.querySelector('dialog').dataset;
+    return theme === 'dark' && themePreset === 'classic';
+  }), 'host page cannot spoof either part of the iframe appearance');
   await choose(frame, 'light');
   await host.waitForFunction(() => window.__testShadow.querySelector('dialog').dataset.theme === 'light');
   check(await theme(frame) === 'light', 'trusted iframe toggle updates outer modal');
+  const backgrounds = new Set();
+  for (const name of ['warm-paper', 'mist-blue', 'moss-green', 'dusk-plum']) {
+    await choosePreset(frame, name);
+    for (const mode of ['light', 'dark']) {
+      await choose(frame, mode);
+      await host.waitForFunction(({ mode, name }) => {
+        const dialog = window.__testShadow.querySelector('dialog');
+        return dialog.dataset.theme === mode && dialog.dataset.themePreset === name;
+      }, { mode, name });
+      const outer = await host.evaluate(() => {
+        const dialog = window.__testShadow.querySelector('dialog');
+        return [dialog, dialog.querySelector('iframe')].map(node => getComputedStyle(node).backgroundColor);
+      });
+      const inner = await canvas(frame);
+      check(outer.every(color => color === inner), `host surfaces match the ${name} ${mode} iframe`);
+      backgrounds.add(inner);
+      await frame.locator('body').screenshot({ path: `${output}/${name}-${mode}.png`, animations: 'disabled' });
+    }
+  }
+  check(backgrounds.size === 8, 'every colored preset and mode paints a distinct canvas');
   await context.close();
+
+  const review = await browser.newPage({ colorScheme: 'dark', viewport: { width: 1120, height: 800 } });
+  await installMock(review, records);
+  await review.addInitScript(() => localStorage.setItem('fixture-kept-sites', JSON.stringify(['archive.test'])));
+  await review.goto(`${origin}/extension/manager.html`); await ready(review);
+  await choosePreset(review, 'warm-paper');
+  await review.locator('#protectedCount').waitFor({ state: 'visible' });
+  check((await review.locator('#protectedCount').textContent()).includes('kept by your website rules'), 'warm paper keeps the protected-record notice visible');
+  await review.locator('#selectAll').click();
+  await review.locator('#delete').click();
+  await review.locator('#confirmDialog').waitFor({ state: 'visible' });
+  const confirm = review.locator('#confirmDialog [value=confirm]');
+  check(await confirm.evaluate(node => getComputedStyle(node).color === 'rgb(242, 152, 136)'), 'the deletion action keeps its distinct warning color');
+  check(!(await review.locator('#deletePreview').textContent()).includes('archive.test'), 'the preview still excludes protected websites');
+  await review.screenshot({ path: `${output}/manager-warm-confirm.png`, animations: 'disabled' });
+  await review.locator('#confirmDialog [value=cancel]').click();
+  check(await review.evaluate(() => window.__deleted.length) === 0, 'cancelled preview does not delete records');
+  await review.close();
+
   const cold = await browser.newPage({ colorScheme: 'dark' }); await installMock(cold, []);
+  await cold.addInitScript(() => { localStorage.setItem('themePreset', 'warm-paper'); });
   let release; const gate = new Promise(resolve => { release = resolve; });
   await cold.route('**/extension/app.mjs', async route => { await gate; await route.continue(); });
   await cold.goto(`${origin}/extension/manager.html`, { waitUntil: 'commit' });
   await cold.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
   check(await cold.locator('#app').textContent() === '', 'dark theme applies before app module renders');
+  check(await cold.locator('.startup').evaluate(node => getComputedStyle(node).backgroundColor === 'rgb(33, 26, 22)'), 'startup paints the saved warm preset before the app module renders');
   release(); await ready(cold);
   await cold.screenshot({ path: `${output}/dark-empty.png` });
   await cold.close();

@@ -1,6 +1,7 @@
 import { validateLocalBackup } from './local-backup.mjs';
 import { workspaceText } from './workspace-copy.mjs';
 import { translate } from './i18n.mjs';
+import { addPreferenceHelp } from './preference-help.mjs';
 
 const node = (tag, properties, parent) => { const element = document.createElement(tag); Object.assign(element, properties); parent.append(element); return element; };
 
@@ -8,14 +9,15 @@ export function mountLocalBackup(root, { lang, request }) {
   const t = (key, values) => workspaceText(lang, key, values);
   const options = node('div', { className: 'wt-backup-options' }, root.querySelector('[aria-labelledby=backupTitle]'));
   root.querySelector('#backupPassword').closest('label').before(options);
-  node('strong', { textContent: t('backupInclude') }, options);
-  node('p', { className: 'wt-note', textContent: t('backupIncludeHint') }, options);
+  const includeTitle = node('strong', { textContent: t('backupInclude') }, options);
+  const inclusionHint = node('p', { className: 'wt-note', textContent: t('backupIncludeHint') }, options);
   const checks = new Map();
   for (const [section, label] of [['protection', 'backupProtection'], ['browsing', 'backupBrowsing'], ['tasks', 'backupTasks']]) {
     const row = node('label', { className: 'wt-checkbox-row' }, options);
     const input = node('input', { type: 'checkbox', value: section }, row); input.dataset.backupSection = section;
     node('span', { textContent: t(label) }, row); checks.set(section, input);
   }
+  addPreferenceHelp(includeTitle, lang, t('backupInclude'), inclusionHint);
 
   const dialog = node('dialog', { className: 'wt-dialog', id: 'localRestoreDialog' }, root);
   dialog.setAttribute('aria-labelledby', 'localRestoreTitle');

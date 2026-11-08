@@ -240,6 +240,7 @@ try {
     } else await page.goto(`${origin}/${layout === 'popup' ? 'popup' : 'manager'}.html`);
     if (layout === 'modal') {
       const hostHidden = () => page.evaluate(() => window.testModalRoot.querySelector('button').hidden);
+      const workspaceClose = frame.locator('#closeModalWorkspace');
       await frame.locator('.np-preview[data-phase=revealing]').waitFor();
       await pause(820);
       check(await page.evaluate(() => {
@@ -252,14 +253,15 @@ try {
       const settledShadow = await page.evaluate(() => getComputedStyle(window.testModalRoot.querySelector('dialog')).boxShadow);
       await pause(350);
       check(await page.evaluate(() => getComputedStyle(window.testModalRoot.querySelector('dialog')).boxShadow) === settledShadow && settledShadow.includes('235, 193, 112'), 'modal: material glow remains stable while the card is open');
-      check(await hostHidden(), 'modal: first-install nameplate hides the host close button');
+      check(await hostHidden() && await workspaceClose.isHidden(), 'modal: first-install nameplate hides both workspace close controls');
       await capture('modal-first-install');
       await closeCard(frame); await pause(80);
-      check(!await hostHidden(), 'modal: leaving first-install nameplate restores host close');
+      await workspaceClose.click({ trial: true });
+      check(await hostHidden(), 'modal: leaving first-install nameplate restores the in-frame close control');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await frame.locator('#openNameplateHeader').click();
       await frame.locator('.np-preview[data-phase=settled]').waitFor();
-      check(await hostHidden(), 'modal: header nameplate has one close button');
+      check(await hostHidden() && await frame.locator('#nameplateDialog').evaluate(node => node.matches(':modal')), 'modal: header nameplate owns keyboard focus');
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       // Resume, exercise real 3D motion, then pause before comparing card pixels.
       await frame.locator('.np-motion').click(); await pause(350);
@@ -273,15 +275,15 @@ try {
       await pause(400); await capture('modal-collect');
       check(await page.evaluate(() => window.testModalRoot.querySelector('dialog').dataset.nameplatePhase) === 'collecting', 'modal: perimeter glow contracts during collection');
       await frame.waitForFunction(() => !document.querySelector('#nameplateDialog').open);
-      await page.waitForFunction(() => !window.testModalRoot.querySelector('button').hidden);
-      check(!await hostHidden(), 'modal: collection restores host close after the particles finish');
+      await workspaceClose.click({ trial: true });
+      check(await hostHidden(), 'modal: collection restores the in-frame close control after the particles finish');
       check(await page.evaluate(() => !window.testModalRoot.querySelector('dialog').hasAttribute('data-nameplate-phase')), 'modal: closing clears the outer effect state');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await frame.locator('#openPreferences').click(); await openCard(frame); await closeCard(frame); await pause(80);
       check(await hostHidden(), 'modal: closing nameplate keeps host close hidden while settings remain open');
       await frame.locator('#closePreferences').click();
-      await page.waitForFunction(() => !window.testModalRoot.querySelector('button').hidden);
-      check(!await hostHidden(), 'modal: closing settings finally restores host close');
+      await workspaceClose.click({ trial: true });
+      check(await hostHidden(), 'modal: closing settings restores the in-frame close control');
     }
     await frame.waitForFunction(() => !document.body.dataset.startup);
     await capture(`header-${layout}`);

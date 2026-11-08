@@ -1,10 +1,15 @@
 import { mountAutoCleanup } from './auto-cleanup-page.mjs';
+import { mountAgentPage } from './agent-page.mjs';
+import { agentCopy } from './agent-copy.mjs';
+import { loadAgentDanceAtlas } from './agent-dance-asset.mjs';
+import { setupAgentIdleTricks, watchAgentWork } from './agent-motion.mjs';
 import { mountSyncSettings } from './sync-page.mjs';
 import { createHistoryMatcher, filterHistoryItems, sortByLastVisit, MAX_HISTORY_RESULTS, parseHostnames } from './history-utils.mjs';
 import { readLanguage, saveLanguage, translate } from './i18n.mjs';
 import { view } from './view.mjs';
 import { mountNameplate } from './nameplate.mjs';
 import { setupSettingsSelects } from './settings-select.mjs';
+import { addPreferenceHelp, closePreferenceHelp, preferenceHelpLayer, setupPreferenceHelp } from './preference-help.mjs';
 import { setupSettingsTabs } from './settings-tabs.mjs';
 import { workspaceText } from './workspace-copy.mjs';
 import { groupHistoryItems, groupHistoryByDate } from './history-groups.mjs';
@@ -21,10 +26,16 @@ import { createCleanupHint } from './cleanup-hint.mjs';
 import { mountRecommendationSettings } from './recommendation-settings-page.mjs';
 import { RECOMMENDATION_KEY } from './recommendation-settings.mjs';
 import { mountWorkspaceTools } from './workspace-page.mjs';
+import { mountLinkCleanupSettings } from './link-cleanup-page.mjs';
 import { WORKSPACE_TOOLS_KEY, MANUAL_CLEANUP_KEY, matchesConditions, validateConditions } from './workspace-tools.mjs';
 
 const compact = document.body.dataset.layout === 'popup';
 const modal = document.body.dataset.presentation === 'modal';
+const ratingStoreUrl = 'https://chromewebstore.google.com/detail/bbccfejdhhcjmpfagjckiikgllpojhgm';
+let modalAgentPort;
+let modalAgentPeek = false;
+let modalDanceActive = false;
+let modalDanceLoading = false;
 const clientId = crypto.randomUUID();
 const pageSize = compact ? 40 : 100;
 const groupPreviewSize = 5;
@@ -36,22 +47,28 @@ let settingsTabs;
 let preferenceExit = null;
 let nameplateSurface;
 let cleanupSurface;
+let disposeAgentPage;
 let syncSurface;
 let recommendationSurface;
+let linkCleanupSurface;
 let workspaceSurface;
 let websiteLabelSnapshot = '';
 let settingsSection = 'general';
 let layerEvents;
+let guideEvents;
 let queryPlaceholder;
 let searchMotion;
 let backToTop;
 let resultLoading;
 let scopeSizes;
+let currentSiteLookup = 0;
+let currentSiteAvailable = false;
 let historyChanged = false;
 let historyRefreshTimer;
 let historyRefreshing = false;
 let historyDay;
 let completionTimer;
+let ratingInviteState;
 let savingPreference = false;
 let preferenceBaseline = null;
 let preferenceLoad = 0;
@@ -100,10 +117,55 @@ function showCompletion(count) {
       feedback.animate(frames, { duration: 340 });
     }
   }
+  const finish = () => {
+    dismissCompletion();
+    queueRatingInvite();
+  };
   completionTimer = setTimeout(() => {
-    if (reducedMotion()) return dismissCompletion();
-    feedback.animate([{ opacity: 1, transform: 'translate(-50%, 0) scale(1)' }, { opacity: 0, transform: 'translate(-50%, 4px) scale(.98)' }], { duration: 160, fill: 'forwards' }).finished.then(dismissCompletion, () => {});
+    if (reducedMotion()) return finish();
+    feedback.animate([{ opacity: 1, transform: 'translate(-50%, 0) scale(1)' }, { opacity: 0, transform: 'translate(-50%, 4px) scale(.98)' }], { duration: 160, fill: 'forwards' }).finished.then(finish, () => {});
   }, 2200);
+}
+
+function queueRatingInvite() {
+  ratingInviteState ??= 'ready';
+  void showRatingInvite();
+}
+
+async function showRatingInvite() {
+  if (ratingInviteState !== 'ready' && ratingInviteState !== 'claimed') return;
+  // Leave an active dialog or cleanup alone, including if it opened while the claim was in flight.
+  if (document.hidden || state.busy || updateApplying || document.querySelector('dialog[open], #completionFeedback:not([hidden]), .cleanup-success-ghost') ||
+      (CSS.supports('selector(:popover-open)') && $('quickStartDialog').matches(':popover-open'))) return;
+  if (ratingInviteState === 'ready') {
+    ratingInviteState = 'claiming';
+    try {
+      const { show } = await request({ type: 'claim-rating-invite' });
+      ratingInviteState = show ? 'claimed' : 'finished';
+    } catch {
+      ratingInviteState = undefined;
+      return;
+    }
+    return showRatingInvite();
+  }
+  $('ratingDialog').showModal();
+  $('skipRating').focus({ preventScroll: true });
+  ratingInviteState = 'finished';
+}
+
+async function openRatingStore() {
+  const button = $('rateInStore');
+  const dialog = $('ratingDialog');
+  button.disabled = true;
+  try {
+    await chrome.tabs.create({ url: ratingStoreUrl });
+    dialog.close();
+  } catch {
+    // Keep the invitation available if Chrome cannot open the tab.
+  } finally {
+    button.disabled = false;
+    if (dialog.open) button.focus({ preventScroll: true });
+  }
 }
 const state = { lang: readLanguage(), query: '', mode: 'smart', conditions: [], protectedUrls: new Set(), matches: [], groups: [], urlGroups: new Map(), grouping: 'website', dateGroups: [], expandedDates: new Set(), expanded: new Set(), groupShown: new Map(), groupLimit: pageSize, selected: new Set(), busy: false, scanned: false, status: ['rulesLoading', {}], pending: [], filters: { ...defaultTimeFilter(), range: '7days' }, dateExplicit: false, timeWindow: null, protectedSites: [], rulesReady: false, excluded: 0 };
 const selectable = item => !state.protectedUrls.has(item.url);
@@ -112,7 +174,15 @@ const t = (key, args) => translate(state.lang, key, args);
 const num = (n) => n.toLocaleString(state.lang);
 const activity = createActivityPanel({ compact, request, readHistory, t, language: () => state.lang });
 const cleanupHint = createCleanupHint({ request, storage: chrome.storage.local, t,
-  snapshot: () => ({ matches: state.matches.filter(selectable), protectedSites: state.protectedSites, scanned: state.scanned, busy: state.busy || !state.rulesReady || updateApplying, stale: draftChanged() }),
+  snapshot: () => ({ matches: state.matches, selected: state.selected, protectedUrls: state.protectedUrls, protectedSites: state.protectedSites, scanned: state.scanned, busy: state.busy || !state.rulesReady || updateApplying, stale: draftChanged() }),
+  onSelect: (urls, checked) => {
+    if (state.busy || !state.rulesReady || updateApplying || draftChanged()) return;
+    const eligible = new Set(state.matches.filter(selectable).map(item => item.url));
+    for (const url of urls) if (eligible.has(url)) checked ? state.selected.add(url) : state.selected.delete(url);
+    controls();
+  },
+  onDelete: urls => { openDeletionConfirm(urls); return $('confirmDialog').open; },
+  onSuccessFeedbackDismissed: queueRatingInvite,
 });
 const dateHeaderSizes = new ResizeObserver(entries => {
   for (const entry of entries) {
@@ -120,12 +190,26 @@ const dateHeaderSizes = new ResizeObserver(entries => {
   }
 });
 function syncThemeControl() {
-  const button = $('themeToggle'); if (!button) return;
-  const preference = document.documentElement.dataset.themePreference || 'system';
-  const label = t('themeCurrent', { mode: t(`theme_${preference}`) });
-  button.title = label; button.setAttribute('aria-label', label);
-  button.setAttribute('aria-expanded', String($('themeMenu').open));
-  for (const choice of $('themeChoices').querySelectorAll('[data-theme-choice]')) choice.setAttribute('aria-pressed', String(choice.dataset.themeChoice === preference));
+  if (!$('themeToggle')) return;
+  const { themePreference = 'system', themePreset = 'classic' } = document.documentElement.dataset;
+  const modeLabel = t('themeCurrent', { mode: t(`theme_${themePreference}`) });
+  const presetLabel = t('themePresetCurrent', { preset: t(`themePreset_${themePreset}`) });
+  for (const [menu, label, choiceKey, value] of [
+    [$('themeMenu'), modeLabel, 'themeChoice', themePreference],
+    [$('themePresetMenu'), presetLabel, 'themePresetChoice', themePreset],
+  ]) {
+    const trigger = menu.querySelector('summary');
+    trigger.title = label;
+    trigger.setAttribute('aria-label', label);
+    trigger.setAttribute('aria-expanded', String(menu.open));
+    for (const choice of menu.querySelectorAll('button')) choice.setAttribute('aria-pressed', String(choice.dataset[choiceKey] === value));
+  }
+}
+function closeAppearanceMenu(menu) {
+  menu.open = false;
+  const trigger = menu.querySelector('summary');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.focus({ preventScroll: true });
 }
 function setupQueryPlaceholder(input) {
   const text = input.placeholder;
@@ -375,7 +459,7 @@ function renderUpdateDetails() {
   const kind = updateState ? 'ready' : updateChecking ? 'checking' : updateReadFailed ? 'error' : checking ? 'checking' :
     updateCheck?.status === 'ready' ? 'published' :
     ['current', 'published', 'throttled', 'error', 'manual'].includes(updateCheck?.status) ? updateCheck.status : 'idle';
-  const dirty = recommendationSurface?.hasUnsavedChanges() || $('preferencesDialog').open && preferenceBaseline && Object.keys(preferenceBaseline)
+  const dirty = linkCleanupSurface?.hasUnsavedChanges() || recommendationSurface?.hasUnsavedChanges() || $('preferencesDialog').open && preferenceBaseline && Object.keys(preferenceBaseline)
     .some(key => JSON.stringify(preferenceDraft()[key]) !== JSON.stringify(preferenceBaseline[key]));
   const busy = updateState?.busy || state.busy || savingPreference;
   $('updateDialog').dataset.state = kind;
@@ -432,6 +516,7 @@ async function checkUpdateNow() {
 async function applyUpdate() {
   if (!updateState || updateState.busy || state.busy || savingPreference || updateApplying) return;
   if (recommendationSurface?.isBusy() || recommendationSurface?.hasUnsavedChanges()) return;
+  if (linkCleanupSurface?.isBusy() || linkCleanupSurface?.hasUnsavedChanges()) return;
   if ($('preferencesDialog').open && preferenceBaseline && Object.keys(preferenceBaseline)
     .some(key => JSON.stringify(preferenceDraft()[key]) !== JSON.stringify(preferenceBaseline[key]))) return;
   updateApplying = true; updateError = false; controls();
@@ -551,13 +636,37 @@ async function saveProtection(event) {
   } finally { state.busy = false; controls(); }
 }
 
+function syncCurrentSiteButton() {
+  const button = $('currentSite');
+  if (!currentSiteAvailable && document.activeElement === button) $('query').focus({ preventScroll: true });
+  button.hidden = !currentSiteAvailable;
+}
+
+async function readCurrentSite() {
+  const lookup = ++currentSiteLookup;
+  try {
+    const { hostname } = await request({ type: 'current-site' });
+    if (lookup === currentSiteLookup) {
+      currentSiteAvailable = true;
+      syncCurrentSiteButton();
+    }
+    return hostname;
+  } catch (error) {
+    if (lookup === currentSiteLookup) {
+      currentSiteAvailable = false;
+      syncCurrentSiteButton();
+    }
+    throw error;
+  }
+}
+
 async function currentSite() {
   if (state.busy || !state.rulesReady) return;
   state.busy = true; controls();
   try {
-    const data = await request({ type: 'current-site' });
+    const hostname = await readCurrentSite();
     // The current website starts an exact-host search; it never selects or deletes automatically.
-    $('query').value = data.hostname; $('mode').value = 'host-exact';
+    $('query').value = hostname; $('mode').value = 'host-exact';
     state.dateExplicit = false; writeTimeDraft(defaultTimeFilter()); state.selected.clear();
     state.busy = false; await search();
   } catch (error) { status(error.message === 'BACKGROUND_UNAVAILABLE' ? 'reloadExtension' : 'currentSiteUnavailable'); }
@@ -665,21 +774,11 @@ function resultControls(root) {
   for (const button of root.querySelectorAll('.row-delete')) button.disabled = blocked || state.protectedUrls.has(button.closest('.history-row').querySelector('.row-select').dataset.url);
 }
 
-function autoSearchRule() {
-  if (!state.scanned || $('query').value.trim() !== state.query || $('mode').value !== state.mode || state.mode === 'contains') return null;
-  try {
-    const domains = parseProtectedSites(state.query);
-    if (domains.length === 1 && domains[0].includes('.')) return { domain: domains[0], includeSubdomains: state.mode !== 'host-exact' };
-  } catch {}
-  return null;
-}
 async function openAutoCleanup(rule) {
   try { await openPreferences('tasks', rule); }
   catch { $('preferencesStatus').textContent = t('autoCleanupOpenFailed'); status('autoCleanupOpenFailed'); }
 }
 function controls() {
-  $('autoCleanupSearch').hidden = !autoSearchRule();
-  $('autoFromSearch').disabled = state.busy;
   renderUpdate();
   // Selection belongs to the last scan, so edited criteria must not delete those older results.
   // Default browsing is recent; keyword searches keep their existing all-time scope until a date is explicitly chosen.
@@ -854,15 +953,43 @@ function websiteGroup(group, index, dayKey = '') {
     toggle.append(host, count, selected);
     cleanupHint.decorate(toggle, group.items.filter(selectable), true);
     toggle.addEventListener('click', () => {
-      state.expanded.has(expansionKey) ? state.expanded.delete(expansionKey) : state.expanded.add(expansionKey);
+      const opening = !state.expanded.has(expansionKey);
+      const scroll = $('resultScroll');
+      const previousScrollTop = opening ? scroll.scrollTop : 0;
+      if (opening) state.expanded.add(expansionKey);
+      else state.expanded.delete(expansionKey);
       // Expansion changes this group's rows, not the search or selection summary.
       // Replacing those unchanged text nodes can visibly flash on the first paint.
       section.syncExpanded(); resultControls(section); expansionControl();
+      if (opening) {
+        const viewportTop = scroll.getBoundingClientRect().top;
+        const firstRow = results.querySelector('.history-row');
+        const firstRowBottom = firstRow.getBoundingClientRect().bottom;
+        // Use the header's position in the list: its sticky position can hide the newly inserted rows.
+        const headerTop = results.getBoundingClientRect().top - header.getBoundingClientRect().height;
+        const dateHeight = dayKey ? section.closest('.date-group').firstElementChild.getBoundingClientRect().height : 0;
+        const currentScrollTop = scroll.scrollTop;
+        const revealFirstRow = currentScrollTop + firstRowBottom - viewportTop - scroll.clientHeight;
+        const keepHeaderVisible = currentScrollTop + headerTop - viewportTop - dateHeight;
+        // Keep the pre-click position unless the first row needs room, even if the browser anchored to a later group.
+        scroll.scrollTop = Math.min(keepHeaderVisible, Math.max(previousScrollTop, revealFirstRow));
+        if (compact) {
+          // The popup's fixed footer can cover part of the list's own viewport.
+          const shell = scroll.closest('.app-shell');
+          const footerTop = shell.querySelector('.actionbar').getBoundingClientRect().top;
+          const overflow = firstRow.getBoundingClientRect().bottom - footerTop;
+          const topbarBottom = shell.querySelector('.topbar').getBoundingClientRect().bottom;
+          const room = header.getBoundingClientRect().top - topbarBottom - dateHeight;
+          const advance = Math.min(overflow, room);
+          if (advance > 0) shell.scrollTop += advance;
+        }
+      }
     });
     const identity = document.createElement('div'); identity.className = 'group-identity'; identity.append(toggle);
     header.append(checkbox, identity);
     const actions = document.createElement('div'); actions.className = 'group-actions';
-    if (pageUrl) {
+    // The task takes a website scope; it cannot carry the enclosing date group.
+    if (pageUrl && !dayKey) {
       const automatic = document.createElement('button'); automatic.type = 'button'; automatic.className = 'group-auto-cleanup';
       const calendar = document.createElement('img'); calendar.className = 'ui-icon'; calendar.src = 'icons/ui/calendar.svg'; calendar.alt = ''; calendar.setAttribute('aria-hidden', 'true');
       automatic.append(calendar, document.createTextNode(t('autoCleanupSet'))); automatic.setAttribute('aria-label', `${t('autoCleanupSet')} · ${group.label}`);
@@ -875,6 +1002,9 @@ function websiteGroup(group, index, dayKey = '') {
     collapse.append(chevron);
     collapse.addEventListener('click', () => toggle.click());
     actions.append(collapse); header.append(actions);
+    header.addEventListener('click', event => {
+      if (!event.target.closest('button, input, a')) toggle.click();
+    });
     const results = document.createElement('div'); results.className = 'group-results'; results.id = `group-results-${index}`; results.hidden = !state.expanded.has(expansionKey);
     const populate = () => {
       const table = document.createElement('table'); table.className = 'group-table'; table.setAttribute('aria-label', group.label);
@@ -1080,7 +1210,12 @@ function watchNextDay() {
   const now = new Date(); const next = new Date(now); next.setHours(24, 0, 0, 50);
   setTimeout(() => { markHistoryChanged(); activity.invalidate(); void cleanupHint.refresh(); watchNextDay(); }, next.getTime() - now.getTime());
 }
-async function search() {
+function dismissQuickStartHint() {
+  $('quickStartHint').hidden = true;
+  try { localStorage.setItem('quickStartDismissed', 'true'); } catch {}
+}
+
+async function search({ dismissHint = true } = {}) {
   if (state.busy || !state.rulesReady) return;
   dismissCompletion();
   const query = $('query').value.trim(); const mode = $('mode').value;
@@ -1102,6 +1237,7 @@ async function search() {
     if (state.timeWindow || state.grouping === 'frequency') suggestions.invalidate(); else suggestions.setHistory(all);
     setMatches(matchesForScan(all), true);
     state.selected.clear(); state.scanned = true;
+    if (dismissHint && !$('quickStartHint').hidden) dismissQuickStartHint();
     status(all.length >= MAX_HISTORY_RESULTS ? 'limit' : 'scanned', { n: num(all.length), m: num(state.matches.length) });
   } catch (error) {
     setMatches([], true); state.selected.clear(); state.scanned = true;
@@ -1131,17 +1267,20 @@ function openDeletionConfirm(urls) {
   if (modal) $('confirmDialog').querySelector('[value="cancel"]').focus({ preventScroll: true });
 }
 async function deleteConfirmed() {
-  if (state.busy || !state.rulesReady || draftChanged() || !state.pending.length) { state.pending = []; return; }
+  if (state.busy || !state.rulesReady || draftChanged() || !state.pending.length) { state.pending = []; cleanupHint.cancelDelete(); return; }
   invalidateViewScans();
   cleanupHint.clearRemaining();
   suggestions.invalidate();
-  const urls = [...state.pending]; state.pending = []; state.busy = true; controls();
+  const urls = [...state.pending]; state.pending = []; state.busy = true;
+  const recommendationDelete = cleanupHint.deletionStarted(urls);
+  controls();
   const attempted = new Set(urls);
   const retainedSelection = [...state.selected].filter(url => !attempted.has(url));
   $('progress').hidden = false; $('progress').max = urls.length; $('progress').value = 0;
   status('deleting', { done: 0, total: num(urls.length) });
   let job;
   let completedCount = 0;
+  let recommendationOutcome;
   try {
     const details = state.matches.filter(item => attempted.has(item.url)).map(({ url, title, lastVisitTime }) => ({ url, title, lastVisitTime }));
     job = await request({ type: 'start-delete', urls, details });
@@ -1197,6 +1336,7 @@ async function deleteConfirmed() {
       } else await animateBatchRemoval($('resultScroll'), urls, renderRows);
     }
     status(completionStatus, { n: num(job.remaining.length || urls.length) });
+    recommendationOutcome = { verified: true, remaining: job.remaining, removed: urls.length - job.remaining.length };
   } catch (error) {
     if (state.grouping === 'frequency' && job && !['deleting', 'verifying'].includes(job.phase)) { setMatches([], true); state.selected.clear(); }
     status(error.message === 'PROTECTED_URL' ? 'protectedChanged' : error.message === 'BACKGROUND_UNAVAILABLE' ? 'reloadExtension' : 'deletionStatusFailed');
@@ -1204,7 +1344,8 @@ async function deleteConfirmed() {
   finally {
     if (job && !['deleting', 'verifying'].includes(job.phase)) request({ type: 'release-delete', id: job.id }).catch(() => {});
     state.busy = false; $('progress').hidden = true; renderRows();
-    if (completedCount) showCompletion(completedCount);
+    if (recommendationDelete) cleanupHint.deletionFinished(recommendationOutcome || { verified: false, remaining: [], removed: 0 });
+    else if (completedCount) showCompletion(completedCount);
   }
 }
 async function launchFull() {
@@ -1261,13 +1402,34 @@ function syncPreferenceViews() {
   if (!visible.some(row => row.dataset.viewChoice === $('defaultView').value)) $('defaultView').value = visible[0].dataset.viewChoice;
   settingsSelects.sync();
 }
+function syncModalDanceDock() {
+  if (!modalAgentPort) return;
+  const dock = $('agentDanceDock');
+  const shown = $('preferencesDialog').open && settingsSection === 'agent' && !document.querySelector('dialog[open]:not(#preferencesDialog)');
+  dock.hidden = !shown;
+  modalAgentPort.postMessage({ type: 'dance-dock', shown });
+}
 function setSettingsSection(section) {
   settingsSection=section;
   const general=section==='general'||section==='privacy';
   $('preferencesForm').hidden=!general;
   $('cleanupSettingsContent').hidden=section!=='tasks'&&section!=='protection';
   $('syncSettingsContent').hidden=section!=='sync';
+  const agentPanel = $('settings-panel-agent');
+  agentPanel.hidden = section !== 'agent';
+  if (section === 'agent' && !disposeAgentPage) {
+    disposeAgentPage = mountAgentPage(agentPanel, { lang: state.lang, send: message => chrome.runtime.sendMessage({ ...message, clientId }) });
+  }
   $('recommendationSettingsContent').hidden=section!=='recommendations';
+  $('linkCleanupSettingsContent').hidden=section!=='links';
+  if(section==='links' && !linkCleanupSurface) {
+    linkCleanupSurface=mountLinkCleanupSettings($('linkCleanupSettingsContent'), {
+      lang:state.lang, request, onDirty:renderUpdate,
+      onPage:page=>visitSurfacePage('link-cleanup',page),
+      onPagesClosed:ids=>settingsTabs.forget(ids.map(id=>`link-cleanup-${id}`)),
+    });
+    void linkCleanupSurface.enter();
+  }
   if(section==='recommendations' && !recommendationSurface) {
     recommendationSurface=mountRecommendationSettings($('recommendationSettingsContent'), {
       lang:state.lang, t, storage:chrome.storage.local, request,
@@ -1285,24 +1447,26 @@ function setSettingsSection(section) {
   document.querySelectorAll('[data-preference-page]').forEach(page=>{page.hidden=page.dataset.preferencePage!==section;});
   document.querySelectorAll('[data-settings-section]').forEach(button=>button.setAttribute('aria-current',button.dataset.settingsSection===section?'page':'false'));
   settingsSelects.close();
+  closePreferenceHelp($('preferencesDialog'));
+  syncModalDanceDock();
 }
-function settingsBusy() { return savingPreference || syncSurface?.isBusy() || recommendationSurface?.isBusy() || cleanupSurface?.isBusy(); }
+function settingsBusy() { return savingPreference || syncSurface?.isBusy() || recommendationSurface?.isBusy() || cleanupSurface?.isBusy() || linkCleanupSurface?.isBusy(); }
 function ensureCleanupSurface() {
   if(!cleanupSurface) cleanupSurface=mountAutoCleanup($('cleanupSettingsContent'), {
     lang:state.lang,send:message=>chrome.runtime.sendMessage({...message,clientId}),onSection:setSettingsSection,
-    onPage:page=>visitSurfacePage('cleanup', page),
+    onPage:page=>visitSurfacePage('cleanup', page), onAgent:()=>navigateSettings('agent'),
     onPagesClosed:ids=>settingsTabs.forget(ids.map(id=>`cleanup-${id}`)),
   });
 }
 function visitSurfacePage(owner, page) {
-  const surface = () => owner === 'cleanup' ? cleanupSurface : recommendationSurface;
+  const surface = () => owner === 'cleanup' ? cleanupSurface : owner === 'link-cleanup' ? linkCleanupSurface : recommendationSurface;
   settingsTabs.visit({ ...page, id:`${owner}-${page.id}`,
     activate:()=>{setSettingsSection(page.section);surface().activatePage(page.id);},
     close:done=>surface().closePage(page.id,ids=>done(ids.map(id=>`${owner}-${id}`))),
   });
 }
 function visitPreferencePage(section) {
-  const title = document.querySelector(`[data-settings-section="${section}"] span`).textContent;
+  const title = section === 'agent' ? agentCopy(state.lang).title : document.querySelector(`[data-settings-section="${section}"] span`).textContent;
   settingsTabs.visit({ id:section,title,panelId:section==='sync'?'syncSettingsContent':`settings-panel-${section}`,
     activate:()=>navigateSettings(section), close:done=>closePreferencePage(section,()=>done([section])),
   });
@@ -1316,6 +1480,8 @@ function navigateSettings(section, rule) {
   } else if(section==='recommendations') {
     // A newly mounted surface emits its page after the initial read.
     if(!recommendationSurface.isBusy()) recommendationSurface.activatePage('list');
+  } else if(section==='links') {
+    if(!linkCleanupSurface.isBusy()) linkCleanupSurface.activatePage('list');
   } else visitPreferencePage(section);
 }
 async function openPreferences(section='general', rule) {
@@ -1346,7 +1512,7 @@ async function openPreferences(section='general', rule) {
     syncPreferenceViews();
     preferenceBaseline = preferenceDraft();
     $('launchChoices').disabled = false; $('browsingDefaultChoices').disabled = false; $('cleanupPrivacyChoices').disabled = false; $('savePreferences').disabled = false;
-    $('preferencesStatus').textContent = t('preferencesNextLaunch');
+    $('preferencesStatus').textContent = '';
   } catch { if ($('preferencesDialog') === dialog && dialog.open && load === preferenceLoad) $('preferencesStatus').textContent = t('preferencesLoadFailed'); }
 }
 function preferenceDraft() {
@@ -1378,14 +1544,15 @@ function confirmPreferenceExit(discard, saved = discard) {
 }
 function closePreferencePage(section, done) {
   if(settingsBusy()) return;
-  if(section==='sync'||!preferenceBaseline) { done();return; }
+  if(section==='sync'||section==='agent'||!preferenceBaseline) { done();return; }
   const keys=section==='privacy'?['privateCleanup','softPrivacy']:['launchMode','view','range','viewOrder','hiddenViews'];
   const draft=preferenceDraft();
   if(keys.every(key=>JSON.stringify(draft[key])===JSON.stringify(preferenceBaseline[key]))) { done();return; }
   confirmPreferenceExit(()=>{restorePreferenceSection(section);done();},done);
 }
 function requestClosePreferences() {
-  if (savingPreference || syncSurface?.isBusy() || recommendationSurface?.isBusy()) return;
+  if (savingPreference || syncSurface?.isBusy() || recommendationSurface?.isBusy() || linkCleanupSurface?.isBusy()) return;
+  if(linkCleanupSurface?.hasUnsavedChanges()) { linkCleanupSurface.guardUnsaved(requestClosePreferences); return; }
   if(recommendationSurface?.hasUnsavedChanges()) { recommendationSurface.guardUnsaved(requestClosePreferences); return; }
   if(cleanupSurface?.hasUnsavedChanges()) { cleanupSurface.guardUnsaved(requestClosePreferences); return; }
   const draft = preferenceDraft();
@@ -1432,21 +1599,36 @@ async function savePreferences(event) {
 }
 
 function topLayer() {
+  const rating = $('ratingDialog');
+  if (rating?.open) return { contains: () => true, close: () => rating.close() };
+  const guide = $('quickStartDialog');
+  if (guide?.matches(':popover-open')) return { consume: true,
+    contains: target => $('quickStartCard').contains(target) || document.querySelector(guide.dataset.interaction).contains(target),
+    close: () => guide.hidePopover(),
+  };
   if (settingsSelects?.isOpen()) return { consume: true, contains: target => settingsSelects.contains(target), close: () => settingsSelects.close(true) };
   if (settingsTabs?.isMenuOpen()) return { consume:true, contains:target=>settingsTabs.contains(target), close:()=>settingsTabs.closeMenu(true) };
-  if ($('themeMenu')?.open) return { consume: true, contains: target => $('themeMenu').contains(target), close: () => { $('themeMenu').open = false; $('themeToggle').setAttribute('aria-expanded', 'false'); $('themeToggle').focus({ preventScroll: true }); } };
+  const appearance = document.querySelector('.theme-menu[open]');
+  if (appearance) return { consume: true,
+    contains: target => appearance.contains(target) || Boolean(target.closest('.theme-menu > summary')),
+    close: () => closeAppearanceMenu(appearance),
+  };
   const dialogs = [...document.querySelectorAll('dialog[open]')].filter(node => node.id !== 'datePicker');
   const dialog = dialogs.at(-1);
+  const preferenceHelp = dialog && preferenceHelpLayer(dialog);
+  if (preferenceHelp) return preferenceHelp;
   if (dialog) return { consume: !dialog.classList.contains('wt-anchored'), contains: (target, event) => {
     const box = dialog.getBoundingClientRect();
     return dialog.contains(target) && event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
   }, close: () => {
     if (dialog.id === 'workspaceDialog') { workspaceSurface?.dismiss(); return; }
     if (dialog.classList.contains('auto-confirm-dialog')) { cleanupSurface?.dismiss(); return; }
-    if (dialog.id === 'preferencesDialog') { if(settingsSection==='recommendations' && recommendationSurface?.back()) return; if(['tasks','protection'].includes(settingsSection) && cleanupSurface?.back()) return; if(settingsSection==='protection')navigateSettings('tasks');else requestClosePreferences(); return; }
+    if (dialog.id === 'preferencesDialog') { if(settingsSection==='links' && linkCleanupSurface?.back()) return; if(settingsSection==='recommendations' && recommendationSurface?.back()) return; if(['tasks','protection'].includes(settingsSection) && cleanupSurface?.back()) return; if(settingsSection==='protection')navigateSettings('tasks');else requestClosePreferences(); return; }
     if ((dialog.id === 'unsavedPreferencesDialog' && savingPreference) || (dialog.id === 'protectionDialog' && state.busy)) return;
     dialog.returnValue = ''; dialog.close();
   } };
+  const cleanupHelp = preferenceHelpLayer($('cleanupHintReasons'));
+  if (cleanupHelp) return cleanupHelp;
   const advancedFilters = document.querySelector('.wt-advanced[open]');
   if (advancedFilters) return { contains: target => advancedFilters.contains(target), close: () => { advancedFilters.open = false; advancedFilters.querySelector('summary').focus({ preventScroll: true }); } };
   const help = document.querySelector('.search-help[open]');
@@ -1464,6 +1646,7 @@ function setupLayerDismissal() {
   const listen = (target, name, fn) => target.addEventListener(name, fn, { capture: true, signal: layerEvents.signal });
   listen(window, 'resize', positionTimeMenu);
   listen(document, 'scroll', positionTimeMenu);
+  for (const id of ['preferencesDialog', 'updateDialog', 'cleanupHintReasons']) setupPreferenceHelp($(id), { signal: layerEvents.signal });
   let dismissedPointer = false;
   listen(document, 'pointerdown', event => {
     dismissedPointer = false;
@@ -1476,6 +1659,11 @@ function setupLayerDismissal() {
   listen(document, 'click', event => { if (dismissedPointer) { dismissedPointer = false; event.preventDefault(); event.stopImmediatePropagation(); } });
   listen(document, 'keydown', event => {
     if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
+    if (modalDanceActive || modalDanceLoading) {
+      modalAgentPort.postMessage({ type: 'stop-dance' });
+      event.preventDefault(); event.stopImmediatePropagation();
+      return;
+    }
     if (CSS.supports('selector(select:open)') && document.querySelector('select:open')) return;
     const layer = topLayer(); if (!layer) return;
     layer.close(); event.preventDefault(); event.stopImmediatePropagation();
@@ -1495,10 +1683,12 @@ function mount() {
   datePicker?.destroy();
   settingsSelects?.destroy();
   settingsTabs?.destroy();
+  disposeAgentPage?.(); disposeAgentPage = null;
   nameplateSurface?.destroy();
   workspaceSurface?.destroy();
   workspaceSurface = null;
   layerEvents?.abort();
+  guideEvents?.abort();
   queryPlaceholder?.destroy();
   searchMotion?.destroy();
   backToTop?.destroy();
@@ -1512,6 +1702,7 @@ function mount() {
     snapshot: () => ({ ...state, query: $('query').value.trim(), mode: $('mode').value, filters: timeDraft(),
       busy: state.busy || !state.rulesReady || updateApplying, stale: draftChanged() }),
     onCriteriaInput: controls, onSearch: search, onDelete: openDeletionConfirm,
+    onOpenLinkSettings:()=>void openPreferences('links'),
     onChange: tools => {
       const protectedChanged = JSON.stringify([...state.protectedUrls]) !== JSON.stringify(tools.protectedUrls);
       const labelsChanged = websiteLabelSnapshot !== JSON.stringify(tools.labels);
@@ -1540,11 +1731,20 @@ function mount() {
   activity.mount();
   backToTop = setupBackToTop();
   resultLoading = setupResultLoading();
-  $('themeMenu').addEventListener('toggle', syncThemeControl);
-  for (const choice of $('themeChoices').querySelectorAll('[data-theme-choice]')) choice.addEventListener('click', () => {
-    document.dispatchEvent(new CustomEvent('history-sweep:set-theme', { detail: choice.dataset.themeChoice }));
-    $('themeMenu').open = false; syncThemeControl(); $('themeToggle').focus({ preventScroll: true });
-  });
+  const modeMenu = $('themeMenu'), presetMenu = $('themePresetMenu');
+  for (const [menu, other, choiceKey, event] of [
+    [modeMenu, presetMenu, 'themeChoice', 'history-sweep:set-theme'],
+    [presetMenu, modeMenu, 'themePresetChoice', 'history-sweep:set-theme-preset'],
+  ]) {
+    menu.addEventListener('toggle', () => {
+      if (menu.open) other.open = false;
+      syncThemeControl();
+    });
+    for (const choice of menu.querySelectorAll('button')) choice.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent(event, { detail: choice.dataset[choiceKey] }));
+      closeAppearanceMenu(menu);
+    });
+  }
   syncThemeControl();
   $('applyUpdate').addEventListener('click', () => updateState ? applyUpdate() : openUpdateDetails());
   $('openUpdateSettings').addEventListener('click', openUpdateDetails);
@@ -1557,23 +1757,92 @@ function mount() {
     if (modal && !event.target.open) window.parent.postMessage({ type: 'history-sweep:update-details', open: false }, '*');
   });
   let guideReturnFocus;
-  const dismissGuideHint = () => {
-    $('quickStartHint').hidden = true;
-    try { localStorage.setItem('quickStartDismissed', 'true'); } catch {}
+  let guideStep = 0;
+  let guidePreferences = false;
+  let guideSearchHelp = false;
+  let guideScroll = 0;
+  guideEvents = new AbortController();
+  const guide = $('quickStartDialog');
+  const guideTargets = ['#searchForm', '.results-header', '#delete'];
+  const positionGuide = () => {
+    if (!guide.matches(':popover-open')) return;
+    const rect = document.querySelector(guideTargets[guideStep]).getBoundingClientRect();
+    const spot = $('quickStartSpotlight');
+    const left = Math.max(8, rect.left - 4), top = Math.max(8, rect.top - 4);
+    Object.assign(spot.style, { left: `${left}px`, top: `${top}px`, width: `${Math.max(0, Math.min(innerWidth - 8, rect.right + 4) - left)}px`, height: `${Math.max(0, Math.min(innerHeight - 8, rect.bottom + 4) - top)}px` });
+    const card = $('quickStartCard');
+    const aboveSpace = Math.max(0, rect.top - 32), belowSpace = Math.max(0, innerHeight - rect.bottom - 32);
+    card.style.maxHeight = `${Math.max(aboveSpace, belowSpace)}px`;
+    const box = card.getBoundingClientRect();
+    const below = rect.bottom + 16;
+    const y = below + box.height <= innerHeight - 16 ? below : Math.max(16, rect.top - box.height - 16);
+    Object.assign(card.style, { left: `${Math.max(16, Math.min(rect.left, innerWidth - box.width - 16))}px`, top: `${Math.min(y, innerHeight - box.height - 16)}px` });
+  };
+  const renderGuide = () => {
+    const step = guideStep + 1;
+    guide.dataset.step = step;
+    guide.dataset.interaction = ['#searchForm', '.results-panel', '#delete'][guideStep];
+    $('quickStartProgress').textContent = t('quickStartProgress', { step, total: 3 });
+    $('quickStartTitle').textContent = t(`quickStartStep${step}`);
+    $('quickStartBody').textContent = t(`quickStartBody${step}`);
+    $('quickStartIntro').hidden = guideStep !== 0;
+    $('quickStartWarning').hidden = guideStep !== 2;
+    $('previousQuickStart').disabled = guideStep === 0;
+    $('finishQuickStart').textContent = t(guideStep === 2 ? 'quickStartDone' : 'quickStartNext');
+    document.querySelector(guideTargets[guideStep]).scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    positionGuide();
+    $('quickStartCard').scrollTop = 0;
+    $('quickStartContent').scrollTop = 0;
   };
   try { $('quickStartHint').hidden = localStorage.getItem('quickStartDismissed') === 'true'; } catch { $('quickStartHint').hidden = false; }
   const openGuide = event => {
     guideReturnFocus = event.currentTarget.id === 'openQuickStartHint' ? $('query') : event.currentTarget;
-    dismissGuideHint();
-    $('quickStartDialog').showModal();
-    $('quickStartDialog').scrollTop = 0;
+    guidePreferences = $('preferencesDialog').open;
+    guideSearchHelp = $('searchHelp').open;
+    guideScroll = window.scrollY;
+    // Suspend the settings surface without saving, discarding, or rebuilding its draft.
+    if (guidePreferences) $('preferencesDialog').close();
+    $('searchHelp').open = false;
+    suggestions?.close();
+    dismissQuickStartHint();
+    guideStep = 0;
+    guide.showPopover();
+    renderGuide();
     $('closeQuickStart').focus({ preventScroll: true });
   };
   for (const id of ['openQuickStartHint', 'openQuickStartSearch', 'openQuickStartSettings']) $(id).addEventListener('click', openGuide);
-  $('dismissQuickStartHint').addEventListener('click', () => { dismissGuideHint(); $('query').focus({ preventScroll: true }); });
-  for (const id of ['closeQuickStart', 'finishQuickStart']) $(id).addEventListener('click', () => $('quickStartDialog').close());
-  $('quickStartDialog').addEventListener('close', () => { if (guideReturnFocus?.isConnected) guideReturnFocus.focus({ preventScroll: true }); });
-  for (const dialog of [$('updateDialog'), $('quickStartDialog')]) dialog.addEventListener('keydown', event => {
+  $('dismissQuickStartHint').addEventListener('click', () => { dismissQuickStartHint(); $('query').focus({ preventScroll: true }); });
+  for (const id of ['closeQuickStart', 'skipQuickStart']) $(id).addEventListener('click', () => guide.hidePopover());
+  $('finishQuickStart').addEventListener('click', () => {
+    if (guideStep === 2) { guide.hidePopover(); return; }
+    guideStep++; renderGuide();
+  });
+  $('previousQuickStart').addEventListener('click', () => { guideStep--; renderGuide(); });
+  guide.addEventListener('beforetoggle', event => {
+    if (event.newState !== 'closed') return;
+    if (guidePreferences) {
+      $('preferencesDialog').showModal();
+      if (modal) window.parent.postMessage({ type: 'history-sweep:preferences', open: true }, '*');
+    }
+    $('searchHelp').open = guideSearchHelp;
+    window.scrollTo({ top: guideScroll, behavior: 'instant' });
+    if (guideReturnFocus?.isConnected) guideReturnFocus.focus({ preventScroll: true });
+  });
+  $('confirmDialog').addEventListener('beforetoggle', event => {
+    if (event.newState === 'open' && guide.matches(':popover-open')) guide.hidePopover();
+  });
+  guide.addEventListener('toggle', () => { void showRatingInvite(); });
+  for (const name of ['resize', 'scroll']) window.addEventListener(name, positionGuide, { capture: true, signal: guideEvents.signal });
+  document.addEventListener('keydown', event => {
+    if (!guide.matches(':popover-open') || event.key !== 'Tab') return;
+    const target = document.querySelector(guide.dataset.interaction);
+    const selector = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], summary';
+    const stops = [...guide.querySelectorAll(selector), ...(target.matches(selector) ? [target] : target.querySelectorAll(selector))].filter(node => node.checkVisibility());
+    const index = stops.indexOf(document.activeElement);
+    event.preventDefault();
+    stops[(index + (event.shiftKey ? -1 : 1) + stops.length) % stops.length].focus();
+  }, { capture: true, signal: guideEvents.signal });
+  for (const dialog of [$('updateDialog'), $('ratingDialog'), $('unsavedPreferencesDialog')]) dialog.addEventListener('keydown', event => {
     if (event.key !== 'Tab') return;
     const stops = [...dialog.querySelectorAll('button:not(:disabled), a[href], summary')].filter(node => node.checkVisibility());
     const first = stops[0], last = stops.at(-1);
@@ -1596,7 +1865,159 @@ function mount() {
   queryPlaceholder = setupQueryPlaceholder($('query'));
   searchMotion = setupSearchMotion($('search'));
   writeTimeDraft(state.filters);
+  const releaseScope = $('updateDialog').querySelector('.release-scope');
+  const releaseTitle = $('updateDialog').querySelector('.release-history-title');
+  addPreferenceHelp(releaseTitle, state.lang, releaseTitle.textContent, releaseScope);
+  $('updateDialog').addEventListener('close', event => closePreferenceHelp(event.currentTarget));
+  for (const [id, key] of [['openQuickStartSettings', 'quickStart'], ['openNameplate', 'nameplate']]) {
+    const row = $(id);
+    const panel = addPreferenceHelp(row, state.lang, t(key), row.querySelector('small'));
+    panel.parentElement.classList.add('preference-help-utility');
+  }
   setupLayerDismissal();
+  const agentEntry = $('agentAccess');
+  const agentStatus = $('agentToolbarStatus');
+  const agentDialogWork = $('agentDialogWork');
+  const agentDialogWorkLabel = $('agentDialogWorkLabel');
+  const agentDialogWorkStatus = $('agentDialogWorkStatus');
+  const agentLabels = agentCopy(state.lang);
+  const agentIndicators = [agentEntry, agentDialogWork];
+  const syncAgentIdleTricks = setupAgentIdleTricks(agentIndicators, $('preferencesDialog'), layerEvents.signal);
+  const agentCatchDuration = 2000;
+  for (const indicator of agentIndicators) indicator.style.setProperty('--agent-catch-duration', `${agentCatchDuration}ms`);
+  let agentWorking = false;
+  let agentCatchTimer;
+  let agentOpenedFromPeek = false;
+  const reportAgentPeek = () => modalAgentPort?.postMessage({
+    type: 'status', label: agentLabels.navigation, title: agentEntry.title,
+    stopLabel: agentLabels.stopDance, danceDownloading: agentLabels.danceDownloading, danceUnavailable: agentLabels.danceUnavailable,
+    busy: agentWorking || agentCatchTimer !== undefined, blocked: Boolean(document.querySelector('dialog[open]')),
+  });
+  if (modal) {
+    const dock = $('agentDanceDock');
+    const icon = name => fetch(new URL(`./icons/${name}`, import.meta.url));
+    async function sendDanceArtwork() {
+      try {
+        const track = await (await icon('agent-dance-track.json')).json();
+        const dancer = await loadAgentDanceAtlas();
+        modalAgentPort.postMessage({ type: 'dance-artwork', dancer, track }, [dancer]);
+      } catch {
+        modalAgentPort.postMessage({ type: 'dance-unavailable' });
+      }
+    }
+    let dockPointer;
+    for (const phase of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture']) {
+      dock.addEventListener(phase, event => {
+        let home;
+        if (phase === 'pointerdown') {
+          if (!event.isPrimary || event.button !== 0 || modalDanceActive) return;
+          dockPointer = event.pointerId;
+          dock.setPointerCapture(dockPointer);
+          const box = dock.getBoundingClientRect();
+          home = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+        }
+        if (event.pointerId !== dockPointer) return;
+        modalAgentPort.postMessage({ type: 'dance-pointer', phase, id: dockPointer, x: event.clientX, y: event.clientY, home });
+        if (phase !== 'pointerdown' && phase !== 'pointermove') dockPointer = undefined;
+      });
+    }
+    dock.addEventListener('click', event => {
+      const box = dock.getBoundingClientRect();
+      modalAgentPort.postMessage({ type: 'dance-click', keyboard: event.detail === 0, x: box.left + box.width / 2, y: box.top + box.height / 2 });
+    });
+    const setPeekPlacement = (peek, focus = false) => {
+      const wasFocused = document.activeElement === agentEntry;
+      modalAgentPeek = peek;
+      agentEntry.hidden = peek;
+      if (peek && wasFocused) modalAgentPort.postMessage({ type: 'restore-focus' });
+      if (!peek && focus) agentEntry.focus({ preventScroll: true });
+    };
+    const listenToAgentPeek = () => {
+      modalAgentPort.onmessage = ({ data }) => {
+        if (data?.type === 'placement') setPeekPlacement(data.peek, data.focus);
+        if (data?.type === 'focus-toolbar') agentEntry.focus({ preventScroll: true });
+        if (data?.type === 'load-dance-artwork') void sendDanceArtwork();
+        if (data?.type === 'dance-load-state') {
+          modalDanceLoading = data.state === 'loading';
+          if (data.source === 'settings') {
+            dock.setAttribute('aria-busy', String(modalDanceLoading));
+            dock.title = data.state === 'failed' ? agentLabels.danceUnavailable : agentLabels.danceHint;
+          }
+        }
+        if (data?.type === 'dance-state') {
+          modalDanceActive = data.active;
+          dock.toggleAttribute('data-performing', data.active && data.source === 'settings');
+        }
+        if (data?.type === 'focus-dance-dock') dock.focus({ preventScroll: true });
+        if (data?.type !== 'open-agent' || !modalAgentPeek) return;
+        const layer = topLayer();
+        if (layer) { layer.close(); return; }
+        agentOpenedFromPeek = true;
+        void openPreferences('agent');
+      };
+    };
+    agentEntry.hidden = modalAgentPeek;
+    syncModalDanceDock();
+    if (modalAgentPort) listenToAgentPeek();
+    else window.addEventListener('message', event => {
+      if (modalAgentPort || event.source !== window.parent || event.data?.type !== 'history-sweep:connect-agent-peek') return;
+      // The embedding page is untrusted. Accept the port only from the host that knows this claimed launch token.
+      const launch = new URLSearchParams(location.hash.slice(1)).get('launch');
+      if (!launch || event.data.token !== launch || event.ports.length !== 1) return;
+      modalAgentPort = event.ports[0];
+      listenToAgentPeek();
+      reportAgentPeek();
+      syncModalDanceDock();
+      // Decode in the extension frame so the site's image policy cannot block the mascot.
+      void icon('agent-peek.webp')
+        .then(response => response.blob())
+        .then(blob => createImageBitmap(blob))
+        .then(bitmap => modalAgentPort.postMessage({ type: 'peek-artwork', bitmap }, [bitmap]))
+        .catch(() => { /* The toolbar entry stays available if the artwork cannot load. */ });
+      void icon('agent-dance.webp')
+        .then(response => response.blob())
+        .then(blob => createImageBitmap(blob))
+        .then(bitmap => modalAgentPort.postMessage({ type: 'dance-preview', bitmap }, [bitmap]))
+        .catch(() => { /* Playback can still use the full atlas if the drag preview cannot load. */ });
+    }, { signal: layerEvents.signal });
+    document.addEventListener('toggle', event => {
+      if (event.target instanceof HTMLDialogElement) {
+        reportAgentPeek();
+        syncModalDanceDock();
+      }
+    }, { capture: true, signal: layerEvents.signal });
+  }
+  function renderAgentWork() {
+    const catching = agentCatchTimer !== undefined;
+    for (const indicator of agentIndicators) {
+      indicator.toggleAttribute('data-agent-catching', catching);
+      indicator.toggleAttribute('data-agent-working', agentWorking);
+    }
+    const label = agentWorking ? agentLabels.mcpWorking : catching ? agentLabels.mcpReceived : agentLabels.mcpIdle;
+    agentEntry.title = agentWorking || catching ? label : agentLabels.navigation;
+    agentStatus.textContent = agentWorking ? agentLabels.mcpWorking : '';
+    if (agentDialogWorkLabel.textContent !== label) {
+      agentDialogWork.title = label;
+      agentDialogWorkLabel.textContent = label;
+      agentDialogWorkStatus.textContent = label;
+    }
+    syncAgentIdleTricks();
+    reportAgentPeek();
+  }
+  renderAgentWork();
+  watchAgentWork(chrome, working => {
+    if (working && !agentWorking && agentCatchTimer === undefined) {
+      // Keep the catch visible for its full duration even when the request settles quickly.
+      agentCatchTimer = setTimeout(() => {
+        agentCatchTimer = undefined;
+        renderAgentWork();
+      }, agentCatchDuration);
+    }
+    agentWorking = working;
+    renderAgentWork();
+  }, layerEvents.signal);
+  layerEvents.signal.addEventListener('abort', () => clearTimeout(agentCatchTimer), { once: true });
+  agentEntry.addEventListener('click', () => void openPreferences('agent'));
   $('searchHelp').addEventListener('toggle', () => { if ($('searchHelp').open) suggestions.close(); });
   $('searchHelpClose').addEventListener('click', () => {
     $('searchHelp').open = false;
@@ -1673,6 +2094,18 @@ function mount() {
   });
   datePicker = setupDatePicker({ lang: state.lang, t });
   suggestions = setupSuggestions({ input: $('query'), mode: $('mode'), panel: $('suggestionsPanel'), list: $('suggestionsList'), readHistory, onChoose: controls });
+  const filterToggle = $('filterToggle');
+  const editingDate = () => $('filters').open && [$('startDate'), $('endDate')].includes(document.activeElement);
+  filterToggle.addEventListener('mousedown', event => {
+    // Committing a date on pointer-down can move the trigger before pointer-up.
+    if (event.button === 0 && editingDate()) event.preventDefault();
+  });
+  filterToggle.addEventListener('click', event => {
+    if (!editingDate()) return;
+    event.preventDefault();
+    $('filters').open = false;
+    filterToggle.focus({ preventScroll: true });
+  });
   for (const choice of document.querySelectorAll('.time-range-radio')) choice.addEventListener('change', () => {
     if (!choice.checked) return;
     $('timeRange').value = choice.value;
@@ -1696,13 +2129,24 @@ function mount() {
   $('closeProtection').addEventListener('click', () => $('protectionDialog').close());
   $('protectionForm').addEventListener('submit', saveProtection);
   $('protectionDialog').addEventListener('cancel', event => { if (state.busy) event.preventDefault(); });
-  $('currentSite')?.addEventListener('click', currentSite);
+  if (compact) {
+    syncCurrentSiteButton();
+    $('currentSite').addEventListener('click', currentSite);
+  }
   cleanupSurface?.destroy(); cleanupSurface=null; syncSurface=null;
   recommendationSurface?.destroy(); recommendationSurface=null;
+  linkCleanupSurface?.destroy(); linkCleanupSurface=null;
   $('openPreferences').addEventListener('click', ()=>openPreferences());
+  $('toggleSettingsSidebar').addEventListener('click', event => {
+    const toggle = event.currentTarget;
+    const collapsed = $('preferencesDialog').toggleAttribute('data-sidebar-collapsed');
+    const label = t(collapsed ? 'expandSettingsSidebar' : 'collapseSettingsSidebar');
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', label);
+    toggle.title = label;
+  });
   document.querySelectorAll('[data-settings-section]').forEach(button=>button.addEventListener('click',()=>navigateSettings(button.dataset.settingsSection)));
 
-  $('autoFromSearch').addEventListener('click', () => { const rule = autoSearchRule(); if (rule) void openAutoCleanup(rule); });
   for (const id of ['closePreferences', 'dismissPreferences','backPreferences']) $(id).addEventListener('click', requestClosePreferences);
   $('keepEditingPreferences').addEventListener('click', () => $('unsavedPreferencesDialog').close());
   $('discardPreferences').addEventListener('click', () => { const action=preferenceExit?.discard; $('unsavedPreferencesDialog').close();action?.(); });
@@ -1718,17 +2162,28 @@ function mount() {
   $('preferencesDialog').addEventListener('close', async event => {
     settingsSelects.close();
     settingsTabs.closeMenu();
+    closePreferenceHelp($('preferencesDialog'));
+    if (!event.target.open) {
+      disposeAgentPage?.(); disposeAgentPage = null;
+      $('settings-panel-agent').replaceChildren();
+    }
     if (!modal) return;
     const dialog = event.target;
     // Keep the outer window close control hidden until this drawer has slid out.
     await Promise.allSettled(dialog.getAnimations().map(animation => animation.finished));
-    if (!dialog.open) window.parent.postMessage({ type: 'history-sweep:preferences', open: false }, '*');
+    if (!dialog.open) {
+      window.parent.postMessage({ type: 'history-sweep:preferences', open: false }, '*');
+      if (agentOpenedFromPeek) {
+        agentOpenedFromPeek = false;
+        modalAgentPort?.postMessage({ type: 'restore-focus' });
+      }
+    }
   });
   $('filters').addEventListener('toggle', () => { $('filterToggle').setAttribute('aria-expanded', String($('filters').open)); positionTimeMenu(); });
   $('clearQuery').addEventListener('click', () => {
     dismissCompletion(); suggestions.close();
     state.query = ''; setMatches([], true); state.selected.clear(); state.scanned = false; state.excluded = 0;
-    $('query').value = ''; $('query').focus(); renderRows(); void search();
+    $('query').value = ''; $('query').focus(); renderRows(); void search({ dismissHint: false });
   });
   for (const button of $('language').querySelectorAll('[data-language]')) {
     button.setAttribute('aria-pressed', String(button.dataset.language === state.lang));
@@ -1772,7 +2227,8 @@ function mount() {
   });
   $('loadMore').addEventListener('click', () => { state.groupLimit += pageSize; renderRows(); });
   $('delete').addEventListener('click', () => openDeletionConfirm([...state.selected]));
-  $('confirmDialog').addEventListener('close', () => { if ($('confirmDialog').returnValue === 'confirm') deleteConfirmed(); else state.pending = []; });
+  $('confirmDialog').addEventListener('close', () => { if ($('confirmDialog').returnValue === 'confirm') deleteConfirmed(); else { state.pending = []; cleanupHint.cancelDelete(); } });
+  $('rateInStore').addEventListener('click', openRatingStore);
   $('openFullDialog').addEventListener('close', () => { if ($('openFullDialog').returnValue === 'confirm') launchFull(); });
   for (const id of ['openFull', 'openFullFooter']) $(id)?.addEventListener('click', openFull);
   renderRows();
@@ -1789,6 +2245,15 @@ const modalUnavailable = location.hash === '#modalUnavailable';
 // Top-level routing metadata is removed before Chrome can retain a restored tab URL.
 if (!modal && (location.search || location.hash)) history.replaceState(null, '', location.pathname);
 mount();
+if (compact) {
+  // The worker validates the active tab's URL and the click checks it again before searching.
+  const refreshCurrentSite = () => { void readCurrentSite().catch(() => {}); };
+  refreshCurrentSite();
+  chrome.tabs?.onActivated?.addListener(refreshCurrentSite);
+  chrome.tabs?.onUpdated?.addListener((_tabId, change, tab) => {
+    if (tab.active && (change.url !== undefined || change.status === 'complete')) refreshCurrentSite();
+  });
+}
 document.addEventListener('history-sweep:theme-changed', syncThemeControl);
 void refreshUpdate();
 // Check once per opened view; storage keeps all views informed without repeating network checks.
@@ -1816,8 +2281,8 @@ window.addEventListener('focus', () => activity.invalidate());
 window.addEventListener('focus', () => { void cleanupHint.refresh(); });
 window.addEventListener('focus', refreshShortcut);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void refreshShortcut(); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) markHistoryChanged(); });
-document.addEventListener('close', () => queueMicrotask(scheduleHistoryRefresh), true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { markHistoryChanged(); void showRatingInvite(); } });
+document.addEventListener('close', () => queueMicrotask(() => { scheduleHistoryRefresh(); void showRatingInvite(); }), true);
 watchNextDay();
 // Extension-local rules load before any selection or deletion becomes available.
 const initialNameplate = request({ type: 'claim-nameplate-reveal' }).then(data => data.nameplate).catch(() => null);
@@ -1839,9 +2304,9 @@ request({ type: 'get-protection' }).then(async data => {
       const handoff = await request({ type: 'claim-workspace', handoffId });
       $('query').value = handoff.query; $('mode').value = handoff.mode; state.dateExplicit = true; writeTimeDraft(handoff.filters);
       $('filters').open = handoff.filters.range !== 'all'; state.busy = false;
-      await search();
+      await search({ dismissHint: false });
     } catch { state.busy = false; status('handoffFailed'); controls(); }
-  } else { await search(); if (modalUnavailable) status('modalUnavailable'); }
+  } else { await search({ dismissHint: false }); if (modalUnavailable) status('modalUnavailable'); }
 }).catch(error => { status(error.message === 'BACKGROUND_UNAVAILABLE' ? 'reloadExtension' : 'rulesUnavailable'); controls(); })
   .finally(async () => {
     const card = await initialNameplate;

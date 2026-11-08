@@ -1,5 +1,9 @@
 # Chrome Web Store submission pack
 
+## Prepared update — v1.0.0
+
+See the [v1.0.0 submission materials](v1.0.0-submission.md) for package scope, permission explanations and reviewer instructions.
+
 ## Submitted update — v0.7.0
 
 On November 2, 2026, the dashboard confirmed **“Your extension was submitted for review”** and **Pending review**. Automatic publication after approval was selected. Code was pushed and the website/privacy updates were deployed. English and Simplified Chinese each have five screenshots; global assets have two, with the existing black cover retained first in every group. See [the v0.7.0 release materials and execution evidence](v0.7.0-candidate.md). The package and shared notes remain Candidate; public update metadata stays at 0.6.0 while review is pending. Approval and public availability of v0.7.0 are not yet verified. Earlier records below retain their original scope.

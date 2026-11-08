@@ -121,7 +121,7 @@ try {
   check(await page.locator('.wt-visit-detail input').count() === 0, 'visit details do not offer per-visit selection or deletion');
   await screenshot('06-visit-timeline');
 
-  await more(tracked); await dialog().getByRole('button', { name: '复制净化后的链接', exact: true }).click();
+  await more(tracked); await dialog().getByRole('button', { name: '净化链接', exact: true }).click();
   await dialog().getByLabel('要移除的参数名', { exact: true }).fill('utm_source\nutm_campaign');
   const cleaned = await dialog().getByLabel('净化后', { exact: true }).inputValue();
   check(cleaned === 'https://reading.example/article/42?item=synthetic#intro', 'clean-copy preview removes configured names and keeps business query and fragment');

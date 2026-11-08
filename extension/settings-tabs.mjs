@@ -7,6 +7,11 @@ export function setupSettingsTabs(root, { label, moreLabel, closeLabel, onEmpty,
   const events = new AbortController();
   let active = null;
   let frame = 0;
+  const tabVisibility = new IntersectionObserver(entries => {
+    for (const { target, intersectionRect, boundingClientRect } of entries) {
+      target.toggleAttribute('data-clipped', intersectionRect.width < boundingClientRect.width - 0.5);
+    }
+  }, { root: strip, threshold: 1 });
   strip.setAttribute('aria-label', label);
   more.setAttribute('aria-label', moreLabel);
   more.title = moreLabel;
@@ -42,7 +47,13 @@ export function setupSettingsTabs(root, { label, moreLabel, closeLabel, onEmpty,
     if (focus) pages.get(active)?.node.querySelector('[role=tab]').focus({ preventScroll: true });
   }
   function forget(ids) {
-    for (const id of ids) { pages.get(id)?.node.remove(); pages.delete(id); }
+    for (const id of ids) {
+      const page = pages.get(id);
+      if (!page) continue;
+      tabVisibility.unobserve(page.node);
+      page.node.remove();
+      pages.delete(id);
+    }
     if (!menu.hidden) renderMenu();
     measure();
   }
@@ -95,6 +106,7 @@ export function setupSettingsTabs(root, { label, moreLabel, closeLabel, onEmpty,
       button.id = `settings-tab-${descriptor.id}`; button.setAttribute('role', 'tab');
       button.addEventListener('click', () => select(descriptor.id));
       node.append(button, closeButton(descriptor)); strip.append(node);
+      tabVisibility.observe(node);
       page = { ...descriptor, node }; pages.set(descriptor.id, page);
     }
     Object.assign(page, descriptor);
@@ -125,6 +137,10 @@ export function setupSettingsTabs(root, { label, moreLabel, closeLabel, onEmpty,
     const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? strip.clientWidth : 1);
     strip.scrollLeft += delta; event.preventDefault();
   }, { passive: false, signal: events.signal });
+  strip.addEventListener('focusin', event => {
+    const clipped = event.target.closest('.settings-tab[data-clipped]');
+    if (clipped) reveal(clipped.dataset.settingsTab);
+  }, { signal: events.signal });
   strip.addEventListener('keydown', event => {
     const current = event.target.closest('[role=tab]');
     if (!current) return;
@@ -148,6 +164,6 @@ export function setupSettingsTabs(root, { label, moreLabel, closeLabel, onEmpty,
   resize.observe(strip);
   return { visit, forget, close, closeMenu,
     isMenuOpen: () => !menu.hidden, contains: target => root.contains(target),
-    destroy() { events.abort(); resize.disconnect(); cancelAnimationFrame(frame); closeMenu(); },
+    destroy() { events.abort(); resize.disconnect(); tabVisibility.disconnect(); cancelAnimationFrame(frame); closeMenu(); },
   };
 }
