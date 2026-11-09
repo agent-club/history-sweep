@@ -5,6 +5,13 @@ const copy = (en, zh) => ({ en, 'zh-CN': zh });
 
 export const releaseNotes = [
   {
+    version: '1.1.0', status: 'published',
+    title: copy('Fixed the robot dance download', '修复机器人舞蹈素材下载'),
+    changes: [
+      copy('The dance artwork downloads from the History Sweep website on first use. Once cached, the robot can dance offline.', '首次触发舞蹈时从 History Sweep 官网下载素材，缓存后可离线播放。'),
+    ],
+  },
+  {
     version: '1.0.0', status: 'published',
     title: copy('Agent access and link cleanup', 'Agent 接入与链接净化'),
     changes: [

@@ -1,4 +1,4 @@
-export const agentDanceAtlasUrl = 'https://raw.githubusercontent.com/agent-club/history-sweep/agent-dance-v1/extension/icons/agent-dance-motion.webp';
+export const agentDanceAtlasUrl = 'https://sweep.agentclub.dev/assets/agent-dance-v1.webp';
 const atlasSha256 = '160f01659a89e0b894b81a7886b8fcd04696c8bc410c31d31ae251e9b41ef231';
 const atlasSize = 2549306;
 
@@ -10,19 +10,11 @@ export async function loadAgentDanceAtlas() {
     if (bitmap) return bitmap;
   }
 
-  let response = await fetch(agentDanceAtlasUrl, {
+  const response = await fetch(agentDanceAtlasUrl, {
     credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
     signal: AbortSignal.timeout(12000),
-  }).catch(() => undefined);
-  if (!response || response.status === 404) {
-    const installation = await chrome.management.getSelf().catch(() => undefined);
-    if (installation?.installType === 'development') {
-      // Source checkouts have the same pinned atlas, which release packages omit.
-      const local = await fetch(new URL('./icons/agent-dance-motion.webp', import.meta.url)).catch(() => undefined);
-      if (local?.ok) response = local;
-    }
-  }
-  if (!response?.ok) throw new Error('Agent dance artwork download failed');
+  });
+  if (!response.ok) throw new Error('Agent dance artwork download failed');
   const bytes = await response.arrayBuffer();
   if (bytes.byteLength !== atlasSize) throw new Error('Unexpected Agent dance artwork size');
   // The baked atlas must match the choreography bundled with the extension.

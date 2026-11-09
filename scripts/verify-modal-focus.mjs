@@ -35,6 +35,7 @@ try {
     const headers = { 'access-control-allow-origin': '*' };
     if (danceDownloads === 1) return route.fulfill({ status: 503, headers });
     await allowDanceDownload;
+    if (process.env.HISTORY_SWEEP_LIVE_DANCE_ATLAS === '1') return route.continue();
     await route.fulfill({ path: join(extension, 'icons/agent-dance-motion.webp'), contentType: 'image/webp', headers });
   });
   page.on('pageerror', error => errors.push(error.message));
@@ -158,8 +159,19 @@ try {
   }, agentDanceAtlasUrl);
   assert.deepEqual(cachedDanceArt, [4096, 5760], 'the asset cache is shared with the extension origin');
   assert.equal(danceDownloads, 2, 'the cached atlas needs no further download');
+  await context.setOffline(true);
+  const offlineAtlas = await frame.evaluate(async () => {
+    const { loadAgentDanceAtlas } = await import(chrome.runtime.getURL('agent-dance-asset.mjs'));
+    const bitmap = await loadAgentDanceAtlas();
+    const dimensions = [bitmap.width, bitmap.height];
+    bitmap.close();
+    return dimensions;
+  });
+  assert.deepEqual(offlineAtlas, [4096, 5760], 'a fresh atlas load works from persistent cache while offline');
   await dock.press('Enter');
   await page.waitForFunction(() => !window.modalTestRoot.querySelector('.agent-dance-stop').hidden);
+  assert.equal(danceDownloads, 2, 'offline playback makes no atlas request');
+  await context.setOffline(false);
   assert.equal(await page.evaluate(() => window.modalTestRoot.querySelector('.agent-dance-stage').getAnimations({ subtree: true }).length), 0, 'reduced motion shows a stationary pose');
   await page.keyboard.press('Escape');
   await frame.waitForFunction(() => document.querySelector('#preferencesDialog').open && document.activeElement.id === 'agentDanceDock');
