@@ -2,6 +2,10 @@ const STORE_ID = 'bbccfejdhhcjmpfagjckiikgllpojhgm';
 const STORE_UPDATE_URL = 'https://clients2.google.com/service/update2/crx';
 const VERSION_URL = 'https://sweep.agentclub.dev/extension-updates.json';
 const CHECK_INTERVAL = 15 * 60 * 1000;
+// Leave room for the 5-second metadata fetch within the view's 15-second deadline.
+const STORE_CHECK_TIMEOUT = 8_000;
+const STORE_TIMEOUT_RETRY_INTERVAL = 30_000;
+const STORE_CHECK_TIMED_OUT = Symbol('store check timed out');
 
 function parseVersion(value) {
   if (typeof value !== 'string' || !/^(?:0|[1-9]\d{0,4})(?:\.(?:0|[1-9]\d{0,4})){0,3}$/.test(value)) return null;
@@ -25,7 +29,11 @@ export function createUpdateChecker(chrome, { fetchVersion = globalThis.fetch, n
     const installedVersion = chrome.runtime.getManifest().version;
     const checkedAt = now();
     const save = data => chrome.storage.local.set({ extensionUpdateCheck: { installedVersion, checkedAt, ...data } });
-    let channel = 'unknown', publishedVersion, storeCheckedAt, storeStatus;
+    let channel = 'unknown', publishedVersion, storeCheckedAt, storeStatus, storeTimer;
+    const saveDelayed = () => save({
+      channel, status: 'delayed', version: publishedVersion, storeCheckedAt, storeStatus: 'timeout',
+      retryAt: storeCheckedAt + STORE_TIMEOUT_RETRY_INTERVAL,
+    });
     try {
       const self = await chrome.management.getSelf();
       channel = self.installType === 'development' ? 'development' : self.installType === 'admin' ? 'managed' :
@@ -61,25 +69,37 @@ export function createUpdateChecker(chrome, { fetchVersion = globalThis.fetch, n
       if (!publishedVersion && !manual) {
         await save({ channel, status: 'current', storeCheckedAt, storeStatus }); return null;
       }
-      // A manual metadata retry must not repeatedly call Chrome's rate-limited store API.
-      if (Number.isFinite(storeCheckedAt) && checkedAt >= storeCheckedAt && checkedAt - storeCheckedAt < CHECK_INTERVAL) {
-        await save({ channel, status: metadataFailed ? 'error' : storeStatus === 'throttled' ? 'throttled' : publishedVersion ? 'published' : 'current', version: publishedVersion, storeCheckedAt, storeStatus });
+      // A timeout leaves Chrome's request running, so still space out explicit retries.
+      const retryInterval = manual && storeStatus === 'timeout' ? STORE_TIMEOUT_RETRY_INTERVAL : CHECK_INTERVAL;
+      if (Number.isFinite(storeCheckedAt) && checkedAt >= storeCheckedAt && checkedAt - storeCheckedAt < retryInterval) {
+        if (storeStatus === 'timeout') await saveDelayed();
+        else {
+          const status = metadataFailed ? 'error' : storeStatus === 'throttled' ? 'throttled' : publishedVersion ? 'published' : 'current';
+          await save({ channel, status, version: publishedVersion, storeCheckedAt, storeStatus });
+        }
         return null;
       }
-      storeCheckedAt = checkedAt;
+      storeCheckedAt = now();
+      storeStatus = undefined;
       await save({ channel, status: 'checking', version: publishedVersion, storeCheckedAt });
       // A manual check can reach Chrome even when the website is stale or unavailable.
       // Remote metadata is only a hint. Only Chrome can make a downloaded update actionable.
-      const result = await chrome.runtime.requestUpdateCheck();
+      const result = await Promise.race([
+        chrome.runtime.requestUpdateCheck(),
+        new Promise((_, reject) => { storeTimer = setTimeout(reject, STORE_CHECK_TIMEOUT, STORE_CHECK_TIMED_OUT); }),
+      ]);
       const ready = result.status === 'update_available' && isNewerVersion(result.version, installedVersion);
       if (!ready && !['no_update', 'throttled'].includes(result.status)) throw new Error('INVALID_STORE_RESULT');
       await save({ channel, status: ready ? 'ready' : result.status === 'throttled' ? 'throttled' : metadataFailed ? 'error' : publishedVersion ? 'published' : 'current',
         version: ready ? result.version : publishedVersion, storeCheckedAt, storeStatus: result.status });
       return ready ? result.version : null;
-    } catch {
-      // Failure is visible in Settings, while history operations remain independent.
-      await save({ channel, status: 'error', storeCheckedAt, storeStatus, ...(publishedVersion ? { version: publishedVersion } : {}) });
+    } catch (error) {
+      // Chrome can still signal a ready update after the extension stops waiting.
+      if (error === STORE_CHECK_TIMED_OUT) await saveDelayed();
+      else await save({ channel, status: 'error', storeCheckedAt, storeStatus, ...(publishedVersion ? { version: publishedVersion } : {}) });
       return null;
+    } finally {
+      clearTimeout(storeTimer);
     }
   }
   return ({ manual = false } = {}) => {

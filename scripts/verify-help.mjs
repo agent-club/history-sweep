@@ -6,6 +6,8 @@ import { installMock } from './fixtures.mjs';
 import { releaseNotes } from '../extension/release-notes.mjs';
 
 const { chromium } = dependency('playwright');
+const { version: packageVersion } = JSON.parse(await readFile(new URL('../extension/manifest.json', import.meta.url), 'utf8'));
+const previousVersion = releaseNotes.find(record => record.status === 'published' && record.version !== packageVersion).version;
 const output = process.env.HISTORY_SWEEP_HELP_OUTPUT || new URL('../output/help/', import.meta.url).pathname;
 const server = createServer();
 let browser;
@@ -30,11 +32,11 @@ try {
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await installMock(page, records);
-      await page.addInitScript(language => {
+      await page.addInitScript(({ language, packageVersion }) => {
         localStorage.setItem('language', language);
         localStorage.setItem('theme', language === 'en' ? 'dark' : 'light');
-        chrome.runtime.getManifest = () => ({ version: '1.0.0' });
-      }, language);
+        chrome.runtime.getManifest = () => ({ version: packageVersion });
+      }, { language, packageVersion });
       if (layout === 'modal') await page.route('**/extension/manager.html', async route => {
         const response = await route.fetch();
         await route.fulfill({ response, body: (await response.text()).replace('<body', '<body data-presentation="modal"') });
@@ -111,12 +113,12 @@ try {
       check(await page.locator('#openQuickStartSettings').evaluate(node => node === document.activeElement), 'settings entry regains focus');
       await context.setOffline(true);
       await page.locator('#openUpdateSettings').click();
-      check(await page.locator('#installedVersion').textContent() === 'v1.0.0', 'installed version remains separate from release status');
+      check(await page.locator('#installedVersion').textContent() === `v${packageVersion}`, 'installed version remains separate from release status');
       check(await page.locator('#updateDialog .release-record').count() === releaseNotes.length, 'all package records are available offline');
-      const published = page.locator('#updateDialog [data-release="1.0.0"]');
+      const published = page.locator(`#updateDialog [data-release="${packageVersion}"]`);
       check(await published.getAttribute('open') !== null && await published.locator('[data-status="published"]').count() === 1, 'installed release presets Published and starts expanded');
       check(await published.locator('[data-status="candidate"]').count() === 0, 'the offline package is Published independently of store review');
-      const previous = page.locator('#updateDialog [data-release="0.7.0"]');
+      const previous = page.locator(`#updateDialog [data-release="${previousVersion}"]`);
       check(await previous.locator('[data-status="published"]').count() === 1 && await previous.getAttribute('open') === null, 'previous published release starts collapsed');
       await previous.locator('summary').click();
       check(await previous.locator('.release-changes').isVisible(), 'previous changes can be expanded');
@@ -182,8 +184,8 @@ try {
       }
       check(await page.locator('[data-release="0.6.0"] [data-status="published"]').count() === 1, 'website presets v0.6.0 as Published too');
       check(await page.locator('[data-release="0.6.0"]').getAttribute('open') === null, 'website keeps the previous published release collapsed');
-      check(await page.locator('[data-release="1.0.0"] [data-status="published"]').count() === 1, 'website marks the current package Published independently of store review');
-      check(await page.locator('[data-release="1.0.0"]').getAttribute('open') !== null, 'website expands the current published package');
+      check(await page.locator(`[data-release="${packageVersion}"] [data-status="published"]`).count() === 1, 'website marks the current package Published independently of store review');
+      check(await page.locator(`[data-release="${packageVersion}"]`).getAttribute('open') !== null, 'website expands the current published package');
       await fits(page.locator('body'), `${width}px website/${language}`);
       await page.screenshot({ path: `${output}/site-${width}-${language}.png`, fullPage: true });
     }

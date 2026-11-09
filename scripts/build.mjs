@@ -31,9 +31,9 @@ try {
  const staged=join(temporary,'extension'); await mkdir(staged);
  for(const entry of entries) await cp(root+'extension/'+entry,join(staged,entry),{recursive:true});
  // The explicit version gate keeps the reviewed package scope tied to this release.
- if(manifest.version!=='1.1.0') throw new Error('Confirm the release scope before packaging a new version');
+ if(manifest.version!=='1.1.1') throw new Error('Confirm the release scope before packaging a new version');
  await copyFile(root+'LICENSE',join(staged,'LICENSE'));
- await writeFile(join(staged,'SOURCE.txt'), `History Sweep ${manifest.version} source code and license notices:\nhttps://github.com/agent-club/history-sweep/tree/v${manifest.version}\n`);
+ await writeFile(join(staged,'SOURCE.txt'), `History Sweep ${manifest.version}\nThe extension source and license notices are included in this archive.\nProject repository: https://github.com/agent-club/history-sweep\n`);
  entries.push('LICENSE','SOURCE.txt');
  // Start fresh so a previously built archive cannot retain deferred or obsolete files.
  const candidate=join(temporary,'extension.zip');

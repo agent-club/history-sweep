@@ -50,7 +50,7 @@ function worker(history, sessions = {}, currentVersion = '0.3.1', updateOptions 
   };
   runInNewContext(source, { ...filters, ...workspaceTools, validateLocalBackup, pausedTaskConfig, readBrowsingPreferences, validateSyncConfig, validateConnection, CONNECTION_KEY, normalizeRule, createAutomaticLinkCleanup, createNameplateStore, createAutoCleanup, createLauncher, createActivityLog, isAgentMessage, agentError, createUpdateChecker: api => createUpdateChecker({ ...api, ...updateOptions }, { fetchVersion: updateOptions.fetchVersion }), isNewerVersion, chrome, URL, URLSearchParams, crypto: { randomUUID }, setTimeout: callback => { timers.push(callback); }, Date: updateOptions.Date || Date });
   return {
-    opened, openedDetails, timers, saved, menus, injected, popups, sessions, updateAvailable: details => updateAvailable(details), get reloads() { return reloads; }, clickAction: tab => actionClicked(tab), install: (reason = 'install') => installed.forEach(callback => callback({ reason })), clickMenu: info => menuClicked(info), setActiveUrl: url => { activeUrl = url; },
+    opened, openedDetails, timers, saved, menus, injected, popups, sessions, updateAvailable: details => updateAvailable(details), get reloads() { return reloads; }, clickAction: tab => actionClicked(tab), install: (reason = 'install', previousVersion) => installed.forEach(callback => callback({ reason, previousVersion })), clickMenu: info => menuClicked(info), setActiveUrl: url => { activeUrl = url; },
     send: (message, from = sender) => new Promise(resolve => {
       if (!listener(message, from, resolve)) resolve({ ok: false });
     }),
@@ -239,6 +239,29 @@ test('Chrome update metadata survives worker suspension and is ignored after ins
   assert.equal((await upgraded.send({ type: 'get-update-state' })).data.update, null);
   assert.equal((await upgraded.send({ type: 'apply-update' })).code, 'UPDATE_UNAVAILABLE');
   assert.deepEqual(w.saved, {});
+});
+
+test('a manual update opens its confirmed result once in the new worker', async () => {
+  const w = worker({});
+  w.updateAvailable({ version: '0.3.2' });
+  assert.equal((await w.send({ type: 'apply-update' })).ok, true);
+  assert.equal(w.reloads, 1);
+  assert.deepEqual(w.opened, [], 'the old worker does not open a result');
+
+  const sameVersion = worker({}, {}, '0.3.1', { localState: structuredClone(w.saved) });
+  sameVersion.install('update', '0.3.1');
+  const unattended = worker({}, {}, '0.3.2');
+  unattended.install('update', '0.3.1');
+
+  // Chrome clears session storage when it replaces the old extension.
+  const upgraded = worker({}, {}, '0.3.2', { localState: w.saved });
+  upgraded.install('update', '0.3.1');
+  upgraded.install('update', '0.3.1');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sameVersion.opened, []);
+  assert.deepEqual(unattended.opened, []);
+  assert.deepEqual(upgraded.opened, ['chrome-extension://fixture/manager.html#updated=0.3.2']);
+  assert.deepEqual(upgraded.saved, {}, 'the one-use handoff is removed after installation');
 });
 
 test('an opening update check never holds up deletion or permits reload during verification', async () => {

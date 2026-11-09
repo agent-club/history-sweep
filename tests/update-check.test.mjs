@@ -168,6 +168,38 @@ test('an unavailable Chrome API cannot be repeatedly invoked by manual retry', a
 });
 
 
+test('a stalled Chrome check stops showing progress and can be retried from Settings', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture({ hint: { extensionId, version: '0.3.1' } });
+  let attempts = 0;
+  let finishStalledCheck;
+  f.chrome.runtime.requestUpdateCheck = () => {
+    if (++attempts === 1) return new Promise(resolve => { finishStalledCheck = resolve; });
+    return Promise.resolve({ status: 'update_available', version: '0.3.2' });
+  };
+
+  const first = f.check({ manual: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.saved.extensionUpdateCheck.status, 'checking');
+  t.mock.timers.tick(14_000);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.saved.extensionUpdateCheck.status, 'delayed', 'a slow Chrome response is still unresolved');
+  assert.equal(f.saved.extensionUpdateCheck.retryAt, f.saved.extensionUpdateCheck.storeCheckedAt + 30_000);
+  assert.equal(await first, null);
+  await f.check();
+  assert.equal(f.saved.extensionUpdateCheck.status, 'delayed', 'reopening preserves the pending result');
+  assert.equal(await f.check({ manual: true }), null);
+  assert.equal(f.saved.extensionUpdateCheck.status, 'delayed', 'a cooldown does not imply there is no update');
+  assert.equal(attempts, 1);
+
+  f.advance(30_000);
+  assert.equal(await f.check({ manual: true }), '0.3.2');
+  finishStalledCheck({ status: 'no_update' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.saved.extensionUpdateCheck.status, 'ready', 'the original response cannot overwrite the retry');
+  assert.equal(attempts, 2);
+});
+
 test('manual checks can discover a Chrome download when website metadata is stale or unavailable', async () => {
   for (const overrides of [{ hint: { extensionId, version: '0.3.1' } }, { fetchVersion: async () => { throw new TypeError('offline'); } }]) {
     const f = fixture(overrides);

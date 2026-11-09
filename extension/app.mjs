@@ -74,6 +74,8 @@ let preferenceBaseline = null;
 let preferenceLoad = 0;
 let defaultBrowsing = browsingDefaults();
 let updateState = null;
+let updateCompleted = !compact && !modal &&
+  new URLSearchParams(location.hash.slice(1)).get('updated') === chrome.runtime.getManifest().version;
 let dismissedUpdate = null;
 let updateApplying = false;
 let updateError = false;
@@ -81,6 +83,7 @@ let updateRequest = 0;
 let updateCheck = null;
 let updateChecking = false;
 let updateReadFailed = false;
+let updateRetryTimer;
 const checkUpdateInView = createUpdateChecker(chrome);
 let groupRender;
 let rowRender;
@@ -416,7 +419,7 @@ async function requestUpdateFeedback(message) {
           let { extensionUpdateCheck } = await chrome.storage.local.get('extensionUpdateCheck');
           const hasCheck = extensionUpdateCheck?.installedVersion === chrome.runtime.getManifest().version &&
             ['development', 'managed', 'store', 'other', 'unknown'].includes(extensionUpdateCheck.channel) &&
-            ['checking', 'current', 'published', 'ready', 'throttled', 'error', 'manual'].includes(extensionUpdateCheck.status);
+            ['checking', 'current', 'published', 'ready', 'throttled', 'delayed', 'error', 'manual'].includes(extensionUpdateCheck.status);
           // Storage notifications also refresh this view; complete metadata needs no new check.
           if (message.type === 'check-for-update' || !hasCheck) {
             await checkUpdateInView({ manual: message.manual === true });
@@ -438,7 +441,7 @@ async function refreshUpdate() {
     if (ticket !== updateRequest) return;
     if (update !== null && (typeof update?.version !== 'string' || typeof update.busy !== 'boolean')) throw new Error('Invalid update state');
     // An older worker can answer without check metadata; that is not an unchecked success.
-    if (check !== null && !['checking', 'current', 'published', 'ready', 'throttled', 'error', 'manual'].includes(check?.status)) throw new Error('Invalid update check');
+    if (check !== null && !['checking', 'current', 'published', 'ready', 'throttled', 'delayed', 'error', 'manual'].includes(check?.status)) throw new Error('Invalid update check');
     updateState = update;
     updateCheck = check;
     updateReadFailed = false;
@@ -455,10 +458,15 @@ function renderUpdateDetails() {
   if (!$('updateDialog')) return;
   const version = chrome.runtime.getManifest().version;
   const channel = updateCheck?.channel || 'unknown';
-  const checking = updateChecking || (!updateReadFailed && updateCheck?.status === 'checking');
-  const kind = updateState ? 'ready' : updateChecking ? 'checking' : updateReadFailed ? 'error' : checking ? 'checking' :
+  const checking = updateChecking || (!updateCompleted && !updateReadFailed && updateCheck?.status === 'checking');
+  const kind = updateCompleted ? 'installed' : updateState ? 'ready' : updateChecking ? 'checking' : updateReadFailed ? 'error' : checking ? 'checking' :
     updateCheck?.status === 'ready' ? 'published' :
-    ['current', 'published', 'throttled', 'error', 'manual'].includes(updateCheck?.status) ? updateCheck.status : 'idle';
+    ['current', 'published', 'throttled', 'delayed', 'error', 'manual'].includes(updateCheck?.status) ? updateCheck.status : 'idle';
+  const now = Date.now();
+  const retryWait = kind === 'delayed' && Number.isFinite(updateCheck.retryAt) && now >= updateCheck.storeCheckedAt ?
+    Math.max(0, updateCheck.retryAt - now) : 0;
+  clearTimeout(updateRetryTimer);
+  if (retryWait) updateRetryTimer = setTimeout(renderUpdateDetails, retryWait);
   const dirty = linkCleanupSurface?.hasUnsavedChanges() || recommendationSurface?.hasUnsavedChanges() || $('preferencesDialog').open && preferenceBaseline && Object.keys(preferenceBaseline)
     .some(key => JSON.stringify(preferenceDraft()[key]) !== JSON.stringify(preferenceBaseline[key]));
   const busy = updateState?.busy || state.busy || savingPreference;
@@ -469,13 +477,14 @@ function renderUpdateDetails() {
   $('updateEntryVersion').textContent = `v${version} · ${t(`updateStatus_${kind}`)}`;
   if ($('openVersion')) $('openVersion').textContent = `v${version}`;
   $('updateStatusTitle').textContent = updateError ? t('updateFailed') : t(`updateStatus_${kind}`);
-  $('updateStatusBody').textContent = updateError ? t('updateRestartHint') : t(kind === 'manual' ? `updateManual_${channel}` : `updateBody_${kind}`, { version: updateState?.version || updateCheck?.version });
+  $('updateStatusBody').textContent = updateError ? t('updateApplyUnconfirmed') : t(kind === 'manual' ? `updateManual_${channel}` : `updateBody_${kind}`, { version: updateState?.version || updateCheck?.version });
   const checkedAt = updateCheck?.checkedAt;
-  $('updateCheckedAt').hidden = !Number.isFinite(checkedAt) || kind === 'manual' || kind === 'checking';
+  $('updateCheckedAt').hidden = !Number.isFinite(checkedAt) || ['manual', 'checking', 'installed'].includes(kind);
   if (Number.isFinite(checkedAt)) $('updateCheckedAt').textContent = t('updateLastAttempt', { time: new Intl.DateTimeFormat(state.lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(checkedAt) });
   $('checkUpdate').hidden = kind === 'manual' || Boolean(updateState);
-  $('checkUpdate').disabled = checking || updateApplying;
-  $('checkUpdate').textContent = t(checking ? 'updateChecking' : kind === 'error' ? 'updateRetry' : 'updateCheckNow');
+  $('checkUpdate').disabled = checking || updateApplying || retryWait > 0;
+  $('checkUpdate').textContent = t(checking ? 'updateChecking' : retryWait ? 'updateRetryLater' :
+    kind === 'error' || kind === 'delayed' ? 'updateRetry' : 'updateCheckNow');
   $('reloadUpdate').hidden = !updateState;
   $('reloadUpdate').disabled = busy || dirty || updateApplying;
   $('reloadUpdate').textContent = t(updateApplying ? 'updateReloading' : 'updateRestart');
@@ -495,6 +504,7 @@ function openUpdateDetails() {
 
 async function checkUpdateNow() {
   if (updateChecking) return;
+  updateCompleted = false;
   updateChecking = true; updateReadFailed = false; updateError = false; renderUpdateDetails();
   // Keep fast, cached or failed checks perceptible before showing the final result.
   const feedback = new Promise(resolve => setTimeout(resolve, 600));
@@ -520,8 +530,18 @@ async function applyUpdate() {
   if ($('preferencesDialog').open && preferenceBaseline && Object.keys(preferenceBaseline)
     .some(key => JSON.stringify(preferenceDraft()[key]) !== JSON.stringify(preferenceBaseline[key]))) return;
   updateApplying = true; updateError = false; controls();
+  let timedOut = false;
+  // A reply only acknowledges the reload request. The old view should then go away.
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    updateApplying = false;
+    updateError = true;
+    controls();
+  }, 15_000);
   try { await request({ type: 'apply-update' }); }
   catch (error) {
+    if (timedOut) return;
+    clearTimeout(deadline);
     updateApplying = false;
     if (error.message !== 'UPDATE_BUSY') updateError = true;
     await refreshUpdate(); controls();
@@ -1754,6 +1774,7 @@ function mount() {
   $('openVersion')?.addEventListener('click', openUpdateDetails);
   $('closeUpdateDetails').addEventListener('click', () => $('updateDialog').close());
   $('updateDialog').addEventListener('close', event => {
+    updateCompleted = false;
     if (modal && !event.target.open) window.parent.postMessage({ type: 'history-sweep:update-details', open: false }, '*');
   });
   let guideReturnFocus;
@@ -2324,3 +2345,8 @@ globalThis.chrome?.storage?.onChanged?.addListener((changes, area) => {
 });
 
 if(['general','privacy','recommendations'].includes(initialSettings)) void openPreferences(initialSettings);
+if (updateCompleted) {
+  if (document.body.hasAttribute('data-startup')) {
+    document.addEventListener('history-sweep:startup-dismissed', openUpdateDetails, { once: true });
+  } else openUpdateDetails();
+}

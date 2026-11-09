@@ -21,6 +21,8 @@ const jobs = new Map();
 const activityLog = createActivityLog(chrome.storage.local);
 const nameplates = createNameplateStore(chrome.storage.local);
 const checkForUpdate = createUpdateChecker(chrome);
+const UPDATE_RESULT_KEY = 'pendingExtensionUpdateResult';
+const UPDATE_RESULT_TTL = 120_000;
 const modes = new Set(['smart', 'host-subdomains', 'host-exact', 'contains']);
 let policyQueue = Promise.resolve();
 let applyingUpdate = false;
@@ -112,7 +114,21 @@ function websiteHost(value) {
   throw new Error('CURRENT_SITE_UNAVAILABLE');
 }
 
+async function openInstalledUpdate(previousVersion) {
+  const version = await withPolicyLock(async () => {
+    const { [UPDATE_RESULT_KEY]: pending } = await chrome.storage.local.get(UPDATE_RESULT_KEY);
+    if (!pending) return;
+    await chrome.storage.local.remove(UPDATE_RESULT_KEY);
+    const installed = chrome.runtime.getManifest().version;
+    if (pending.previousVersion === previousVersion && Number.isFinite(pending.expiresAt) &&
+        Date.now() < pending.expiresAt && isNewerVersion(pending.version, previousVersion) &&
+        isNewerVersion(installed, previousVersion) && !isNewerVersion(pending.version, installed)) return installed;
+  });
+  if (version) await chrome.tabs.create({ url: chrome.runtime.getURL(`manager.html#updated=${encodeURIComponent(version)}`) });
+}
+
 chrome.runtime.onInstalled.addListener(details => {
+  if (details?.reason === 'update') void openInstalledUpdate(details.previousVersion).catch(() => {});
   if (details?.reason === 'install') void nameplates.prepareReveal().catch(() => {});
   chrome.contextMenus.create({ id: 'sweep-site', title: chrome.i18n.getMessage('sweepSite'), contexts: ['page'], documentUrlPatterns: ['http://*/*', 'https://*/*'] });
   if (details?.reason === 'install') void withPolicyLock(async () => {
@@ -316,7 +332,19 @@ async function handleMessage(message, sender, owner, modal = false) {
     if (deletionRunning()) throw new Error('UPDATE_BUSY');
     // Serialize reload with deletion acceptance, including requests from other open views.
     applyingUpdate = true;
-    try { chrome.runtime.reload(); } catch (error) { applyingUpdate = false; throw error; }
+    try {
+      // Chrome clears session storage on update, so leave only version data for the new worker.
+      await chrome.storage.local.set({ [UPDATE_RESULT_KEY]: {
+        previousVersion: chrome.runtime.getManifest().version,
+        version: update.version,
+        expiresAt: Date.now() + UPDATE_RESULT_TTL,
+      } });
+      chrome.runtime.reload();
+    } catch (error) {
+      applyingUpdate = false;
+      await chrome.storage.local.remove(UPDATE_RESULT_KEY).catch(() => {});
+      throw error;
+    }
     return {};
   });
   if (message.type === 'claim-rating-invite') {

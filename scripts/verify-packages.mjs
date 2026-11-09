@@ -18,13 +18,13 @@ try {
   }
   const released = JSON.parse(await readFile(join(temporary, 'extension/manifest.json'), 'utf8'));
   assert.deepEqual(released, manifest, 'the release manifest includes the source entries and permissions');
-  assert.equal(released.version, '1.1.0');
+  assert.equal(released.version, '1.1.1');
   const icons = await readdir(join(temporary, 'extension', 'icons'));
   assert.ok(!icons.includes('agent-dance-motion.webp'), 'the full dance atlas is downloaded separately');
   assert.ok(icons.includes('agent-dance.webp') && icons.includes('agent-dance-track.json'), 'the dance preview and choreography ship');
   assert.ok(released.permissions.includes('alarms'), 'cleanup scheduling permission ships in the release');
   assert.deepEqual(await readFile(join(temporary, 'extension/LICENSE')), await readFile(root + 'LICENSE'));
-  assert.ok((await readFile(join(temporary, 'extension/SOURCE.txt'), 'utf8')).includes(`https://github.com/agent-club/history-sweep/tree/v${manifest.version}\n`));
+  assert.ok((await readFile(join(temporary, 'extension/SOURCE.txt'), 'utf8')).includes(`History Sweep ${manifest.version}\nThe extension source and license notices are included in this archive.\n`));
   assert.ok((await readdir(join(temporary, 'extension'))).includes('update-check.mjs'), 'official update checker is packaged');
   assert.match(await readFile(join(temporary, 'site/_headers'), 'utf8'), /Access-Control-Allow-Origin: \*/);
   assert.deepEqual(JSON.parse(await readFile(join(temporary, 'site/extension-updates.json'), 'utf8')),

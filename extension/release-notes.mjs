@@ -5,6 +5,14 @@ const copy = (en, zh) => ({ en, 'zh-CN': zh });
 
 export const releaseNotes = [
   {
+    version: '1.1.1', status: 'published',
+    title: copy('Clearer extension updates', '更清楚的插件更新反馈'),
+    changes: [
+      copy('Update checks stop waiting when Chrome takes too long. You can close Settings, wait for an update to become ready, or check again later.', '更新检查等待过久时会结束等待。可以关闭设置，等更新就绪后再操作，也可以稍后重新检查。'),
+      copy('When an update is started from this version, the workspace opens after Chrome confirms the newer version is installed and displays the installed version number.', '从此版本手动发起更新后，Chrome 确认安装新版时会自动打开工作台，并显示已安装的版本号。'),
+    ],
+  },
+  {
     version: '1.1.0', status: 'published',
     title: copy('Fixed the robot dance download', '修复机器人舞蹈素材下载'),
     changes: [
