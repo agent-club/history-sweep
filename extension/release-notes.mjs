@@ -5,6 +5,14 @@ const copy = (en, zh) => ({ en, 'zh-CN': zh });
 
 export const releaseNotes = [
   {
+    version: '1.1.2', status: 'published',
+    title: copy('Batch deletion progress and Agent reconnection', '批量删除进度与 Agent 重连'),
+    changes: [
+      copy('Follow batch deletion with a progress bar, item counts and a separate verification status.', '批量删除时可以查看进度条、处理项数和删除后的复查状态。'),
+      copy('When the Agent companion is unavailable, you can stop automatic reconnection from Agent access.', 'Agent 伴侣无法连接时，可以在 Agent 接入页停止自动重连。'),
+    ],
+  },
+  {
     version: '1.1.1', status: 'published',
     title: copy('Clearer extension updates', '更清楚的插件更新反馈'),
     changes: [

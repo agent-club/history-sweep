@@ -1296,21 +1296,62 @@ async function deleteConfirmed() {
   controls();
   const attempted = new Set(urls);
   const retainedSelection = [...state.selected].filter(url => !attempted.has(url));
-  $('progress').hidden = false; $('progress').max = urls.length; $('progress').value = 0;
-  status('deleting', { done: 0, total: num(urls.length) });
+  const progress = $('progress');
+  const progressArea = $('deletionStatusArea');
+  const liveStatus = $('status');
+  const batch = urls.length > 1;
+  let progressFade;
+  const updateProgress = (phase, completed, total) => {
+    progress.max = total;
+    progress.value = completed;
+    const counts = { done: num(completed), total: num(total) };
+    if (batch) {
+      $('batchProgressPhase').textContent = t(phase === 'deleting' ? 'batchProgressDeleting' : phase);
+      // Only show 100% once every deletion request has been processed.
+      $('batchProgressPercent').textContent = `${num(Math.floor(completed * 100 / total))}%`;
+      $('batchProgressCount').textContent = t('batchProgressCount', counts);
+    }
+    status(phase, counts);
+  };
+  const hideProgress = async () => {
+    if (progress.hidden) return;
+    if (batch && !reducedMotion() && !document.hidden) {
+      // A fast error can arrive during fade-in. Fade out from the current opacity.
+      const opacity = Number(getComputedStyle(progressArea).opacity);
+      progressFade?.cancel();
+      if (opacity > 0) {
+        progressFade = progressArea.animate([{ opacity }, { opacity: 0 }], { duration: 160, easing: 'ease-out', fill: 'forwards' });
+        await progressFade.finished.catch(() => {});
+      }
+    }
+    progress.hidden = true;
+    progressArea.classList.remove('batch-deletion-progress');
+    liveStatus.classList.remove('sr-only');
+    progressFade?.cancel();
+  };
+  progressArea.classList.toggle('batch-deletion-progress', batch);
+  liveStatus.classList.toggle('sr-only', batch);
+  updateProgress('deleting', 0, urls.length);
+  progress.hidden = false;
   let job;
   let completedCount = 0;
   let recommendationOutcome;
   try {
+    if (batch && !reducedMotion() && !document.hidden) {
+      progressFade = progressArea.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: 'ease-out', fill: 'backwards' });
+    }
     const details = state.matches.filter(item => attempted.has(item.url)).map(({ url, title, lastVisitTime }) => ({ url, title, lastVisitTime }));
     job = await request({ type: 'start-delete', urls, details });
     while (['deleting', 'verifying'].includes(job.phase)) {
-      $('progress').value = job.completed;
-      status(job.phase, { done: num(job.completed), total: num(job.total) });
+      updateProgress(job.phase, job.completed, job.total);
       await new Promise(resolve => setTimeout(resolve, 250));
       job = await request({ type: 'delete-status', id: job.id });
     }
     if (job.phase === 'verifyFailed') return status('verifyFailed');
+    if (batch) {
+      // A poll can skip the verification phase. Keep feedback visible while refreshing the results.
+      updateProgress('verifying', job.completed, job.total);
+    }
     cleanupHint.verified(job.remaining);
     const activityRecorded = job.privateCleanup || await activity.refreshCleanup();
     if (job.privateCleanup) activity.invalidate('browsing');
@@ -1350,6 +1391,7 @@ async function deleteConfirmed() {
     // Only the worker's verified success may trigger the completion effect.
     if (job.phase === 'done' && job.remaining.length === 0) {
       completedCount = urls.length;
+      if (batch) await hideProgress();
       const visibleRow = urls.length === 1 && [...$('resultScroll').querySelectorAll('.history-row')].some(row => row.querySelector('.row-select').dataset.url === urls[0]);
       if (visibleRow) {
         await animateRowRemoval($('resultScroll'), urls[0], renderRows);
@@ -1363,7 +1405,8 @@ async function deleteConfirmed() {
   }
   finally {
     if (job && !['deleting', 'verifying'].includes(job.phase)) request({ type: 'release-delete', id: job.id }).catch(() => {});
-    state.busy = false; $('progress').hidden = true; renderRows();
+    await hideProgress();
+    state.busy = false; renderRows();
     if (recommendationDelete) cleanupHint.deletionFinished(recommendationOutcome || { verified: false, remaining: [], removed: 0 });
     else if (completedCount) showCompletion(completedCount);
   }

@@ -107,6 +107,7 @@
 .agent-page .agent-connect-row .quiet { padding-inline:14px; border:1px solid var(--control-line); border-radius:8px; }
 .agent-page .agent-connect-row .quiet:hover:not(:disabled) { background:var(--mist); text-decoration:none; }
 .agent-page .agent-connect-row .quiet:active:not(:disabled) { background:var(--mist-strong); }
+.agent-page .quiet.agent-stop-reconnect { min-height:28px; padding:0; font-weight:400; text-decoration:underline; text-underline-offset:3px; }
 .agent-page .agent-request { border-top:1px solid var(--line); padding:24px 0; overflow-wrap:anywhere; scroll-margin-top:24px; }
 .agent-page .agent-request h3 { margin:0 0 6px; font-size:18px; }
 .agent-page .agent-meta { font-size:12px; color:var(--muted); }

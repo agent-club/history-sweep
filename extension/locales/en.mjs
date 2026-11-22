@@ -154,6 +154,7 @@ export default {
   ratingTitle: 'Rate History Sweep', ratingDescription: 'Share your experience on the Chrome Web Store.', rateInStore: 'Rate on Chrome Web Store', skipRating: 'Skip',
   handoffFailed: 'Could not transfer the search. Enter it again in the full page.', deletionStatusFailed: 'Could not confirm the deletion status. It may still be running; search again to check.',
   reloadExtension: 'Cannot connect to the extension background. Open chrome://extensions, reload History Sweep, then reopen this window.',
+  batchProgressDeleting: 'Deleting…', batchProgressCount: '{done} / {total} items', batchProgressHint: 'Deletion continues if you close this window. Keep Chrome running.',
   modalLabel: 'Confirm history deletion', fullNote: 'A little more room to review.', deleteNote: 'Deleting a URL removes all visits to it.', selectRow: 'Select {url}', progress: 'Deletion progress', error: 'Something went wrong. Please try again.',
   // On-demand help; opening it never changes the current search or selection.
   quickStart: "Quick start",

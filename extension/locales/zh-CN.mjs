@@ -154,6 +154,7 @@ export default {
   ratingTitle: '给 History Sweep 评分', ratingDescription: '欢迎在 Chrome 应用商店分享你的使用体验。', rateInStore: '去商店评分', skipRating: '跳过',
   handoffFailed: '搜索条件未能转移，请在完整页面重新输入。', deletionStatusFailed: '无法确认删除状态，任务可能仍在进行，请重新搜索确认。',
   reloadExtension: '无法连接插件后台。请在 chrome://extensions 重新加载 History Sweep，再重新打开此窗口。',
+  batchProgressDeleting: '正在删除…', batchProgressCount: '{done} / {total} 项', batchProgressHint: '关闭弹窗后仍会继续，请保持 Chrome 运行',
   modalLabel: '确认删除历史记录', fullNote: '更宽敞的空间，方便仔细筛选。', deleteNote: '删除一个 URL 会移除它的全部访问记录。', selectRow: '选择 {url}', progress: '删除进度', error: '操作出现问题，请重试。',
   // On-demand help; opening it never changes the current search or selection.
   quickStart: "快速开始",

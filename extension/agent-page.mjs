@@ -61,11 +61,13 @@ export function mountAgentPage(root, { lang, send = message => chrome.runtime.se
   }
   function render(data) {
     lastData = data;
+    const awaitingConnection = data.enabled && !data.connected;
     updateField('connectionState', 'textContent', data.connected ? copy.connected : copy.disconnected);
     $('connectionState').toggleAttribute('data-connected', data.connected);
     updateField('connect', 'textContent', data.profileId ? copy.reconnect : copy.connect);
     updateField('connect', 'hidden', data.connected);
-    updateField('disconnect', 'hidden', !data.enabled);
+    updateField('disconnect', 'hidden', !data.enabled || !data.connected);
+    updateField('stopReconnect', 'hidden', !awaitingConnection);
     updateField('profile', 'hidden', !data.profileId);
     updateField('profileId', 'value', data.profileId ?? '');
     updateField('automaticUpdates', 'checked', data.checkUpdates);
@@ -89,7 +91,7 @@ export function mountAgentPage(root, { lang, send = message => chrome.runtime.se
       updateField('checkUpdates', 'disabled', busy || data.maintenanceBusy);
       updateField('restartNotice', 'hidden', !health.restartRequired);
     }
-    if (data.enabled && !data.connected) updateField('agentStatus', 'textContent', copy.waiting);
+    if (awaitingConnection) updateField('agentStatus', 'textContent', copy.waiting);
     else if ($('agentStatus').textContent === copy.waiting) $('agentStatus').textContent = '';
     const signature = JSON.stringify(data.approvals);
     if (signature === previous) return;
@@ -210,6 +212,7 @@ export function mountAgentPage(root, { lang, send = message => chrome.runtime.se
   }, signal);
   $('connect').addEventListener('click', () => { void act('agent-connect'); });
   $('disconnect').addEventListener('click', () => { void act('agent-disconnect'); });
+  $('stopReconnect').addEventListener('click', () => { void act('agent-disconnect'); });
   $('automaticUpdates').addEventListener('change', () => { void act('agent-monitor', { enabled: $('automaticUpdates').checked }); });
   $('checkUpdates').addEventListener('click', () => { void act('agent-check-updates'); });
   $('agentApplyUpdate').addEventListener('click', () => { void act('agent-apply-update'); });

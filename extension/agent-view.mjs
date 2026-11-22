@@ -58,6 +58,7 @@ export const agentMarkup = `
           </div>
           <div class="settings-action-controls agent-actions"><button id="connect" class="secondary-action" data-copy="connect" type="button"></button><button id="disconnect" class="quiet" data-copy="disconnect" type="button" hidden></button></div>
         </div>
+        <button id="stopReconnect" class="quiet agent-stop-reconnect" data-copy="stopReconnect" type="button" hidden></button>
         <div id="profile" hidden><label for="profileId" data-copy="profile"></label><input id="profileId" readonly spellcheck="false"></div>
         <label class="agent-monitor"><input id="automaticUpdates" type="checkbox" checked><span data-copy="automaticUpdates"></span></label><p class="agent-meta" data-copy="monitorDisclosure"></p>
       </div>

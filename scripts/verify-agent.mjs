@@ -211,6 +211,23 @@ try {
   await writeFile(manifestPath, JSON.stringify(manifest));
   let origin = await launch();
   const id = new URL(origin).hostname;
+  // Attempt a connection before registering the host in this isolated profile.
+  const unavailablePage = await context.newPage();
+  await unavailablePage.goto(`${origin}/agent.html`);
+  await unavailablePage.locator('#connect').click();
+  await unavailablePage.waitForFunction(async () => {
+    const { data } = await chrome.runtime.sendMessage({ type: 'agent-state' });
+    return data?.connectionError;
+  }, undefined, { timeout: 4000 });
+  await unavailablePage.getByRole('status').filter({ hasText: 'Companion unavailable' }).waitFor();
+  assert.equal(await unavailablePage.getByRole('button', { name: 'Reconnect', exact: true }).isVisible(), true);
+  assert.equal(await unavailablePage.getByRole('button', { name: 'Disconnect', exact: true }).count(), 0);
+  const stopReconnect = unavailablePage.getByRole('button', { name: 'Stop automatic reconnection', exact: true });
+  await stopReconnect.click();
+  await stopReconnect.waitFor({ state: 'hidden' });
+  assert.equal(await unavailablePage.locator('#agentStatus').textContent(), '');
+  assert.equal(await unavailablePage.evaluate(async () => (await chrome.storage.local.get('agentConnection')).agentConnection.enabled), false);
+  await unavailablePage.close();
   const companion = await prepareCompanion(join(root, 'companion'), id);
   let clientEntry;
   await configureClients(join(root, 'companion'), ['codex'], { home, run: (_command, args) => {
@@ -368,6 +385,8 @@ try {
   catch (error) { console.log(await page.evaluate(async () => { const state = await chrome.runtime.sendMessage({ type: 'agent-state' }); return { connected: state.data?.connected, error: state.data?.connectionError }; })); throw error; }
   const profileId = await page.locator('#profileId').inputValue();
   assert.equal(await page.locator('#agentStatus').textContent(), '', 'Connection warning must clear after success');
+  assert.equal(await page.getByRole('button', { name: 'Disconnect', exact: true }).isVisible(), true);
+  assert.equal(await page.getByRole('button', { name: 'Stop automatic reconnection', exact: true }).count(), 0);
   await screenshot(page, 'connected-en');
   await startMcp();
   assert.equal((await tool('profiles')).profiles[0].profileId, profileId);

@@ -415,6 +415,77 @@ tbody tr:not(:has(input:disabled)) { cursor: pointer; }
 #status { margin: 0; overflow: hidden; color: var(--muted); font-size: 10px; line-height: 1.55; text-overflow: ellipsis; white-space: nowrap; }
 #status[data-kind="reloadExtension"] { white-space: normal; }
 progress { width: 100%; height: 4px; margin: 0 0 7px; accent-color: var(--accent); }
+.batch-progress-heading, .batch-progress-details { display: none; }
+#deletionStatusArea.batch-deletion-progress {
+  --batch-progress-veil: #f7f7f5d1;
+  --batch-progress-track: #27272426;
+  --batch-progress-muted: #535351;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  grid-template: minmax(0, 1fr) 3px minmax(0, 1fr) / minmax(0, 1fr);
+  justify-items: center;
+  padding: 0 24px;
+  background: var(--batch-progress-veil);
+  backdrop-filter: blur(10px);
+  color: var(--primary);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+:root[data-theme=dark] #deletionStatusArea.batch-deletion-progress {
+  --batch-progress-veil: #191919d1;
+  --batch-progress-track: #ffffff3d;
+  --batch-progress-muted: var(--muted);
+}
+.batch-deletion-progress .batch-progress-heading {
+  display: block;
+  grid-area: 1 / 1;
+  align-self: end;
+  margin-bottom: 13.5px;
+}
+.batch-deletion-progress #batchProgressPhase {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 19px;
+  font-weight: 660;
+}
+.batch-deletion-progress #batchProgressPercent {
+  margin: 0;
+  font-size: 46px;
+  line-height: 1;
+  font-weight: 680;
+  letter-spacing: -3px;
+}
+.batch-deletion-progress #progress {
+  display: block;
+  grid-area: 2 / 1;
+  width: min(178px, 100%);
+  height: 3px;
+  margin: 0;
+  appearance: none;
+}
+.batch-deletion-progress #progress::-webkit-progress-bar { border-radius: 3px; background: var(--batch-progress-track); }
+.batch-deletion-progress #progress::-webkit-progress-value { border-radius: 3px; background: var(--primary); }
+.batch-deletion-progress .batch-progress-details {
+  display: block;
+  grid-area: 3 / 1;
+  align-self: start;
+  margin-top: 11.5px;
+  color: var(--batch-progress-muted);
+}
+.batch-deletion-progress #batchProgressCount {
+  margin: 0;
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: 580;
+}
+.batch-deletion-progress .batch-progress-hint {
+  margin: 9px 0 0;
+  font-size: 11px;
+  line-height: 16px;
+}
 
 .actionbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .secondary-action, .delete { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 0 16px; border-radius: 9px; font-size: 12px; font-weight: 700; white-space: nowrap; }
@@ -1451,6 +1522,8 @@ body[data-layout=popup] .app-shell:has(#activityDock) .topbar { position: sticky
 body[data-layout=popup] .app-shell:has(#activityDock) .results-panel { min-height: 230px; }
 body[data-layout=popup] .app-shell:has(#activityDock) .result-scroll { flex-basis: auto; min-height: 170px; max-height: 280px; }
 body[data-layout=popup] .app-shell:has(#activityDock) .actionbar { position: fixed; z-index: 45; left: 0; right: 0; bottom: 0; margin: 0; padding: 10px 18px; border-top: 1px solid var(--line-soft); background: var(--canvas); }
+/* Include the fixed popup footer in the full-window progress veil. */
+body[data-layout=popup] .app-shell:has(#activityDock) .batch-deletion-progress + .actionbar { z-index: 39; }
 @media (max-width: 950px) {
   body[data-layout=page] .activity-header { flex-wrap: wrap; gap: 10px; }
   body[data-layout=page] .activity-controls { justify-content: flex-start; }

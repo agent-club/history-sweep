@@ -18,7 +18,7 @@ try {
   }
   const released = JSON.parse(await readFile(join(temporary, 'extension/manifest.json'), 'utf8'));
   assert.deepEqual(released, manifest, 'the release manifest includes the source entries and permissions');
-  assert.equal(released.version, '1.1.1');
+  assert.equal(released.version, '1.1.2');
   const icons = await readdir(join(temporary, 'extension', 'icons'));
   assert.ok(!icons.includes('agent-dance-motion.webp'), 'the full dance atlas is downloaded separately');
   assert.ok(icons.includes('agent-dance.webp') && icons.includes('agent-dance-track.json'), 'the dance preview and choreography ship');

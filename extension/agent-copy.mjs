@@ -26,6 +26,7 @@ const en = {
   disclosure: 'Your agent can read task domains, schedules and preview counts. These may be sent to its model provider. Page URLs, titles and visit timestamps are not returned by these tools.',
   setup: 'Install the local companion first. Windows, macOS and Linux use the same MCP tools. Native Messaging access is optional.',
   connectTitle: 'Connect the local companion', connect: 'Connect companion', reconnect: 'Reconnect', disconnect: 'Disconnect', connected: 'Connected', disconnected: 'Not connected', waiting: 'Companion unavailable — check installation, then reconnect.',
+  stopReconnect: 'Stop automatic reconnection',
   profile: 'Browser profile ID', approvals: 'Requests', empty: 'No requests to review. Ask your agent to preview or create a cleanup task.',
   approve: 'Approve this request', reject: 'Reject', pending: 'Awaiting your approval', accepted: 'Accepted — checking execution', executing: 'Outcome uncertain — do not resubmit',
   done: 'Completed', rejected: 'Rejected', expired: 'Expired — preview again', failed: 'Failed', interrupted: 'Interrupted — inspect tasks before retrying', stopped: 'Stopped', partial: 'Partially completed', verifyFailed: 'Could not verify completion',
@@ -36,7 +37,7 @@ const en = {
   enabled: 'Enabled', disabled: 'Disabled', paused: 'All tasks paused', resumed: 'All tasks resumed', request: 'Request ID', client: 'Agent client', expires: 'Expires',
   schedule: 'Schedule (browser local time)', daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', once: 'Once', legacy: 'Every 24 hours',
   weekday: 'Weekday (0 = Sunday)', monthDay: 'Day of month', error: 'The request could not be completed.', permission: 'Native Messaging permission was not granted.',
-  instructions: 'Use this profile ID in the agent tools. Keep this page open to review requests. Disconnect rejects pending requests; approved work may finish.',
+  instructions: 'Use this profile ID in the agent tools. Keep this page open to review requests. Disconnecting or stopping automatic reconnection rejects pending requests. Approved work may finish.',
 };
 const zh = {
   navigation: 'Agent 工具 · Skill 与 MCP',
@@ -66,6 +67,7 @@ const zh = {
   disclosure: 'Agent 可以读取任务域名、计划和预览数量，这些信息可能发送给其模型提供商。工具不会返回网页 URL、标题或访问时间。',
   setup: '请先安装本地连接程序。Windows、macOS、Linux 共用同一套 MCP 工具。Native Messaging 权限按需申请。',
   connectTitle: '连接本地程序', connect: '连接本地程序', reconnect: '重新连接', disconnect: '断开连接', connected: '已连接', disconnected: '未连接', waiting: '本地程序不可用，请检查安装后重新连接。',
+  stopReconnect: '停止自动重连',
   profile: '浏览器 profile ID', approvals: '请求', empty: '暂无待确认请求。可以让 agent 先预览或创建清理任务。',
   approve: '批准本次请求', reject: '拒绝', pending: '等待你确认', accepted: '已接受，正在核对执行结果', executing: '结果尚不确定，请勿重复提交',
   done: '已完成', rejected: '已拒绝', expired: '已过期，请重新预览', failed: '失败', interrupted: '执行中断，请核对任务后再试', stopped: '已停止', partial: '部分完成', verifyFailed: '无法验证完成情况',
@@ -76,6 +78,6 @@ const zh = {
   enabled: '已启用', disabled: '已停用', paused: '全部任务已暂停', resumed: '全部任务已恢复', request: '请求 ID', client: 'Agent 客户端', expires: '有效期至',
   schedule: '执行计划（浏览器本地时间）', daily: '每天', weekly: '每周', monthly: '每月', once: '单次', legacy: '每 24 小时',
   weekday: '星期（0 为周日）', monthDay: '每月日期', error: '请求未能完成。', permission: '未授予 Native Messaging 权限。',
-  instructions: '在 agent 工具中指定此 profile ID，并在此页面确认请求。断开连接会拒绝待确认请求；已批准的操作仍可能完成。',
+  instructions: '在 agent 工具中指定此 profile ID，并在此页面确认请求。断开连接或停止自动重连都会拒绝待确认请求。已批准的操作仍可能完成。',
 };
 export const agentCopy = lang => lang === 'zh-CN' ? zh : en;

@@ -118,7 +118,18 @@ export function view(t, compact, modal = false) {
       <div class="back-to-top-anchor"><button id="backToTop" class="back-to-top" type="button" title="${t('backToTop')}" aria-label="${t('backToTop')}" aria-controls="resultScroll" data-visible="false" inert>${icon('arrow-line-up')}</button></div>
       <p id="preview" class="preview" hidden></p>
     </section>
-    <div class="status-area"><progress id="progress" value="0" max="1" aria-label="${t('progress')}" hidden></progress><p id="status" role="status" aria-live="polite">${t('ready')}</p></div>
+    <div id="deletionStatusArea" class="status-area">
+      <div class="batch-progress-heading" aria-hidden="true">
+        <p id="batchProgressPhase"></p>
+        <p id="batchProgressPercent"></p>
+      </div>
+      <progress id="progress" value="0" max="1" aria-label="${t('progress')}" hidden></progress>
+      <p id="status" role="status" aria-live="polite">${t('ready')}</p>
+      <div class="batch-progress-details">
+        <p id="batchProgressCount" aria-hidden="true"></p>
+        <p class="batch-progress-hint">${t('batchProgressHint')}</p>
+      </div>
+    </div>
     <footer class="actionbar">${compact ? `<button id="openFullFooter" class="secondary-action" type="button">${icon('arrow-square-out')}<span>${t('full')}</span></button>` : `<div id="selectionSummary" class="selection-summary"><strong id="footerSelected"></strong></div><div id="selectedSiteChips" class="selected-site-chips"></div><div class="delete-action">`}<button id="delete" class="delete" disabled>${icon('trash')}<span id="deleteLabel">${t('delete')}</span></button>${compact ? '' : '</div>'}</footer>
     <div id="completionFeedback" class="completion-feedback" aria-hidden="true" hidden><div class="completion-orbit">${icon('check')}</div><div class="completion-copy"><div class="completion-heading"><strong id="completionCount" class="completion-count"></strong><span class="completion-title">${t('completionTitle')}</span></div><span class="completion-detail">${t('completionDetail')}</span></div></div>
   </main>
